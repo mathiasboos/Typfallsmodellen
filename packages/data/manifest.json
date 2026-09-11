@@ -1,6 +1,6 @@
 {
  "generatedBy": "tools/extract/run.py",
- "generatedAt": "2026-09-11T20:24:41Z",
+ "generatedAt": "2026-09-11T20:35:32Z",
  "source": {
   "file": "Typfallsmodellen.xlsb",
   "bytes": 4050363,
@@ -77,7 +77,7 @@
   },
   "skiktgrans2": {
    "lastActualYear": 2019,
-   "projection": "carryForward"
+   "projection": "constantCeiling"
   },
   "kvarEfterAdminIp": {
    "lastActualYear": 2025,

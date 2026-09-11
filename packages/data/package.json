@@ -1,0 +1,11 @@
+{
+  "name": "@typfallsmodellen/data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./mortality-risks.bin": "./mortality-risks.bin"
+  }
+}

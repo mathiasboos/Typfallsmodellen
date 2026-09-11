@@ -74,9 +74,9 @@ engine will realistically compute. Use 257.38.
 | `medelPgi` | `followIndex` | `prev * inkomstindex[t] / inkomstindex[t-1]` |
 | `balanstal` | `neutralOne` | projects to `1.0`, *not* to its last actual |
 | `balansindex` | `balansindexFn` | `balansindex((balanstal[t] - 1) / 3 + 1, inkomstindex[t], inkomstindex[t-1])` — the VBA function in `Pensionssystemet.bas` |
-| `gallandeIndex` | `gallandeIndex` | `IF(rng_Senaste_Index_Framskrivning = 2, inkomstindex[t], balansindex[t])` — derived every year |
+| `gallandeIndex` | `gallandeIndex` | before balancing began: `= inkomstindex[t]`; from then on `IF(rng_Senaste_Index_Framskrivning = 2, inkomstindex[t], balansindex[t])` — derived every year |
 | `skiktgrans1` | `kpiPlusTwo` | `INT(prev * (kpiJune[t-1]/kpiJune[t-2] + 0.02) / 100 + 51) * 100`; unrounded `prev * (…)` when `marginal = 1` |
-| `skiktgrans2` | `carryForward` | `10^16` — no second threshold since värnskatten was abolished in 2020 |
+| `skiktgrans2` | `constantCeiling` | `10^16` — a literal ceiling, not the last real threshold carried forward. Värnskatten was abolished in 2020 |
 | `kvarEfterAdminIp` | `carryForward` | `prev` |
 | `adminavgiftPp` | `feeAdmin` | `IF(rng_Avkastning_fondavgifter = 1, 0, 0.0002662%)` |
 | `forvaltningsavgiftPp` | `feeManagement` | `IF(rng_Avkastning_fondavgifter = 1, 0, 0.14%)` |
@@ -84,6 +84,21 @@ engine will realistically compute. Use 257.38.
 | `kvarEfterAvgiftPp` | `oneMinusFee` | `1 - totalAvgiftPp[t]` — derived every year |
 | `avkastningPpm`, `avkastningAp7` | `assumedReturn` | `(1 + avk - IF(rng_Avkastning_fondavgifter = 0, admin + management, 0)) * (1 + infl) - 1` |
 | `rantaRiksgalden` | `rgkSetting` | `Rgk * 100` |
+
+### Balancing only exists from 2010
+
+The sheet writes `gallandeIndex` two different ways. Before the balancing mechanism first bit, it
+is simply `=I7` — the income index. From 2010 it becomes
+`IF(rng_Senaste_Index_Framskrivning = 2, inkomstindex, balansindex)`, and `balansindex` is blank
+before that year. The engine reads the boundary out of the data — the first year `balansindex`
+carries a value — rather than hard-coding 2010, so a revised history is picked up on the next
+extraction.
+
+`balansindex` itself is the VBA function, and it takes **four** arguments:
+`Balansindex(previousBalansindex, dampedBalanstal, inkomstindex[t], inkomstindex[t-1])`.
+LibreOffice renders the sheet's call with only three, dropping the first; the commented-out test
+line in `Pensionssystemet.bas` shows the real shape, and the four-argument reading reproduces
+every projected year exactly while the three-argument one divides by zero.
 
 ### The `+ 51` in skiktgrans1
 
@@ -100,6 +115,12 @@ prognos om fem år"), that takes values from the `Pensioner` sheet for a five-ye
 (`Pensioner!R3..R7`, currently 2025–2029). It is **off by default** (`rng_mftid = 0`). Phase 1
 implements the default path; the branch belongs with the rest of the advanced settings in
 Phase 4.
+
+### One place the engine is deliberately better than the sheet
+
+`inkomstbasbelopp` reads the **next** year's income index. The workbook's final row has no next
+row, so it holds a 0 there. The engine computes one year beyond the requested range and returns
+the real value; the fixture comparison skips that single cell.
 
 ## Verifying a change to this code
 

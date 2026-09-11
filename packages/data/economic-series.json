@@ -707,7 +707,7 @@
   "gallandeIndex": {
    "firstYear": 1957,
    "lastActualYear": 1956,
-   "source": "'Några tal'!C12 - Index in force: balansindex, or inkomstindex when rng_Senaste_Index_Framskrivning = 2",
+   "source": "'Några tal'!C12 - Index in force: inkomstindex before balancing began in 2010, then balansindex unless rng_Senaste_Index_Framskrivning = 2",
    "note": "projection: gallandeIndex (derived every year)",
    "values": []
   },
@@ -1157,8 +1157,8 @@
   "skiktgrans2": {
    "firstYear": 1957,
    "lastActualYear": 2019,
-   "source": "'Några tal'!C30 - Second state threshold (Tax_limit2); 1e16 since värnskatten was abolished",
-   "note": "projection: carryForward",
+   "source": "'Några tal'!C30 - Second state threshold (Tax_limit2); the sheet writes 1e16 for every year since värnskatten was abolished in 2020",
+   "note": "projection: constantCeiling",
    "values": [
     null,
     1e+16,

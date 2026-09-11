@@ -40,7 +40,7 @@ COLUMNS: dict[str, tuple[int, str, bool, str]] = {
     "inkomstindex":         (9,  "indexGrowth",     False, "Inkomstindex"),
     "balanstal":            (10, "neutralOne",      False, "Balanstal; projects to 1.0, not to its last value"),
     "balansindex":          (11, "balansindexFn",   False, "Balansindex; computed by the balansindex() function"),
-    "gallandeIndex":        (12, "gallandeIndex",   True,  "Index in force: balansindex, or inkomstindex when rng_Senaste_Index_Framskrivning = 2"),
+    "gallandeIndex":        (12, "gallandeIndex",   True,  "Index in force: inkomstindex before balancing began in 2010, then balansindex unless rng_Senaste_Index_Framskrivning = 2"),
     "totalAvgiftPp":        (16, "feeTotal",        True,  "Total premium-pension fee: admin, plus management when returns are gross"),
     "avkastningPpm":        (17, "assumedReturn",   False, "Premium pension fund return, PPM index"),
     "avkastningAp7":        (18, "assumedReturn",   False, "AP7 Såfa return"),
@@ -48,7 +48,7 @@ COLUMNS: dict[str, tuple[int, str, bool, str]] = {
     "adminavgiftPp":        (20, "feeAdmin",        False, "Premium pension administration fee"),
     "forvaltningsavgiftPp": (21, "feeManagement",   False, "Premium pension fund management fee"),
     "skiktgrans1":          (29, "kpiPlusTwo",      False, "Threshold for state income tax (Tax_limit1)"),
-    "skiktgrans2":          (30, "carryForward",    False, "Second state threshold (Tax_limit2); 1e16 since värnskatten was abolished"),
+    "skiktgrans2":          (30, "constantCeiling", False, "Second state threshold (Tax_limit2); the sheet writes 1e16 for every year since värnskatten was abolished in 2020"),
     "kvarEfterAdminIp":     (14, "carryForward",    False, "Share left after income-pension admin fees (IP_avg)"),
     "kvarEfterAvgiftPp":    (15, "oneMinusFee",     True,  "Share left after total premium-pension fees (PP_avg) = 1 - totalAvgiftPp"),
 }
