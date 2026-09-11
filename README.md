@@ -28,14 +28,25 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 
 ## Status
 
-| Phase | |
-|---|---|
-| 0. Extraction pipeline | done |
-| 1. Engine core | in progress |
-| 2. Golden-file harness vs. Excel | |
-| 3. Normal-mode website | |
-| 4. Advanced mode | |
-| 5. Polish, CI, deploy | |
+| Phase | | |
+|---|---|---|
+| 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
+| 1. Engine core | in progress | VBA arithmetic shim ✅ · economic projection ✅ · annuity factors ✅ · wages, pension, occupational pension, tax, benefits, main loop — to do |
+| 2. Golden-file harness vs. Excel | awaiting an Excel run | export kit ready in `reference/golden/` |
+| 3. Normal-mode website | | |
+| 4. Advanced mode | | |
+| 5. Polish, CI, deploy | | |
+
+### Verified so far
+
+| What | Against | Result |
+|---|---|---|
+| Economic projection | the workbook's cached values for 20 series across ~190 years | exact |
+| Annuity factors (delningstal, arvsvinstfaktorer) | the 114 345 values the workbook computed into `mortality!P:Z` | exact |
+| VBA arithmetic semantics | 26 unit tests, plus the above | — |
+
+No end-to-end pension figure is verified yet. That is Phase 2, and it needs a run of the real
+model on Windows — see [`reference/golden/HOWTO.md`](reference/golden/HOWTO.md).
 
 ## Regenerating the data
 
