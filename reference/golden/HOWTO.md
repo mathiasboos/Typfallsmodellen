@@ -1,0 +1,82 @@
+# Producing reference results from the real model
+
+The web port has to prove it returns the same numbers as the Excel model. Most of that proof
+comes free — the workbook caches its own annuity factors and economic projections, and the engine
+is tested against both. But it caches **no end-to-end pension figures**: `Workbook_Open` clears
+the result sheets, so the distributed file arrives empty.
+
+So the acceptance gate needs a real Excel run. This is the one step that cannot be automated from
+here — it needs Windows and Excel.
+
+**You only need to do this when the model version changes.** The resulting CSV is committed and
+re-used on every subsequent build.
+
+## What you need
+
+- Windows with Excel 2007 or later
+- `Typfallsmodellen-yyyy-mm-dd.xlsb` — the same version as `source/Typfallsmodellen.xlsb` in this
+  repository. If they differ, the comparison checks the engine against the wrong rules.
+
+## Steps
+
+1. **Open the workbook** and click **Aktivera innehåll** when Excel warns about macros.
+
+2. **Check the advanced settings are at their defaults.** Go to the `Adv_settings` sheet and click
+   **Använd normala inställningar**. The reference run should exercise the model as it ships;
+   anything else, and the engine would be compared against settings it was not asked to reproduce.
+
+3. **Import the macro.** Press `Alt+F11` for the VBA editor, then **File → Import File…** and
+   choose `ExportGoldenCases.bas` from this folder.
+
+4. **Run it.** Still in the VBA editor, press `F5` (or **Run → Run Sub/UserForm**) with
+   `ExportGoldenCases` selected. Excel asks where to save the CSV.
+
+5. **Wait.** It runs roughly 400 typfall through the model one at a time. Expect several minutes;
+   Excel may look unresponsive while it works. A dialog reporting the number of cases means it
+   finished.
+
+6. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
+
+## What the macro does
+
+It fills the `Mikrosim` sheet — the batch runner already built into the workbook — with a spread of
+cases, calls the model's own `InputXGetY` over them, and writes the inputs and results to CSV
+along with the model version and the settings in force.
+
+The cases are chosen for **coverage of rule boundaries**, not for row count. A thousand ordinary
+cases would prove less than a few hundred that straddle the places where the rules change:
+
+- cohorts either side of 1938 and 1954, where tilläggspension appears and disappears
+- every one of the eight occupational pension agreements
+- salaries from 15 000 to 90 000 kr/month, spanning the garantipension phase-out at the bottom and
+  the state income tax threshold at the top
+- retirement ages from each cohort's earliest through 75
+- entry ages from 18 to 30, giving both short and long working lives
+- economic assumptions away from the forecasting standard, varied one at a time as well as together
+- the care-assistant example from the user manual, so the published figures can be checked directly
+
+Retirement ages are clamped to each cohort's lowest permitted age, read from the `Nyckeltal`
+sheet. Below that the model opens a Yes/No dialog mid-run and, answered Yes, quietly changes the
+case — which would write an input into the file that did not produce the output beside it.
+
+## If something goes wrong
+
+**A dialog appears mid-run.** Note what it says and stop the run; the resulting CSV may contain
+rows whose inputs and outputs disagree. Please report it rather than working around it.
+
+**"Sub or Function not defined" on `InputXGetY`.** The macro was imported into a different
+workbook than the model. Make sure the model workbook is the active project in the VBA editor.
+
+**Numbers in the CSV use commas.** The macro forces a dot as the decimal separator, so this should
+not happen — but if it does, say so rather than converting the file by hand; it would mean the
+formatting helper needs fixing.
+
+**It is very slow.** Each case is a full model run. If it is impractically slow, reducing the case
+list is better than not producing the file at all — the boundary cases in blocks A and E matter
+most.
+
+## A note on trust
+
+This macro was written without access to Excel and has not been run. Read it before you run it —
+it is about 250 lines, and it writes to the `Mikrosim` sheet (a scratch sheet the model provides
+for exactly this) and to the CSV you choose. It does not modify the model or save the workbook.
