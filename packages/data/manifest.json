@@ -1,0 +1,97 @@
+{
+ "generatedBy": "tools/extract/run.py",
+ "generatedAt": "2026-09-11T20:24:41Z",
+ "source": {
+  "file": "Typfallsmodellen.xlsb",
+  "bytes": 4050363,
+  "sha256": "791c2b68575b0c02f297bce009d70b099df5d162118c515ab991f0868fe0e9a8"
+ },
+ "series": {
+  "kpiJune": {
+   "lastActualYear": 2025,
+   "projection": "inflation"
+  },
+  "kpiAnnual": {
+   "lastActualYear": 2025,
+   "projection": "inflation"
+  },
+  "prisbasbelopp": {
+   "lastActualYear": 2026,
+   "projection": "fromKpiJune"
+  },
+  "medelPgi": {
+   "lastActualYear": 2024,
+   "projection": "followIndex"
+  },
+  "inkomstbasbelopp": {
+   "lastActualYear": 2026,
+   "projection": "fromIncomeIndex"
+  },
+  "forhojtPrisbasbelopp": {
+   "lastActualYear": 2026,
+   "projection": "fromKpiJune"
+  },
+  "inkomstindex": {
+   "lastActualYear": 2026,
+   "projection": "indexGrowth"
+  },
+  "balanstal": {
+   "lastActualYear": 2026,
+   "projection": "neutralOne"
+  },
+  "balansindex": {
+   "lastActualYear": 2021,
+   "projection": "balansindexFn"
+  },
+  "gallandeIndex": {
+   "lastActualYear": 1956,
+   "projection": "gallandeIndex (derived every year)"
+  },
+  "totalAvgiftPp": {
+   "lastActualYear": 1956,
+   "projection": "feeTotal (derived every year)"
+  },
+  "avkastningPpm": {
+   "lastActualYear": 2025,
+   "projection": "assumedReturn"
+  },
+  "avkastningAp7": {
+   "lastActualYear": 2025,
+   "projection": "assumedReturn"
+  },
+  "rantaRiksgalden": {
+   "lastActualYear": 2024,
+   "projection": "rgkSetting"
+  },
+  "adminavgiftPp": {
+   "lastActualYear": 2025,
+   "projection": "feeAdmin"
+  },
+  "forvaltningsavgiftPp": {
+   "lastActualYear": 1999,
+   "projection": "feeManagement"
+  },
+  "skiktgrans1": {
+   "lastActualYear": 2026,
+   "projection": "kpiPlusTwo"
+  },
+  "skiktgrans2": {
+   "lastActualYear": 2019,
+   "projection": "carryForward"
+  },
+  "kvarEfterAdminIp": {
+   "lastActualYear": 2025,
+   "projection": "carryForward"
+  },
+  "kvarEfterAvgiftPp": {
+   "lastActualYear": 1956,
+   "projection": "oneMinusFee (derived every year)"
+  }
+ },
+ "mortality": {
+  "firstYear": 1980,
+  "lastYear": 2120,
+  "values": 29892
+ },
+ "modelVersion": "Version 4.8"
+}

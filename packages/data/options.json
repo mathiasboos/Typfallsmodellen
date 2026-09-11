@@ -1,0 +1,794 @@
+{
+ "source": "NameRange, Input, Start and Adv_settings",
+ "choices": {
+  "returnBasis": [
+   {
+    "value": 1,
+    "label": "Realt valda 1.7 %"
+   },
+   {
+    "value": 2,
+    "label": "Historiskt PPM-index"
+   },
+   {
+    "value": 3,
+    "label": "Såf:an / 7:e Ap-fonden"
+   }
+  ],
+  "occupationalPension": [
+   {
+    "value": 1,
+    "label": "Saknar tjänstepension"
+   },
+   {
+    "value": 2,
+    "label": "ITP-1, Privatanställda tjänstemän, födda 1979-"
+   },
+   {
+    "value": 3,
+    "label": "ITP-2, Privatanställda tjänstemän, födda före 1979"
+   },
+   {
+    "value": 4,
+    "label": "SAF-LO + STP, Privatanställda arbetare"
+   },
+   {
+    "value": 5,
+    "label": "KAP-KL, Kommunal- & Regionalanställda"
+   },
+   {
+    "value": 6,
+    "label": "AKAP-KR, Kommunal- & Regionalanställda, födda 1986 -"
+   },
+   {
+    "value": 7,
+    "label": "PA16 (Avd 2), Statligt anställda, födda före 1988"
+   },
+   {
+    "value": 8,
+    "label": "PA16 (Avd 1), Statligt anställda, födda 1988 och senare"
+   }
+  ]
+ },
+ "ranges": {
+  "birthYears": [
+   1930,
+   1931,
+   1932,
+   1933,
+   1934,
+   1935,
+   1936,
+   1937,
+   1938,
+   1939,
+   1940,
+   1941,
+   1942,
+   1943,
+   1944,
+   1945,
+   1946,
+   1947,
+   1948,
+   1949,
+   1950,
+   1951,
+   1952,
+   1953,
+   1954,
+   1955,
+   1956,
+   1957,
+   1958,
+   1959,
+   1960,
+   1961,
+   1962,
+   1963,
+   1964,
+   1965,
+   1966,
+   1967,
+   1968,
+   1969,
+   1970,
+   1971,
+   1972,
+   1973,
+   1974,
+   1975,
+   1976,
+   1977,
+   1978,
+   1979,
+   1980,
+   1981,
+   1982,
+   1983,
+   1984,
+   1985,
+   1986,
+   1987,
+   1988,
+   1989,
+   1990,
+   1991,
+   1992,
+   1993,
+   1994,
+   1995,
+   1996,
+   1997,
+   1998,
+   1999,
+   2000,
+   2001,
+   2002,
+   2003,
+   2004,
+   2005,
+   2006,
+   2007,
+   2008,
+   2009,
+   2010,
+   2011,
+   2012,
+   2013,
+   2014,
+   2015,
+   2016,
+   2017,
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024
+  ],
+  "retirementAges": [
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69,
+   70,
+   71,
+   72,
+   73,
+   74,
+   75,
+   76,
+   77,
+   78,
+   79,
+   80
+  ]
+ },
+ "normalDefaults": {
+  "birthYear": 1959,
+  "retirementAge": 66,
+  "startWorkAge": 23,
+  "monthlySalary": 38500,
+  "married": false,
+  "yearlyInflation": 0,
+  "realGrowth": 0,
+  "realReturn": 0.017
+ },
+ "advancedSettings": [
+  {
+   "name": "w_time",
+   "row": 4,
+   "label": "Lönen avser åldern vid",
+   "hint": "Inkomståret 2025",
+   "default": 66,
+   "current": 66
+  },
+  {
+   "name": "IPS_Monthly",
+   "row": 11,
+   "label": "Privat pensionssparande belopp",
+   "hint": "kronor per månad, sedan 2026",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "IPS_start",
+   "row": 12,
+   "label": "Privat pensionssparande sedan när",
+   "hint": "0 procent av årsinkomsten, sedan 2026. Skatteavdraget upphörde för dem med tjp 2016",
+   "default": 2026,
+   "current": 2026
+  },
+  {
+   "name": "rng_Kapitalförsäkring",
+   "row": 13,
+   "label": "Typ av privat pensionssparande, (0) IPS, (1) KF, (2) ISK",
+   "hint": "Individuellt pensionssparande / Individuell pensionsförsäkring",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "TJP_PAR",
+   "row": 14,
+   "label": "Uttagsålder för tjänstepension (och ev. IPS eller pensionsförsäkring)",
+   "hint": "Samma ålder som det allmänna 66 år",
+   "default": 66,
+   "current": 66
+  },
+  {
+   "name": "rng_Arvsvinster_TJP",
+   "row": 15,
+   "label": "Arvsvinster tjänstepension",
+   "hint": "0=Nej, 1= Ja, genom en faktor av premipensionens faktorer,1=samma",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Rgk",
+   "row": 16,
+   "label": "RGK räntan",
+   "hint": "PGA taxering förvaltas arbetsgivarnas ÅP-avgift för hos riksgälden innan premipensionerna fastställs",
+   "default": 0.010000000000000009,
+   "current": 0.010000000000000009
+  },
+  {
+   "name": "rng_Temp_Tjp_Uttag",
+   "row": 17,
+   "label": "Temporärt uttag av tjänstepensionen (ange antal år)",
+   "hint": "Livsvarigt",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Temp_IPS_Uttag",
+   "row": 18,
+   "label": "Temporärt uttag av privatsparande (ange antal år)",
+   "hint": "Livsvarigt",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Försäkringstid_vid_65",
+   "row": 21,
+   "label": "Försäkringstid (bosättningsår fram till 65 års ålder)",
+   "hint": "Påverkar garantipensionen om färre än 40 bosättningsår, koll sker mot antal sysselsatta år",
+   "default": 40,
+   "current": 40
+  },
+  {
+   "name": "Rng_Ansokt",
+   "row": 29,
+   "label": "Ansöker (=1)",
+   "hint": "Ansöker om bostadsstöd",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Hyra",
+   "row": 30,
+   "label": "Boendekostnad per månad för 2025",
+   "hint": "Påverkar BT och ÄFS. Antas utvecklas med KPI",
+   "default": 6300,
+   "current": 6300
+  },
+  {
+   "name": "rng_Makens_inkomst",
+   "row": 31,
+   "label": "Makens / makas årsinkomst",
+   "hint": "påverkar BTP för de som är gifta och de delar på bidraget",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Formogenhet",
+   "row": 32,
+   "label": "Förmögenhet (utöver vistelsebostaden)",
+   "hint": "Påverkar BT/ÄFS (obs: nominellt låst)",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Make_Bald",
+   "row": 33,
+   "label": "Makens / makas födelseår",
+   "hint": "Om gift, kan påverka BT/ÄFS om maken är yngre än 65 år",
+   "default": 1959,
+   "current": 1959
+  },
+  {
+   "name": "rng_Kapital_pens",
+   "row": 34,
+   "label": "Kapitalinkomster brutto",
+   "hint": "Läggs till bruttoinkomsten beskattas och påverkar BT/ÄFS samt disponibel inkomst",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "RNG_dela",
+   "row": 36,
+   "label": "För samboende, hushållets sammanlagda (1), Individens (2) eller att makarna delar lika på alla ev. bidrag (3)",
+   "hint": "",
+   "default": 2,
+   "current": 2
+  },
+  {
+   "name": "rng_Kommunalskatt",
+   "row": 39,
+   "label": "Kommunalskatten är antagen till, utelämnas (0) om historiska genomsnitt ska användas",
+   "hint": "Läser in historiska skattesatser, finns i fliken 'K_skatt'",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Begravningsavgift",
+   "row": 40,
+   "label": "Begravningsavgiften samt avgiften till kyrkan/trossamfundet",
+   "hint": "Historiskt om inte kommunal skatten anges: OBS Skatteteoretiskt betraktas kyrkoavgiften som privat konsumtion",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rngPens_Inflation",
+   "row": 43,
+   "label": "(1)-> Pensioneringen sker samma år som slutlönen",
+   "hint": "(1)-> (dvs ingen förändring av inflation/Inkomstindex i tabell 1 på startsidan)",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Syntetisk",
+   "row": 44,
+   "label": "Syntetisk framskrivning (1=Ja)",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Since_Year_Nyckeltal",
+   "row": 45,
+   "label": "Efter år",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_FlexPens",
+   "row": 46,
+   "label": "Flexpension för ITP 1 och SAF-LO från och med 2014",
+   "hint": "Ingen flexpension",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "marginal",
+   "row": 47,
+   "label": "Marginal, avrundningar mm",
+   "hint": "1 - Ta bort avrundningar i regelssystemet mm",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Senaste_Index_Framskrivning",
+   "row": 48,
+   "label": "Utgå från senaste index i framskrivningen?",
+   "hint": "(1=Ja, 2= Enbart inkomstindex även historiskt, Övrigt nuvarande index och se till balanstal)",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "rng_Förenklad_beräkning",
+   "row": 49,
+   "label": "Förenklad beräkning av den premiebaserad pensionen (1=Ja)",
+   "hint": "Nej",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "wStartYear_AdvSettings",
+   "row": 50,
+   "label": "Ålder för modellens första inkomstår",
+   "hint": "OBS egen lönevektor startar först vid 15",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "rng_Fondförsäkring",
+   "row": 51,
+   "label": "Fondförsäkring",
+   "hint": "1-Fondförsäkring, 2-Traditionell försäkring, båda utan efterlevandeskydd",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Rng_ddelat",
+   "row": 52,
+   "label": "Korr av delningstal för TJP",
+   "hint": "PPM:s delningstal",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_nypropp",
+   "row": 53,
+   "label": "Nypropp (skatteförslag)",
+   "hint": "Inga nya förslag",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_mftid",
+   "row": 54,
+   "label": "Medelfristig prognos om fem år (se flik pensioner)",
+   "hint": "Följer antagdena från startsidan",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_tabell2_startAge",
+   "row": 55,
+   "label": "Tabell 2 Från vilken ålder ska de kassamässiga flödena redovisas?",
+   "hint": "Dvs från och med år 2015",
+   "default": 56,
+   "current": 56
+  },
+  {
+   "name": "Visa_process",
+   "row": 58,
+   "label": "Visa process vid start",
+   "hint": "",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "fack",
+   "row": 60,
+   "label": "Fackföreningsavgift",
+   "hint": "Tidigare och förslag om skattered",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "akasseavg",
+   "row": 61,
+   "label": "Avgift -akassa",
+   "hint": "avgift -kassa,  skattered beroende på inkomstår",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "satagare",
+   "row": 63,
+   "label": "Förtidspensionär sedan år:",
+   "hint": "Har enbart ev. påverkan på skattesystemet from 2018",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "w_ref",
+   "row": 64,
+   "label": "Referensår",
+   "hint": "För löner, kpi m.m. Förvalt år är 2025 eftersom det är senast kända år för prisnivån.",
+   "default": 2025,
+   "current": 2025
+  },
+  {
+   "name": "Rng_belopp12",
+   "row": 66,
+   "label": "Månadsutbetalningar i Mikrosim",
+   "hint": "Månadsbelopp OBS: påverkar enbart utdata i fliken Mikrosim",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Alt_p_age",
+   "row": 67,
+   "label": "Inläst ålder(0) eller riktålder(1)  i mikrosim",
+   "hint": "Nej, inläst ålder",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Rng_compareTo",
+   "row": 68,
+   "label": "lön (0), netto (1) eller disponbel inkomst innan pensioneringen (2) i mikrosim",
+   "hint": "Slutlön OBS enbart utdata i fliken mikrosim",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Scenario",
+   "row": 69,
+   "label": "Alternativt scenario",
+   "hint": "0 inget 1-bas, 2-optimistiskt, 3-pessimistiskt",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Född_Barn1",
+   "row": 73,
+   "label": "1:a barnet",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Född_Barn2",
+   "row": 74,
+   "label": "2:a barnet",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Född_Barn3",
+   "row": 75,
+   "label": "3:e barnet",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Född_Barn4",
+   "row": 76,
+   "label": "4:e barnet",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_def_ar",
+   "row": 81,
+   "label": "Definitivt vid",
+   "hint": "års ålder",
+   "default": " ",
+   "current": null
+  },
+  {
+   "name": "rngLönPartUttag",
+   "row": 84,
+   "label": "Sysselsättningsgraden vid partiellt uttag av IP (obs om egen lönevektor antas de gälla)",
+   "hint": "Uttag IP på 100 % förväntas arbeta 0%.",
+   "default": "Arbetar deltid",
+   "current": "Arbetar deltid"
+  },
+  {
+   "name": "rng_PBHYear",
+   "row": 87,
+   "label": "Ange Inkomstår",
+   "hint": "",
+   "default": null,
+   "current": null
+  },
+  {
+   "name": "rng_PBH_IP",
+   "row": 88,
+   "label": "Behållningen för inkomstpensionen",
+   "hint": "",
+   "default": null,
+   "current": null
+  },
+  {
+   "name": "rng_PBH_PP",
+   "row": 89,
+   "label": "Behållningen för premiepensionen",
+   "hint": "",
+   "default": null,
+   "current": null
+  },
+  {
+   "name": "rng_PBH_tjp",
+   "row": 90,
+   "label": "Eventuell behållning för tjänstepensionen",
+   "hint": "",
+   "default": null,
+   "current": null
+  },
+  {
+   "name": "rng_PBH_IPS",
+   "row": 91,
+   "label": "Eventuellt eget sparande med avdragsrätt (IPS eller p-försäkring)",
+   "hint": "",
+   "default": null,
+   "current": null
+  },
+  {
+   "name": "rng_Avkastning_val",
+   "row": 94,
+   "label": "1: Angiven real avkastning även historiskt, 2: Historiskt PPM, 3: Historiskt SÅFan",
+   "hint": "Val av avkastning",
+   "default": 2,
+   "current": 2
+  },
+  {
+   "name": "Risk",
+   "row": 95,
+   "label": "Värdeutveckling under risk/chans (σ)",
+   "hint": "Ingen volatilitet",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rng_Avkastning_fondavgifter",
+   "row": 96,
+   "label": "Avkastningen avser efter fondavgifter (1) eller före fondavgifter (0)",
+   "hint": "Netto efter fondavgifterna i prognosen",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Mortality",
+   "row": 100,
+   "label": "Egna beräknade delningstal (1=egna, 0=SCB-data)",
+   "hint": "",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Average_Earning",
+   "row": 103,
+   "label": "Slutlön: Medel av de senaste angivna årens inkomster",
+   "hint": "Medel av lönen vid åldrarna 61 - 65 år. Används enbart till tabell 1 och i mikrosimuleringens slutlön",
+   "default": 5,
+   "current": 5
+  },
+  {
+   "name": "rng_wyears",
+   "row": 106,
+   "label": "För tabeller och figurer / For tables and figures",
+   "hint": "Dont remove! It is used as input to table 1",
+   "default": 0,
+   "current": 40
+  },
+  {
+   "name": "rng_Bara_fastapriser",
+   "row": 110,
+   "label": "",
+   "hint": "",
+   "default": 1,
+   "current": null
+  },
+  {
+   "name": "rng_Sista_PensRatt",
+   "row": 111,
+   "label": "",
+   "hint": "",
+   "default": 1,
+   "current": null
+  },
+  {
+   "name": "rng_alt_last_pratt",
+   "row": 114,
+   "label": "Alternativt för sista pensionsrätt, antal år efter pensioneringen",
+   "hint": "Ingen justering",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Tl_spec_y",
+   "row": 116,
+   "label": "Ändrad lön ett visst inkomstår och åren därefter  med faktor",
+   "hint": "Ange från när lönen ska justeras",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "TL_special",
+   "row": 117,
+   "label": "",
+   "hint": "ingen justeringen",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Rules",
+   "row": 119,
+   "label": "0) Ändrade regler fr.o.m ett visst inkomstår och gäller åren därefter, \n 1) alternativt  reglerna för ett givet år gäller för alla år. \n OBS: Ingen omräkning av reglerna för inflationen",
+   "hint": "Reglerna ändras från och med ett visst år",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "RulesFromUtg",
+   "row": 120,
+   "label": "Utgiftsregler  fr.o.m.",
+   "hint": "Gällande regler för resp. år",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "RulesFromSkatt",
+   "row": 121,
+   "label": "Skatteregler  fr.o.m.",
+   "hint": "Gällande regler för resp. år",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Wealth",
+   "row": 125,
+   "label": "Visa pensionsförmögenhet och respektavstånd på startsidan",
+   "hint": "Ingen redovisning",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Resp_tjp",
+   "row": 128,
+   "label": "Inkludera tjänstepension (ja=1, nej=0)",
+   "hint": "Pension inkl. ev tjänstepension Ingår i avståndet",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Rng_resp_rel",
+   "row": 129,
+   "label": "Relativt (1) eller i absoluta kronor (0)",
+   "hint": "Absolute in SEK",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "Rng_resp_max",
+   "row": 130,
+   "label": "Avståndet jämför mot samma typfall som saknar förvärvsinkomster (1) \nsamma men med maximalt grundskydd (2), högre hyra och lägre skatt",
+   "hint": "Absolute / Relative diffrence in pension compared to those who do not have an income-related pension and receive a share of the basic protection for the elderly. \n(1) With current assumed rent, 6300 SEK/month. 2) Against a person with maximum rent for basic protection and with lower tax.\nRelative: [=1-Basic protection from those who do not have an income-related pension / The outcome for the typical case]",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "Verbose",
+   "row": 132,
+   "label": "Extra utskrift av nominella storheter i fliken utdata? (ja=1)",
+   "hint": "Extra utskrift ges",
+   "default": 1,
+   "current": 1
+  },
+  {
+   "name": "rng_discount",
+   "row": 134,
+   "label": "Livsinkomst som pensionär, diskonteringsränta",
+   "hint": "Förutsatt att förmögenhet visas",
+   "default": 0.05,
+   "current": 0.05
+  },
+  {
+   "name": "Wage_profil",
+   "row": 141,
+   "label": "Löneprofil",
+   "hint": "0 - Rak lönebana",
+   "default": 0,
+   "current": 0
+  },
+  {
+   "name": "rngTurboMode",
+   "row": 143,
+   "label": "Turbo-mode (disable screenupdating and enable events during calculation sub Mcalc)",
+   "hint": "",
+   "default": false,
+   "current": false
+  },
+  {
+   "name": "rngDelnIPMort",
+   "row": 144,
+   "label": "Använd delningstal IP från mortalitets-fliken from födelseår (0=använd inte)",
+   "hint": "",
+   "default": 1958,
+   "current": 1958
+  },
+  {
+   "name": "rngDelnPPMort",
+   "row": 145,
+   "label": "Använd delningstal PP från mortalitets-fliken from födelseår (0=använd inte)",
+   "hint": "",
+   "default": 1958,
+   "current": 1958
+  }
+ ]
+}

@@ -1,0 +1,2 @@
+pyxlsb==1.0.10
+oletools==0.60.2

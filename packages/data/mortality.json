@@ -1,0 +1,14 @@
+{
+ "firstYear": 1980,
+ "lastYear": 2120,
+ "maxAge": 105,
+ "sexes": [
+  1,
+  2
+ ],
+ "layout": "((year - firstYear) * 2 + (sex - 1)) * (maxAge + 1) + age",
+ "dtype": "float64",
+ "count": 29892,
+ "populated": 29892,
+ "source": "mortality!A:D (year, sex, age, risk)"
+}

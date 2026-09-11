@@ -1,0 +1,2658 @@
+{
+ "source": "SysLang, SysMsgboxLang and Sysdata",
+ "languages": [
+  "sv",
+  "en"
+ ],
+ "labels": {
+  "2": {
+   "sv": "Välj språk",
+   "en": "Choose language"
+  },
+  "3": {
+   "sv": "Aktuellt språk",
+   "en": "Current language"
+  },
+  "4": {
+   "sv": "Ingångsvärden",
+   "en": "Input values"
+  },
+  "5": {
+   "sv": "Födelseår",
+   "en": "Birth year"
+  },
+  "6": {
+   "sv": "Går i pension vid ålder",
+   "en": "Retirement age"
+  },
+  "7": {
+   "sv": "Börjar arbeta vid ålder",
+   "en": "Begin work at age"
+  },
+  "8": {
+   "sv": "Går i pension",
+   "en": "Retired"
+  },
+  "9": {
+   "sv": "Fel kan inte beräkna före tidigaste uttagsålder",
+   "en": "Error Can't calculate before earliest retirement age"
+  },
+  "10": {
+   "sv": "Årslön",
+   "en": "Annual earnings"
+  },
+  "11": {
+   "sv": "år gammal",
+   "en": "years old"
+  },
+  "12": {
+   "sv": "2025 års lönenivå (462 000 kr/år)",
+   "en": "2025 income level (462 000 SEK/year)"
+  },
+  "13": {
+   "sv": "och i löpande priser",
+   "en": "and in current prices"
+  },
+  "14": {
+   "sv": "Gift",
+   "en": "Married"
+  },
+  "15": {
+   "sv": "Årlig inflation",
+   "en": "Annual inflation"
+  },
+  "16": {
+   "sv": "Real avkastning",
+   "en": "Real fund yield"
+  },
+  "17": {
+   "sv": "Premiepensionens historiska avkastning",
+   "en": "Premiepensionen's historical yield"
+  },
+  "18": {
+   "sv": "Real tillväxt",
+   "en": "Real growth"
+  },
+  "19": {
+   "sv": "Välj tjänstepension",
+   "en": "Choose occupational pension"
+  },
+  "20": {
+   "sv": "Lönen i",
+   "en": "Earnings in"
+  },
+  "21": {
+   "sv": "Löpande priser",
+   "en": "Current prices"
+  },
+  "22": {
+   "sv": "Fasta priser (2025)",
+   "en": "Constant prices (2025)"
+  },
+  "23": {
+   "sv": "Antagande om ekonomin från och med",
+   "en": "Mention economical parameters for the future"
+  },
+  "24": {
+   "sv": "Tabell 1. Specificerat resultat över slutlön och pensionsinkomst",
+   "en": "Table 1. Specified results of final earning and pension income"
+  },
+  "25": {
+   "sv": "mer finns under fliken resultat",
+   "en": "more information is found in worksheet Resultat"
+  },
+  "26": {
+   "sv": "vid",
+   "en": "at age"
+  },
+  "27": {
+   "sv": "År",
+   "en": "Year"
+  },
+  "28": {
+   "sv": "Pension",
+   "en": "Retired"
+  },
+  "29": {
+   "sv": "års ålder",
+   "en": "years age"
+  },
+  "30": {
+   "sv": "som andel av medellön",
+   "en": "as part of average earning"
+  },
+  "31": {
+   "sv": "Slutlön",
+   "en": "End earnings"
+  },
+  "32": {
+   "sv": "Lön efter skatt",
+   "en": "Earning after tax"
+  },
+  "33": {
+   "sv": "Disponibel inkomst",
+   "en": "Disposable income"
+  },
+  "34": {
+   "sv": "Total pension brutto",
+   "en": "Total pension gross"
+  },
+  "35": {
+   "sv": "Total allmän pension",
+   "en": "General pension"
+  },
+  "36": {
+   "sv": "Vy",
+   "en": "Mode"
+  },
+  "37": {
+   "sv": "kronor",
+   "en": "SEK"
+  },
+  "38": {
+   "sv": "Visa",
+   "en": "Show"
+  },
+  "39": {
+   "sv": "år",
+   "en": "year/s"
+  },
+  "40": {
+   "sv": "Tjänstepension",
+   "en": "Occupational retirement"
+  },
+  "41": {
+   "sv": "Privat pensionssparande (med avdragsrätt)",
+   "en": "Private Pensions savings (with tax reduction)"
+  },
+  "42": {
+   "sv": "Löpande priser, kronor",
+   "en": "Current price, SEK"
+  },
+  "43": {
+   "sv": "och i",
+   "en": "and in"
+  },
+  "44": {
+   "sv": "Som andel av slutlön i fasta priser",
+   "en": "As part of final eraning st constant prices"
+  },
+  "45": {
+   "sv": "Per månad",
+   "en": "Per month"
+  },
+  "46": {
+   "sv": "Efter skatt",
+   "en": "After tax"
+  },
+  "47": {
+   "sv": "vid",
+   "en": "at"
+  },
+  "48": {
+   "sv": "*Mätt med årsmedeltal för KPI",
+   "en": "*Measured with average yearly number for CPI"
+  },
+  "49": {
+   "sv": "Tabell 2. Månadsinkomster från 56 ålder",
+   "en": "Tabel 2. Monthly incomes from 56 years age"
+  },
+  "50": {
+   "sv": "Uttryckta i fasta (2012) priser",
+   "en": ""
+  },
+  "51": {
+   "sv": "Ålder",
+   "en": "Age"
+  },
+  "52": {
+   "sv": "Lön",
+   "en": "Earnings"
+  },
+  "53": {
+   "sv": "Inkomst- och tilläggspension",
+   "en": "Income- and supplementary pension"
+  },
+  "54": {
+   "sv": "Premiepension",
+   "en": "Premium pension"
+  },
+  "55": {
+   "sv": "Tjänste-pension+IPS",
+   "en": "Occupational retirement + IPS"
+  },
+  "56": {
+   "sv": "Garantipension",
+   "en": "Guaranteed pension"
+  },
+  "57": {
+   "sv": "Inkomst brutto",
+   "en": "Income gross"
+  },
+  "58": {
+   "sv": "Inkomst efter skatt",
+   "en": "Income after tax"
+  },
+  "59": {
+   "sv": "Bidrag (BT, ÄFS, m.m.)",
+   "en": "Contribution (BT, ÄFS, etc.)"
+  },
+  "60": {
+   "sv": "Fasta priser (2025)",
+   "en": "Constant prices (2025)"
+  },
+  "61": {
+   "sv": "Annars i",
+   "en": "otherwise in"
+  },
+  "62": {
+   "sv": "löneläge om lönerna är i fasta priser",
+   "en": "earnings status if earnings are in constant prices"
+  },
+  "63": {
+   "sv": "Sista pensionsrätten som av taxeringsskäl medräknas först året efter inkluderas i beräkningen.\n\nDet innebär att resultatet i tabell 1 som är periodiserat skiljer från resultatet i tabell 2 som är kassamässigt.",
+   "en": "The last pension entitlement for earnings income is included.\n\nIt means result in table 1 which is priodical differ from result i table 2 which is cash basis."
+  },
+  "64": {
+   "sv": "Inkl sista pensionsrätten som av taxeringsskäl medräknas först året efter.",
+   "en": "If the last pension entitlement for earnings income will be included."
+  },
+  "65": {
+   "sv": "Spara resultatet för kontrafaktiska analyser?",
+   "en": "Save the result for analysis?"
+  },
+  "66": {
+   "sv": "Sparas i fliken \"Resultat\"",
+   "en": "Save in worksheet \"Resultat\""
+  },
+  "67": {
+   "sv": "Mer resultat? Klicka på huset",
+   "en": "More results? Click on the house"
+  },
+  "68": {
+   "sv": "Figur 1. Löneinkomst mellan 22",
+   "en": "Chart 1. Earnings between 22"
+  },
+  "69": {
+   "sv": "Verifierad av",
+   "en": "Verified by"
+  },
+  "70": {
+   "sv": "Svenska",
+   "en": "Swedish"
+  },
+  "71": {
+   "sv": "Engelska",
+   "en": "English"
+  },
+  "72": {
+   "sv": "Partiellt",
+   "en": ""
+  },
+  "73": {
+   "sv": "Pensionsåldern vid 70 avser det första uttaget av IP och PP ?",
+   "en": ""
+  },
+  "74": {
+   "sv": "Definitivt vid",
+   "en": ""
+  },
+  "75": {
+   "sv": "Partiellt uttag IP",
+   "en": ""
+  },
+  "76": {
+   "sv": "Partiellt uttag PP",
+   "en": ""
+  },
+  "77": {
+   "sv": "uttag?",
+   "en": ""
+  },
+  "78": {
+   "sv": "Gift/ogift",
+   "en": ""
+  },
+  "79": {
+   "sv": "Lönen avser åldern vid",
+   "en": ""
+  },
+  "80": {
+   "sv": "Bidrag mm",
+   "en": ""
+  },
+  "81": {
+   "sv": "Hyran kr/månad",
+   "en": ""
+  },
+  "82": {
+   "sv": "Makens inkomst",
+   "en": ""
+  },
+  "83": {
+   "sv": "Garantipensionen räknas om med inkomstindex [=1]",
+   "en": ""
+  },
+  "84": {
+   "sv": "Bostadstillägget:",
+   "en": ""
+  },
+  "85": {
+   "sv": "maximala hyresgränserna räknas om med",
+   "en": ""
+  },
+  "86": {
+   "sv": "Förmögenhet",
+   "en": ""
+  },
+  "87": {
+   "sv": "Utgiftsreglerna räknas om efter",
+   "en": ""
+  },
+  "88": {
+   "sv": "Skatter",
+   "en": ""
+  },
+  "89": {
+   "sv": "Kommunalskatten är antagen till",
+   "en": ""
+  },
+  "90": {
+   "sv": "Begravningsavgiften samt avgiften till kyrkan/trossamfundet",
+   "en": ""
+  },
+  "91": {
+   "sv": "Skattereglerna för inkomstår",
+   "en": ""
+  },
+  "92": {
+   "sv": "Uppräknat med inkomstindex",
+   "en": ""
+  },
+  "93": {
+   "sv": "Övrigt",
+   "en": ""
+  },
+  "94": {
+   "sv": "Syntetisk framskrivning (1=Ja)",
+   "en": ""
+  },
+  "95": {
+   "sv": "Sedan år",
+   "en": ""
+  },
+  "96": {
+   "sv": "Marginal, avrundningar mm",
+   "en": ""
+  },
+  "97": {
+   "sv": "Utgå från senaste index i framskrivningen?",
+   "en": ""
+  },
+  "98": {
+   "sv": "Förenklad beräkning av den premiebaserad pensionen (1=Ja)",
+   "en": ""
+  },
+  "99": {
+   "sv": "Privat pensionssparande kr/år",
+   "en": ""
+  },
+  "100": {
+   "sv": "Fondförsäkring",
+   "en": ""
+  },
+  "101": {
+   "sv": "Delningstal för födda",
+   "en": ""
+  },
+  "102": {
+   "sv": "Avkastning (risk)",
+   "en": ""
+  },
+  "103": {
+   "sv": "Avkastning utöver fondavgifter",
+   "en": ""
+  },
+  "104": {
+   "sv": "Barnår:",
+   "en": ""
+  },
+  "105": {
+   "sv": "Ange nedan när barnen är födda (t.ex.1991-01-05):",
+   "en": ""
+  },
+  "106": {
+   "sv": "1:a barnet",
+   "en": ""
+  },
+  "107": {
+   "sv": "2:a barnet",
+   "en": ""
+  },
+  "108": {
+   "sv": "3:e barnet",
+   "en": ""
+  },
+  "109": {
+   "sv": "4:e barnet",
+   "en": ""
+  },
+  "110": {
+   "sv": "Gå till sidan för Pensionsgrundande belopp (PGB) för att fånga pensionsrätter från studier och värnplikt",
+   "en": "Move to pensions amount sheet (PGB) for caculation pension entitlement for study and military service"
+  },
+  "111": {
+   "sv": "Påverkar TilläggsPensionen (TP) och ev. GARP samt BT/ÄFS",
+   "en": "Affects supplementary and guaranteed pension and housing supplement"
+  },
+  "112": {
+   "sv": "Dvs 2012",
+   "en": ""
+  },
+  "113": {
+   "sv": "Påverkar BTP",
+   "en": ""
+  },
+  "114": {
+   "sv": "kronor, påverkar BTP om de är gifta vill säga",
+   "en": ""
+  },
+  "115": {
+   "sv": "Nu gällande regler",
+   "en": ""
+  },
+  "116": {
+   "sv": "Gällande regler, dvs nominellt låsta",
+   "en": ""
+  },
+  "117": {
+   "sv": "(utöver vistelsebostaden), påverkar BTP",
+   "en": ""
+  },
+  "118": {
+   "sv": "Förutsatt att de ska räknas om",
+   "en": ""
+  },
+  "119": {
+   "sv": "OBS Skatteteoretiskt betraktas kyrkoavgiften som privat konsumtion",
+   "en": ""
+  },
+  "120": {
+   "sv": "Låst vid",
+   "en": "Locked with"
+  },
+  "121": {
+   "sv": "års regler",
+   "en": "year rules"
+  },
+  "122": {
+   "sv": "Nej",
+   "en": "No"
+  },
+  "123": {
+   "sv": "(1)-> (dvs ingen förändring av inflation/Inkomstindex i tabellerna på startsidan)",
+   "en": ""
+  },
+  "124": {
+   "sv": "(gäller enbart första tabellen på Startsidan)",
+   "en": ""
+  },
+  "125": {
+   "sv": "(Inflation och tillväxt är historiskt framskrivna med valda parametrar)",
+   "en": ""
+  },
+  "126": {
+   "sv": "Efter år 2100, ange årtal efter 1960 och flagga på med 1 i cellen ovan",
+   "en": ""
+  },
+  "127": {
+   "sv": "Ta bort avrundningar i regelsystemet mm",
+   "en": ""
+  },
+  "128": {
+   "sv": "(1=Ja, 2= Enbart inkomstindex även historiskt, Övrigt nuvarande index och se till balanstal)",
+   "en": ""
+  },
+  "129": {
+   "sv": "Föregående års pension uppräknat med förändringen i prisbasbeloppet.",
+   "en": ""
+  },
+  "130": {
+   "sv": "Se Tjänste, betalas ut tillsammans med tjänstepension (OBS avdrag på den beskattningsbara inkomsten under sparperioden)",
+   "en": ""
+  },
+  "131": {
+   "sv": "1-Fondförsäkring, 2-Traditionel försäkring, båda utan efterlevandeskydd",
+   "en": ""
+  },
+  "132": {
+   "sv": "Studier av alternativ ålder",
+   "en": ""
+  },
+  "133": {
+   "sv": "Normalfördelad med spridning (S) 0",
+   "en": ""
+  },
+  "134": {
+   "sv": "Utöver fondavgifterna i prognosen",
+   "en": ""
+  },
+  "135": {
+   "sv": "[1=KPI, 2=Inkomstindex]",
+   "en": "[1=CPI, 2=Earnings index]"
+  },
+  "136": {
+   "sv": "Nej, ingen ålder angiven",
+   "en": "No, no age is entered"
+  },
+  "137": {
+   "sv": "Val av partiellt",
+   "en": ""
+  },
+  "138": {
+   "sv": "Ändra löneprofilen och ge en egen serie eller hämta färdiga typfall från fliken Typfall",
+   "en": "Change earnings profile and give own series or pick up standard type from Typfall"
+  },
+  "139": {
+   "sv": "Ja",
+   "en": "Yes"
+  },
+  "140": {
+   "sv": "Försäkringstekniska avsättningar",
+   "en": "Actuarial provisions"
+  },
+  "141": {
+   "sv": "Följsamhetsindex",
+   "en": "Adjustment indexation"
+  },
+  "142": {
+   "sv": "Delningstal",
+   "en": "Annuity divisor"
+  },
+  "143": {
+   "sv": "Avgiftstak",
+   "en": "Ceiling on contribution"
+  },
+  "144": {
+   "sv": "Traditionell försäkring",
+   "en": "Conventional insurance"
+  },
+  "145": {
+   "sv": "Förmånsbestämt pensionssystem",
+   "en": "Defined benefit"
+  },
+  "146": {
+   "sv": "Avgiftsbestämt pensionssystem",
+   "en": "Defined contribution"
+  },
+  "147": {
+   "sv": "Arvsvinst",
+   "en": "Inheritance gains"
+  },
+  "148": {
+   "sv": "Fördelningssystem",
+   "en": "Pay as you go system"
+  },
+  "149": {
+   "sv": "Intjänandetid",
+   "en": "Pay in duration"
+  },
+  "150": {
+   "sv": "Utbetalningstid",
+   "en": "Pay out duration"
+  },
+  "151": {
+   "sv": "Pensionsskuld",
+   "en": "Pensions liability"
+  },
+  "152": {
+   "sv": "Pensionsgrundande belopp/inkomst",
+   "en": "Pensions qualifying amount/income"
+  },
+  "153": {
+   "sv": "Pensionsförmögenhet",
+   "en": "Pension wealth"
+  },
+  "154": {
+   "sv": "Omsättningstid",
+   "en": "Turnover duration"
+  },
+  "155": {
+   "sv": "Pensionsrätt",
+   "en": "Pension entitlement"
+  },
+  "156": {
+   "sv": "Inkludera sista pensionsrätten för år",
+   "en": "Include last pension entitlement for the year"
+  },
+  "157": {
+   "sv": "i tabellen till vänster?",
+   "en": "in the left table?"
+  },
+  "158": {
+   "sv": "Akt ( pensionsakt)",
+   "en": "Dossier"
+  },
+  "159": {
+   "sv": "Aktuellt försäkrad",
+   "en": "currently insured (for work-based benefits)"
+  },
+  "160": {
+   "sv": "Allmän pensionsavgift",
+   "en": "general pension contribution/general pension charge"
+  },
+  "161": {
+   "sv": "Andelsberäknad",
+   "en": "proportionally calculated"
+  },
+  "162": {
+   "sv": "Anstånd",
+   "en": "respite"
+  },
+  "163": {
+   "sv": "Ansökan",
+   "en": "application"
+  },
+  "164": {
+   "sv": "Antagandeinkomst",
+   "en": "assumed income"
+  },
+  "165": {
+   "sv": "Arbetslöshetsersättning",
+   "en": "unemployment benefit"
+  },
+  "166": {
+   "sv": "Arbetsskadeförsäkring",
+   "en": "occupational injury insurance"
+  },
+  "167": {
+   "sv": "Arbetsskadelivränta",
+   "en": "occupational injury annuity"
+  },
+  "168": {
+   "sv": "ATP-år",
+   "en": "Supplementary pension (ATP) years"
+  },
+  "169": {
+   "sv": "Avregistrerad från folkbokföringen",
+   "en": "Deregistered from the Population Register"
+  },
+  "170": {
+   "sv": "Avregistrerad från den svenska sjukförsäkringen",
+   "en": "Deregistered from Swedish social insurance"
+  },
+  "171": {
+   "sv": "Avtal",
+   "en": "Agreement"
+  },
+  "172": {
+   "sv": "Barnbidrag",
+   "en": "Child allowance"
+  },
+  "173": {
+   "sv": "Barnpension",
+   "en": "Child pension"
+  },
+  "174": {
+   "sv": "Basbelopp",
+   "en": "Base amount"
+  },
+  "175": {
+   "sv": "Basnivå",
+   "en": "Base level"
+  },
+  "176": {
+   "sv": "Begäran",
+   "en": "Request"
+  },
+  "177": {
+   "sv": "Behandling (vård)",
+   "en": "Treatment"
+  },
+  "178": {
+   "sv": "Betalningsplan",
+   "en": "Payment plan"
+  },
+  "179": {
+   "sv": "Beslut",
+   "en": "Decision"
+  },
+  "180": {
+   "sv": "Betalningsuppmaning",
+   "en": "Demand for payment"
+  },
+  "181": {
+   "sv": "Beviljandetidpunkt",
+   "en": "Date granted"
+  },
+  "182": {
+   "sv": "Bidragsskyldig (underhållsbidrag)",
+   "en": "Child support debtor"
+  },
+  "183": {
+   "sv": "Bilstöd",
+   "en": "Car allowance for the disabled"
+  },
+  "184": {
+   "sv": "Boförälder",
+   "en": "Residential parent"
+  },
+  "185": {
+   "sv": "Bostadstillägg för pensionärer m.m.",
+   "en": "Housing supplement for pensioners etc."
+  },
+  "186": {
+   "sv": "Bosättningstid",
+   "en": "Period of residence"
+  },
+  "187": {
+   "sv": "Delgivning",
+   "en": "Service"
+  },
+  "188": {
+   "sv": "Pensionen beräknad till:",
+   "en": "Pension estimated to"
+  },
+  "189": {
+   "sv": "Delpension",
+   "en": "Partial pension"
+  },
+  "190": {
+   "sv": "Dödsbo",
+   "en": "estate"
+  },
+  "191": {
+   "sv": "Centrala studiestödsnämnden (CSN)",
+   "en": "(Swedish) National Board of Student Aid [CSN]"
+  },
+  "192": {
+   "sv": "Civilstånd",
+   "en": "Civil status"
+  },
+  "193": {
+   "sv": "Efterlevandepension",
+   "en": "Survivor's pension"
+  },
+  "194": {
+   "sv": "Efterlevandepensionsunderlag",
+   "en": "Basis for survivor's pension"
+  },
+  "195": {
+   "sv": "Efterlevandestöd",
+   "en": "Survivor's support"
+  },
+  "196": {
+   "sv": "Ersättning i efterhand",
+   "en": "Retrospective payment/retrospective allowance"
+  },
+  "197": {
+   "sv": "Ersättningsanspråk",
+   "en": "Claim"
+  },
+  "198": {
+   "sv": "Faderskapsbekräftelse",
+   "en": "Acknowledgment of paternity"
+  },
+  "199": {
+   "sv": "Faktisk pensionsbehållning",
+   "en": "Actual pension balance"
+  },
+  "200": {
+   "sv": "Fastställelse",
+   "en": "Confirmation"
+  },
+  "201": {
+   "sv": "Familjebidrag",
+   "en": "Family benefit"
+  },
+  "202": {
+   "sv": "Folkbokföringen",
+   "en": "Population Register"
+  },
+  "203": {
+   "sv": "Folkbokförd",
+   "en": "Registered in the Population Register"
+  },
+  "204": {
+   "sv": "Folkpension",
+   "en": "Basic pension"
+  },
+  "205": {
+   "sv": "Fribelopp",
+   "en": "Exempt amount"
+  },
+  "206": {
+   "sv": "Fullmakt",
+   "en": "Power of attorney"
+  },
+  "207": {
+   "sv": "Funktionellt utseendemässigt godtagbart resultat",
+   "en": "Acceptable result from the point of view of functionality and appearance"
+  },
+  "208": {
+   "sv": "Funktionshinder",
+   "en": "Disability/impairment"
+  },
+  "209": {
+   "sv": "Följsamhetsindexering",
+   "en": "Recalculation by change in index"
+  },
+  "210": {
+   "sv": "Förfrågan",
+   "en": "Enquiry"
+  },
+  "211": {
+   "sv": "Förhandsprövning",
+   "en": "Advance consideration"
+  },
+  "212": {
+   "sv": "Förlängt underhållsstöd",
+   "en": "Extended maintenance support"
+  },
+  "213": {
+   "sv": "Förmyndare",
+   "en": "Guardian"
+  },
+  "214": {
+   "sv": "Förslag till behandling",
+   "en": "Proposed treatment"
+  },
+  "215": {
+   "sv": "Försäkrad för arbete",
+   "en": "Insured for work"
+  },
+  "216": {
+   "sv": "Försäkringsfall",
+   "en": "Claim"
+  },
+  "217": {
+   "sv": "Försäkringskassan",
+   "en": "Försäkringskassan [The Swedish Social Insurance Agency]"
+  },
+  "218": {
+   "sv": "Försäkringskassans huvudkontor",
+   "en": "Head Office of Försäkringskassan"
+  },
+  "219": {
+   "sv": "Försäkringskontor",
+   "en": "Insurance office"
+  },
+  "220": {
+   "sv": "Försäkringsläkare",
+   "en": "Insurance doctor"
+  },
+  "221": {
+   "sv": "Försäkringstandläkare",
+   "en": "Insurance dentist"
+  },
+  "222": {
+   "sv": "Försäkringstid/ försäkringsperioder",
+   "en": "Insurance time/insurance period"
+  },
+  "223": {
+   "sv": "Förtida uttag",
+   "en": "Early withdrawal"
+  },
+  "224": {
+   "sv": "Förtidspension",
+   "en": "Disability pension"
+  },
+  "225": {
+   "sv": "Föräldrabalken",
+   "en": "The Children and Parents Code"
+  },
+  "226": {
+   "sv": "Förvaltare",
+   "en": "Administrator"
+  },
+  "227": {
+   "sv": "Garantinivå",
+   "en": "Guarantee level"
+  },
+  "228": {
+   "sv": "Garantiersättning",
+   "en": "Guarantee benefit"
+  },
+  "229": {
+   "sv": "Gemensam vårdnad",
+   "en": "Joint custody"
+  },
+  "230": {
+   "sv": "God man",
+   "en": "Guardian (i vissa sammanhang: special representative)"
+  },
+  "231": {
+   "sv": "Handikappersättning",
+   "en": "Disability allowance"
+  },
+  "232": {
+   "sv": "Handlägga",
+   "en": "(to) deal with a case/ (to) consider a case"
+  },
+  "233": {
+   "sv": "Handläggare",
+   "en": "Administrative officer"
+  },
+  "234": {
+   "sv": "Hävning",
+   "en": "Rescission (försäkring), cancellation, revocation (allmän, rätt)"
+  },
+  "235": {
+   "sv": "Indexuppräkning",
+   "en": "Upward index adjustment"
+  },
+  "236": {
+   "sv": "Indrivning",
+   "en": "Debt recovery"
+  },
+  "237": {
+   "sv": "Indrivningsansökan",
+   "en": "Application for debt recovery"
+  },
+  "238": {
+   "sv": "Inkomstbasbelopp",
+   "en": "Income base amount"
+  },
+  "239": {
+   "sv": "Inkomstgrundad",
+   "en": "Income-based"
+  },
+  "240": {
+   "sv": "Inkomstgrundad sjuk- och aktivitetsersättning",
+   "en": "Income-based sickness and activity compensation"
+  },
+  "241": {
+   "sv": "Inkomstindex",
+   "en": "Income index"
+  },
+  "242": {
+   "sv": "Inkomstpension",
+   "en": "Income pension"
+  },
+  "243": {
+   "sv": "Intjänandeår",
+   "en": "Entitlement years"
+  },
+  "244": {
+   "sv": "Justitieministeriet",
+   "en": "(Swedish) Ministry of Justice"
+  },
+  "245": {
+   "sv": "Jämkning",
+   "en": "Tax adjustment"
+  },
+  "246": {
+   "sv": "Kariesbehandling",
+   "en": "Caries treatment"
+  },
+  "247": {
+   "sv": "Karensbelopp",
+   "en": "Excess amount/excess charge"
+  },
+  "248": {
+   "sv": "Komplettera",
+   "en": "(to) supplement"
+  },
+  "249": {
+   "sv": "Komplettering",
+   "en": "(a) supplement"
+  },
+  "250": {
+   "sv": "Konventionsansökan",
+   "en": "Convention application"
+  },
+  "251": {
+   "sv": "Konventionsland",
+   "en": "Convention country"
+  },
+  "252": {
+   "sv": "Kraveftergift",
+   "en": "Waiver from liability"
+  },
+  "253": {
+   "sv": "Kronofogdemyndighet",
+   "en": "(Swedish) Enforcement Service"
+  },
+  "254": {
+   "sv": "Lagen om underhållsstöd",
+   "en": "Maintenance Support Act"
+  },
+  "255": {
+   "sv": "Levnadsintyg",
+   "en": "Life certificate"
+  },
+  "256": {
+   "sv": "Livränta",
+   "en": "Annuity"
+  },
+  "257": {
+   "sv": "Långvarig sjukdom",
+   "en": "Long-term illness"
+  },
+  "258": {
+   "sv": "Länsrätt",
+   "en": "County administrative court"
+  },
+  "259": {
+   "sv": "Mantalsskriven",
+   "en": "Registered for census purposes"
+  },
+  "260": {
+   "sv": "Nationell pension",
+   "en": "National pension"
+  },
+  "261": {
+   "sv": "Nettoavtal",
+   "en": "Net agreement"
+  },
+  "262": {
+   "sv": "Odontologisk synpunkt",
+   "en": "From a dental point of view"
+  },
+  "263": {
+   "sv": "Omprövning",
+   "en": "Reconsideration"
+  },
+  "264": {
+   "sv": "Omställningspension",
+   "en": "Adjustment pension"
+  },
+  "265": {
+   "sv": "Personnummer",
+   "en": "(Swedish) personal identity number"
+  },
+  "266": {
+   "sv": "Pensionsbehållning",
+   "en": "Pension capital/pension balance"
+  },
+  "267": {
+   "sv": "Pensionsgrundande belopp",
+   "en": "Pensionable amount"
+  },
+  "268": {
+   "sv": "PGB - baseras på studier, plikttjänstg., barnår",
+   "en": "Pensionable amount based on studies, national service, child years (PGB)"
+  },
+  "269": {
+   "sv": "Pensionsgrundande inkomst",
+   "en": "Pensionable income"
+  },
+  "270": {
+   "sv": "PGI - baserad på arbete",
+   "en": "Pensionable income based on work (PGI)"
+  },
+  "271": {
+   "sv": "Pensionspoäng",
+   "en": "Pension point"
+  },
+  "272": {
+   "sv": "Pensionsålder",
+   "en": "Pension age"
+  },
+  "273": {
+   "sv": "Planerad vård",
+   "en": "Planned care/treatment"
+  },
+  "274": {
+   "sv": "Premiepensionsmyndigheten",
+   "en": "Premium Pension Authority"
+  },
+  "275": {
+   "sv": "Prisbasbelopp",
+   "en": "Price base amount"
+  },
+  "276": {
+   "sv": "Ramtid / förskjuten ramtid",
+   "en": "Framework period/adjusted framework period"
+  },
+  "277": {
+   "sv": "Retroaktivt ersättning",
+   "en": "Retroactive payment/compensation/allowance"
+  },
+  "278": {
+   "sv": "Samordning",
+   "en": "Co-ordination"
+  },
+  "279": {
+   "sv": "Schablonbelopp",
+   "en": "Standard amount"
+  },
+  "280": {
+   "sv": "Sjuk- och aktivitetsersättning",
+   "en": "Sickness and activity compensation"
+  },
+  "281": {
+   "sv": "Skatteavdrag",
+   "en": "Tax deduction"
+  },
+  "282": {
+   "sv": "Skatteverket/Skattemyndigheten",
+   "en": "(Swedish) Tax Agency/tax authority"
+  },
+  "283": {
+   "sv": "SINK_ särskild inkomstskatt för utlandsbosatta",
+   "en": "Special income tax for persons resident abroad"
+  },
+  "284": {
+   "sv": "Sökande (den sökande)",
+   "en": "Applicant"
+  },
+  "285": {
+   "sv": "Tabellskatt",
+   "en": "Schedule tax"
+  },
+  "286": {
+   "sv": "Tandvård",
+   "en": "Dental care (treatment)"
+  },
+  "287": {
+   "sv": "Tandvårdsförsäkring",
+   "en": "Dental insurance"
+  },
+  "288": {
+   "sv": "Tandvårdsräkning",
+   "en": "Dental bill"
+  },
+  "289": {
+   "sv": "Tandvårdstaxa",
+   "en": "Scale of dental charges"
+  },
+  "290": {
+   "sv": "Taxerad inkomst",
+   "en": "Amount assessed for income tax"
+  },
+  "291": {
+   "sv": "Taxeringsuppgifter",
+   "en": "Tax assessment information"
+  },
+  "292": {
+   "sv": "Teoretisk pensionsbehållning",
+   "en": "Theoretical pension balance"
+  },
+  "293": {
+   "sv": "Tidsbegränsad ersättning",
+   "en": "Time-limited payment/compensation/allowance"
+  },
+  "294": {
+   "sv": "Tillfällig vistelse",
+   "en": "Temporary stay"
+  },
+  "295": {
+   "sv": "Umgängesavdrag",
+   "en": "Deduction from child support for access"
+  },
+  "296": {
+   "sv": "Underhållsbidrag",
+   "en": "Child support"
+  },
+  "297": {
+   "sv": "Underhållsstöd",
+   "en": "Maintenance support"
+  },
+  "298": {
+   "sv": "Utfyllnadsbidrag",
+   "en": "Supplementary allowance"
+  },
+  "299": {
+   "sv": "Vårdförmåner",
+   "en": "Care benefits"
+  },
+  "300": {
+   "sv": "Vårdgivare",
+   "en": "Care provider"
+  },
+  "301": {
+   "sv": "Växelvis boende",
+   "en": "Alternate residence"
+  },
+  "302": {
+   "sv": "Ålderspension",
+   "en": "Old age pension"
+  },
+  "303": {
+   "sv": "Återbetalningsbelopp",
+   "en": "Reimbursement amount"
+  },
+  "304": {
+   "sv": "Återbetalningsskyldighet",
+   "en": "Reimbursement liability"
+  },
+  "305": {
+   "sv": "Änkepension",
+   "en": "Widow's pension"
+  },
+  "306": {
+   "sv": "Ärende (i ditt ärende...)",
+   "en": "Case"
+  },
+  "307": {
+   "sv": "Ökat behov av vård",
+   "en": "Increased need for care"
+  },
+  "308": {
+   "sv": "Överklaga",
+   "en": "(to) appeal"
+  },
+  "309": {
+   "sv": "Överklagande",
+   "en": "(an) appeal"
+  },
+  "310": {
+   "sv": "Överskjutande belopp",
+   "en": "Excess amount"
+  },
+  "311": {
+   "sv": "Disponibel inkomst",
+   "en": "Disposable income"
+  },
+  "312": {
+   "sv": "och",
+   "en": "and"
+  },
+  "313": {
+   "sv": "Uttryckt i",
+   "en": "Expressed in"
+  },
+  "314": {
+   "sv": "Uttryckta i fasta (",
+   "en": "Expressed in constant ("
+  },
+  "315": {
+   "sv": ") priser",
+   "en": ") prices"
+  },
+  "316": {
+   "sv": "års löner",
+   "en": "yearly earnings"
+  },
+  "317": {
+   "sv": "*Löner och priser",
+   "en": "*Earnings and prices"
+  },
+  "318": {
+   "sv": "Avrundat krontal per månad",
+   "en": "Rounded kronor per month"
+  },
+  "319": {
+   "sv": "Netto",
+   "en": "Net"
+  },
+  "320": {
+   "sv": "Som andel av netto resp. disponibel",
+   "en": "As part of net resp. disposable"
+  },
+  "321": {
+   "sv": "Lönen i",
+   "en": "Earning in"
+  },
+  "322": {
+   "sv": "fasta (",
+   "en": "constant ("
+  },
+  "323": {
+   "sv": "års) priser",
+   "en": "year) prices"
+  },
+  "324": {
+   "sv": "Vald parameter",
+   "en": "Chosen parameter"
+  },
+  "325": {
+   "sv": "Inkomst i nominella termer",
+   "en": "Earnings at nominal level"
+  },
+  "326": {
+   "sv": "Inkomst uttryckt i 2025 lönenivå",
+   "en": "Earnings at 2025 wagelevel"
+  },
+  "327": {
+   "sv": "Inkomst uttryckt i 2025 priser",
+   "en": "Earnings at 2025 prices"
+  },
+  "328": {
+   "sv": "Lön vid fortsatt arbete",
+   "en": "Earnings from Continued Work"
+  },
+  "329": {
+   "sv": "Kompensationsgrad:",
+   "en": "Compensation ratio:"
+  },
+  "330": {
+   "sv": "Tilläggspension",
+   "en": "Supplementary pension"
+  },
+  "331": {
+   "sv": "Tjänstepensionsavtalet stämmer inte med födelseåret.",
+   "en": "Occupational pension dosn't match with born year."
+  },
+  "332": {
+   "sv": "Tjänstepension",
+   "en": "Occupational pension"
+  },
+  "333": {
+   "sv": "Bruttoinkomst",
+   "en": "Gross income"
+  },
+  "334": {
+   "sv": "Nettoinkomst",
+   "en": "Net income"
+  },
+  "335": {
+   "sv": "Lön och pension",
+   "en": "Earnings and pension"
+  },
+  "336": {
+   "sv": "Marginalskatt",
+   "en": "Margin tax"
+  },
+  "337": {
+   "sv": "Medelskatt",
+   "en": "Average tax"
+  },
+  "338": {
+   "sv": "januari",
+   "en": "January"
+  },
+  "339": {
+   "sv": "februari",
+   "en": "February"
+  },
+  "340": {
+   "sv": "mars",
+   "en": "March"
+  },
+  "341": {
+   "sv": "april",
+   "en": "April"
+  },
+  "342": {
+   "sv": "maj",
+   "en": "May"
+  },
+  "343": {
+   "sv": "juni",
+   "en": "June"
+  },
+  "344": {
+   "sv": "juli",
+   "en": "July"
+  },
+  "345": {
+   "sv": "augusti",
+   "en": "August"
+  },
+  "346": {
+   "sv": "september",
+   "en": "September"
+  },
+  "347": {
+   "sv": "oktober",
+   "en": "October"
+  },
+  "348": {
+   "sv": "november",
+   "en": "November"
+  },
+  "349": {
+   "sv": "december",
+   "en": "December"
+  },
+  "350": {
+   "sv": "Pension totalt",
+   "en": "Total pensions"
+  },
+  "351": {
+   "sv": "Uttryckt i lönenivå?",
+   "en": "Expressed in earnings wage level?"
+  },
+  "352": {
+   "sv": "Finns inte kvar för födda >1937",
+   "en": "There is not for born > 1937"
+  },
+  "353": {
+   "sv": "månad",
+   "en": "month"
+  },
+  "354": {
+   "sv": "Gå till Start fliken",
+   "en": "Go to Start worksheet"
+  },
+  "355": {
+   "sv": "Du är för ung",
+   "en": "You are too young"
+  },
+  "356": {
+   "sv": "0 månad",
+   "en": "0 month"
+  },
+  "357": {
+   "sv": "1 månad",
+   "en": "1 month"
+  },
+  "358": {
+   "sv": "2 månader",
+   "en": "2 months"
+  },
+  "359": {
+   "sv": "3 månader",
+   "en": "3 months"
+  },
+  "360": {
+   "sv": "4 månader",
+   "en": "4 months"
+  },
+  "361": {
+   "sv": "5 månader",
+   "en": "5 months"
+  },
+  "362": {
+   "sv": "6 månader",
+   "en": "6 months"
+  },
+  "363": {
+   "sv": "7 månader",
+   "en": "7 months"
+  },
+  "364": {
+   "sv": "8 månader",
+   "en": "8 months"
+  },
+  "365": {
+   "sv": "9 månader",
+   "en": "9 months"
+  },
+  "366": {
+   "sv": "10 månader",
+   "en": "10 months"
+  },
+  "367": {
+   "sv": "11 månader",
+   "en": "11 months"
+  },
+  "368": {
+   "sv": "Inställningar för avancerad beräkning",
+   "en": "Settings for advanced calculation"
+  },
+  "369": {
+   "sv": "För ny beräkning klicka på knappen \"Beräkna\".",
+   "en": "Recalculation needed! Click on \"Calculate\" button."
+  },
+  "370": {
+   "sv": "Uttryckt i 2025 års lönenivå.",
+   "en": "Compare to earning level at 2025."
+  },
+  "371": {
+   "sv": "Utan hänsyn till sista pensionsrätten.",
+   "en": "Without the last contribution due to tax system."
+  },
+  "372": {
+   "sv": "års ålder",
+   "en": "Years old"
+  },
+  "373": {
+   "sv": "OBS bostadstillägg [=  kr/månad] beräknad utifrån antaganden om en hyra på 6300 kr/månad.",
+   "en": "Note BTP  [=  SEK /month] is calculated from assumptions of residental rent at 6000 SEK/month."
+  },
+  "374": {
+   "sv": "Figur 2. Månadsinkomster: 56 - 76 års ålder",
+   "en": "Figure 2. Earnings per month: 56 - 76 years old"
+  },
+  "375": {
+   "sv": "Obs! De ekonomiska valen är Inflation 0%, real tillväxt 0% och den reala avkastningen 1.7%. Valen är kanske inte fullt rimliga/konsekventa på längre sikt.",
+   "en": "Obs! The economic choices are: Annual inflation  0%, Real growth 0% and Real fund yield 1,7 %. The elections may not be entirely reasonable / consistent over the longer term."
+  },
+  "376": {
+   "sv": "Fondavkastning värde",
+   "en": "Fund yield value"
+  },
+  "377": {
+   "sv": "Real tillväxt värde",
+   "en": "Real growth value"
+  },
+  "378": {
+   "sv": "Indata",
+   "en": "Inputdata"
+  },
+  "379": {
+   "sv": "Färdiga typisar",
+   "en": "Standard type"
+  },
+  "380": {
+   "sv": "Sociala avgifter",
+   "en": "Social contribution"
+  },
+  "381": {
+   "sv": "Gå till rubrik",
+   "en": "Go to header"
+  },
+  "382": {
+   "sv": "Realt valda",
+   "en": "Real chossed"
+  },
+  "383": {
+   "sv": "Historiskt PPM-index",
+   "en": "Historical PPM-Index"
+  },
+  "384": {
+   "sv": "Såf:an / 7:e Ap-fonden",
+   "en": "Såf:an / 7:e Ap-found"
+  },
+  "385": {
+   "sv": "Saknar TJP",
+   "en": "Missing TJP"
+  },
+  "386": {
+   "sv": "ITP 1 (Tjm födda 1979-)",
+   "en": "ITP 1 (Tjm born 1979-)"
+  },
+  "387": {
+   "sv": "ITP 2 + ITP K (Tjm födda före 1979)",
+   "en": "ITP 2 + ITP K (Tjm born before 1979)"
+  },
+  "388": {
+   "sv": "PA03 (statliga)",
+   "en": "PA03 (State)"
+  },
+  "389": {
+   "sv": "SAF-LO + STP",
+   "en": "SAF-LO + STP"
+  },
+  "390": {
+   "sv": "KAP-KL",
+   "en": "KAP-KL"
+  },
+  "391": {
+   "sv": "Kollektiv avtal och overheadkostnader",
+   "en": "Collective agreements and overhead costs"
+  },
+  "392": {
+   "sv": "Obs! Garantipension beräknad utifrån antagande om förskringstid 40 år",
+   "en": "Obs! Guarenteed pension, based on time for living years in Sweden 40 years"
+  },
+  "393": {
+   "sv": "Som andel av slutlön",
+   "en": "As part of final earning"
+  },
+  "394": {
+   "sv": "Dubbelklicka på språklist!",
+   "en": "Dubbel click on languagelist!"
+  },
+  "395": {
+   "sv": "kronor per år",
+   "en": "SEK per year"
+  },
+  "396": {
+   "sv": "kronor per månad, sedan 2026",
+   "en": "SEK per month, since 2026"
+  },
+  "397": {
+   "sv": "Samboende/gift",
+   "en": "Cohabitation/married"
+  },
+  "398": {
+   "sv": "Ensamstående/ogift",
+   "en": "Single/unmarried"
+  },
+  "399": {
+   "sv": "Real avkastning före avgifter om 0,2%",
+   "en": "Real fund yield before fees about 0,2%"
+  },
+  "400": {
+   "sv": "Avkastning netto efter avgifter",
+   "en": "Real fund yield after fees"
+  },
+  "401": {
+   "sv": "Vid pension",
+   "en": "At pension"
+  },
+  "402": {
+   "sv": "Behållning",
+   "en": "Balance"
+  },
+  "403": {
+   "sv": "Fastställda arvsvinstfaktorer",
+   "en": "Arvsvinst factors"
+  },
+  "404": {
+   "sv": "Ange egen lön",
+   "en": "Mention own income"
+  },
+  "405": {
+   "sv": "Inkomstår",
+   "en": "Income year"
+  },
+  "406": {
+   "sv": "Egen lönelista har valts",
+   "en": "Own income list is activated"
+  },
+  "407": {
+   "sv": "Uppfyllt",
+   "en": "Satisfied"
+  },
+  "408": {
+   "sv": "Inte uppfyllt",
+   "en": "Not satisfied"
+  },
+  "409": {
+   "sv": "Månadsinkomster",
+   "en": "Monthly income"
+  },
+  "410": {
+   "sv": "Ange fondavkasning",
+   "en": "Mention foundyield"
+  },
+  "411": {
+   "sv": "Ange inflation",
+   "en": "Mention inflation"
+  },
+  "412": {
+   "sv": "Ange balanstal",
+   "en": "Mention balance ratio"
+  },
+  "413": {
+   "sv": "Balanstal",
+   "en": "Balance ratio"
+  },
+  "414": {
+   "sv": "Ange privat pensionsparande",
+   "en": "Mention pensions savings with taxcredits"
+  },
+  "415": {
+   "sv": "Beräkningsområde",
+   "en": "Calculation area"
+  },
+  "416": {
+   "sv": "Cellerna nedan är olåsta för din egen beräkning",
+   "en": "The cells below are unlocked for your own calculation"
+  },
+  "417": {
+   "sv": "Nominell avkastning",
+   "en": "Nominal fund yeild"
+  },
+  "418": {
+   "sv": "års lönenivå",
+   "en": "Income level"
+  },
+  "419": {
+   "sv": "Ange real tillväxt",
+   "en": "Mention Real growth"
+  },
+  "420": {
+   "sv": "och pension från",
+   "en": "and pension from"
+  },
+  "421": {
+   "sv": "Tidsperiod",
+   "en": "Timeperiod"
+  },
+  "422": {
+   "sv": "Lön",
+   "en": "Earnings"
+  },
+  "423": {
+   "sv": "mer information…",
+   "en": "More infornation"
+  },
+  "424": {
+   "sv": "kronor i månaden före skatt",
+   "en": "SEK before taxes"
+  },
+  "425": {
+   "sv": "Tabell 1",
+   "en": "Table 1"
+  },
+  "426": {
+   "sv": "Tabell 2",
+   "en": "Table 2"
+  },
+  "427": {
+   "sv": "Figur 1",
+   "en": "Chart 1"
+  },
+  "428": {
+   "sv": "Som andel av inkomsten",
+   "en": "As a share of the income"
+  },
+  "429": {
+   "sv": "Figur 3",
+   "en": "Chart 3"
+  },
+  "430": {
+   "sv": "Figur 4",
+   "en": "Chart 4"
+  },
+  "431": {
+   "sv": "Figur 5",
+   "en": "Chart 5"
+  },
+  "432": {
+   "sv": "pension i förhållande till slutlön",
+   "en": "pension in relation to the final earnings"
+  },
+  "433": {
+   "sv": "Kompensationsgrad innebär",
+   "en": "Compensation ratio means"
+  },
+  "434": {
+   "sv": "Figur 1 illustrerar tabell 2",
+   "en": "Chart 1 illustrates table 2"
+  },
+  "435": {
+   "sv": "Månadslön",
+   "en": "Monthly income"
+  },
+  "436": {
+   "sv": "andel av slutlön",
+   "en": "Part of final earning"
+  },
+  "437": {
+   "sv": "kronor per månad",
+   "en": "SEK per month"
+  },
+  "438": {
+   "sv": "2025 års lönenivå (462 000 kr/år)",
+   "en": "2025 income level (462 000 SEK/year)"
+  },
+  "439": {
+   "sv": "Fasta priser (reala priser) – priset justerat för inflation",
+   "en": "Fixed prices (real prices) - the price adjusted for inflation"
+  },
+  "440": {
+   "sv": "Löpande priser (nominella priser) – priset anges i aktuell prisnivå",
+   "en": "Current prices (nominal prices) - the price stated in the current price level"
+  },
+  "441": {
+   "sv": "Med fasta priser är det lättare att jämföra priser mellan olika tidsperioder eftersom påverkan av inflationen är bortrensat.",
+   "en": "With fixed prices, it is easier to compare prices between different time periods as the impact of inflation is cleared away."
+  },
+  "442": {
+   "sv": "Månadsberäkning",
+   "en": "Monthcalculation"
+  },
+  "443": {
+   "sv": "Pension i procent av \"slutlön\"",
+   "en": "Pension in percent of the \"final earnings\""
+  },
+  "444": {
+   "sv": "Standard",
+   "en": "Default"
+  },
+  "445": {
+   "sv": "kompensationsgrad",
+   "en": "Compensation ratio"
+  },
+  "446": {
+   "sv": "Modelläge",
+   "en": "Model mode"
+  },
+  "447": {
+   "sv": "Förändringar i Typfallsmodellen",
+   "en": "New features in Tyfallsmodellen"
+  },
+  "448": {
+   "sv": "Formler",
+   "en": "Formula"
+  },
+  "449": {
+   "sv": "VBA värden",
+   "en": "VBA value"
+  },
+  "450": {
+   "sv": "Konstanter",
+   "en": "Value"
+  },
+  "451": {
+   "sv": "Rubriker",
+   "en": "Headers"
+  },
+  "452": {
+   "sv": "Egen löneutveckling från fliken Inkomstvektor",
+   "en": "Own income list is activated"
+  },
+  "453": {
+   "sv": "är valt i fliken Typfall.",
+   "en": "is selected in worksheet Typfall."
+  },
+  "454": {
+   "sv": "Resultatet sparas i fliken Sparade resultat.",
+   "en": "Result save i worksheet Sparade resultat."
+  },
+  "455": {
+   "sv": "Uttagsålder för tjänstepension är",
+   "en": "Withdrawal of the contractual pension is"
+  },
+  "456": {
+   "sv": "Tabellen ovan visar värden",
+   "en": "Table above shows value"
+  },
+  "457": {
+   "sv": "Tjänstepension betalas ut livsvarigt",
+   "en": "Selected withdrawal of the contractual pension is the life duration"
+  },
+  "458": {
+   "sv": "Valt uttag av tjänstepension är på",
+   "en": "Selected withdrawal of the contractual pension is"
+  },
+  "459": {
+   "sv": "← Avbryt körningen",
+   "en": "← Abort run"
+  },
+  "460": {
+   "sv": "Ogift",
+   "en": "Not married"
+  },
+  "461": {
+   "sv": "Typfallet är",
+   "en": "The typical case is"
+  },
+  "462": {
+   "sv": "Resultat",
+   "en": "Results"
+  },
+  "463": {
+   "sv": "Månadsvis",
+   "en": "Monthly"
+  },
+  "464": {
+   "sv": "Årsvis",
+   "en": "Yearly"
+  },
+  "465": {
+   "sv": "Dagens (2025) lönenivå",
+   "en": "Current (2025) wagelevel"
+  },
+  "466": {
+   "sv": "Första inkomståret sätts till 15.",
+   "en": "First income year is 15."
+  },
+  "469": {
+   "sv": "Pensionsförmögenhet:",
+   "en": "Pension wealth:"
+  },
+  "470": {
+   "sv": "Inkomstpension",
+   "en": "Inkomstpension"
+  },
+  "471": {
+   "sv": "Premiepension",
+   "en": "Premium Pension"
+  },
+  "472": {
+   "sv": "Tjänstepension",
+   "en": "Occupational pension"
+  },
+  "473": {
+   "sv": "Privat sparande",
+   "en": "Private savings"
+  },
+  "474": {
+   "sv": "Förväntad återstående livslängd",
+   "en": "Expected remaining lifespan"
+  },
+  "475": {
+   "sv": "år",
+   "en": "year"
+  },
+  "476": {
+   "sv": "kr",
+   "en": "SEK"
+  },
+  "478": {
+   "sv": "Lönen avser åldern vid",
+   "en": "Earnings at age"
+  },
+  "479": {
+   "sv": "Som andel av inkomsten året innan",
+   "en": "Share of income at year before"
+  },
+  "480": {
+   "sv": "Tabellens trycksvärta är lägre efter förväntad livslängd, som är beräknd till 20.3 år vid 66 års ålder",
+   "en": "The printing ink of the table is lower according to the expected life, which is calculated to 20.3 year at 66 years old"
+  },
+  "481": {
+   "sv": "Pensionstillägg (IPT) (40/40)",
+   "en": "Income Pension Complement (40/40)"
+  },
+  "482": {
+   "sv": "Nominella termer",
+   "en": "Nominal terms"
+  },
+  "483": {
+   "sv": "brutto",
+   "en": "gross"
+  },
+  "484": {
+   "sv": "Netto",
+   "en": "net"
+  },
+  "485": {
+   "sv": "Privat pensionssparande (ISK / KF)",
+   "en": "Private pension savings (ISK / KF)"
+  }
+ },
+ "messages": {
+  "1": {
+   "sv": "Kontrollera värdet för månadsvalet.",
+   "en": "Check value for month."
+  },
+  "2": {
+   "sv": "OBS De ekonomiska valen är",
+   "en": "OBS economical choices are"
+  },
+  "3": {
+   "sv": "Valen är kanske inte fullt rimliga/konsekventa på längre sikt.",
+   "en": "Choices are maybe not reasonable/consistent on lon term."
+  },
+  "4": {
+   "sv": "Inflation",
+   "en": "Inflation"
+  },
+  "5": {
+   "sv": "Real avkastning",
+   "en": "Real yield"
+  },
+  "6": {
+   "sv": "Real tillväxt",
+   "en": "Real growth"
+  },
+  "7": {
+   "sv": "Samboende/gift",
+   "en": "Cohabitation/married"
+  },
+  "8": {
+   "sv": "Ensamstående/ogift",
+   "en": "Single/unmarried"
+  },
+  "9": {
+   "sv": "Var vänlig och klicka på knappen Stäng.",
+   "en": "Please click on button Close."
+  },
+  "10": {
+   "sv": "Denna modell kan köras enbart med Excel 32-bitars.",
+   "en": "This modell is compatibel with Excel 32-bit only."
+  },
+  "11": {
+   "sv": "Modellen kommer att stängas.",
+   "en": "Workbook will be closed."
+  },
+  "12": {
+   "sv": "http://static.pensionsmyndigheten.se/statistik/typfallsmodellen/anvandarmanual-typfallsmodellen.pdf",
+   "en": "http://static.pensionsmyndigheten.se/statistik/typfallsmodellen/usermanual-typfallsmodellen.pdf"
+  },
+  "13": {
+   "sv": "Länken är bruten",
+   "en": "Link failed"
+  },
+  "14": {
+   "sv": "Du har öppnad filen från en zippad mapp. För att kunna köra modellen måste du extrahera mappen till din hårddisk. Stäng Excel.",
+   "en": "You have opened the file from your zip-archive. To run the model, you need to copy your zipped-folder to a folder on your hard drive. Close Excel."
+  },
+  "15": {
+   "sv": "Om Typfallsmodellen",
+   "en": "About Typfallsmodellen"
+  },
+  "16": {
+   "sv": "Hjälp och kommentarer",
+   "en": "Help and comments"
+  },
+  "17": {
+   "sv": "Visning / Utskrift",
+   "en": "Show / Print"
+  },
+  "18": {
+   "sv": "Indata & navigering",
+   "en": "Input & navigation"
+  },
+  "19": {
+   "sv": "år gammal",
+   "en": "years old"
+  },
+  "20": {
+   "sv": "Du har öppnat filen i skrivskyddat läge (troligen öppnat direkt från ditt e-postprogram).För att kunna köra modellen måste du först spara filen till din hårddisk. Stäng Excel.",
+   "en": "You have opened the file in read only mode (probably you opened the file from you e-mail client). To run the model, you need to save the file to a folder on your hard drive. Close Excel."
+  },
+  "21": {
+   "sv": "Fel vid utskrift till PDF. Minst en av de utskrifter du vill skriva ut till är redan öppna. Stäng de öppna PFD-filerna och skriv ut igen.",
+   "en": "Error when printing to PDF files. At least one of the PDF:s you try to print is already opened. Close then open PDF files and print again."
+  },
+  "22": {
+   "sv": "Du måste fylla i fältet Födelseår",
+   "en": "Field Born is mandatory."
+  },
+  "23": {
+   "sv": "Du måste fylla fältet Går i pension.",
+   "en": "Field Retirement age is mandatory."
+  },
+  "24": {
+   "sv": "Du måste fylla fältet Börjar arbeta.",
+   "en": "Field Begin work is mandatory."
+  },
+  "25": {
+   "sv": "Du måste fylla i fältet månadslön",
+   "en": "Field monthly earnings is mandatory."
+  },
+  "26": {
+   "sv": "http://pensionsmyndigheten.se/Typfallsmodellen.html",
+   "en": "http://pensionsmyndigheten.se/Typfallsmodellen.html"
+  },
+  "27": {
+   "sv": "Länken är bruten. Du hänvisas till Pensionsmyndigheten.se",
+   "en": "Link is broken. You will be redirected to Swedish Pension Agency's homepage."
+  },
+  "28": {
+   "sv": "Indata parametrar",
+   "en": "Input parameters"
+  },
+  "29": {
+   "sv": "Ange bara numeriskt värde.",
+   "en": "Mention only numerical value."
+  },
+  "30": {
+   "sv": "http://pensionsmyndigheten.se/Typfallsmodellen.html",
+   "en": "http://pensionsmyndigheten.se/Typfallsmodellen.html"
+  },
+  "31": {
+   "sv": "Objektet är dolt i normalläge!",
+   "en": "The obkect is hidden in user mode!"
+  },
+  "32": {
+   "sv": "Inställningar",
+   "en": "Settings"
+  },
+  "33": {
+   "sv": "Inställningar",
+   "en": "Settings"
+  },
+  "34": {
+   "sv": "Indata",
+   "en": "Input"
+  },
+  "35": {
+   "sv": "Vid pension",
+   "en": "At pension"
+  },
+  "36": {
+   "sv": "För att visa dessa inställningar eller blad måste modelläge ändras till Avancerat",
+   "en": "To show these settings or worksheet change the mode to Advanced"
+  },
+  "37": {
+   "sv": "Beräkning pågår",
+   "en": "Calculating underway"
+  },
+  "38": {
+   "sv": "Standard värden i modellen",
+   "en": "Default values in modell"
+  },
+  "39": {
+   "sv": "Det går inte starta",
+   "en": "Can't start"
+  },
+  "40": {
+   "sv": "Antal arbetande år. Går i pension strax innan typfallet börja jobba !",
+   "en": "Please check value of  Retirement age and begin work!"
+  },
+  "41": {
+   "sv": "Kan inte öppna länken.",
+   "en": "Cann't open the link."
+  },
+  "42": {
+   "sv": "Mina typfall",
+   "en": "My typfall"
+  },
+  "43": {
+   "sv": "Ange namn till ditt typfall",
+   "en": "Mention name to your typfall"
+  },
+  "44": {
+   "sv": "Vill du ta bort Typfallet",
+   "en": "Do you want remove typfall"
+  },
+  "45": {
+   "sv": "Uppdatera",
+   "en": "Update"
+  },
+  "46": {
+   "sv": "Spara som",
+   "en": "Save as"
+  },
+  "47": {
+   "sv": "Ange ett namn till ditt typfall eller markera ett befintligt för uppdatering!",
+   "en": "Mention a name to your typfall or select one existing for update!"
+  },
+  "48": {
+   "sv": "Gå till Start",
+   "en": "Go to Start"
+  },
+  "49": {
+   "sv": "Vill du rensa tidigare Sparade resultat, svara ja. Vill du behålla, svara nej.",
+   "en": "Do you want clean worksheet Sparade resultat(All previous results removes)?"
+  },
+  "50": {
+   "sv": "Vill du rensa tabellen nedan?",
+   "en": "Do you want to clean the table below?"
+  }
+ },
+ "captions": {
+  "cmd_Cal": {
+   "sv": "Beräkna",
+   "en": "Calculate"
+  },
+  "cmd_Spara": {
+   "sv": "Spara resultatet",
+   "en": "Save result"
+  },
+  "cmd_Save": {
+   "sv": "Spara",
+   "en": "Save"
+  },
+  "cmd_Cal_Manuell": {
+   "sv": "Beräkning Manuellt",
+   "en": "Calculation Manul"
+  },
+  "cmd_Cal_Auto": {
+   "sv": "Beräkning Automatiskt",
+   "en": "Calculation Automatic"
+  },
+  "cmdFullRebuild": {
+   "sv": "Beräkna och återskapa",
+   "en": "Cal and Full Rebuild"
+  },
+  "cmdShowData": {
+   "sv": "Visa data",
+   "en": "Show data"
+  },
+  "cmdShowForm": {
+   "sv": "Visa input",
+   "en": "Show input"
+  },
+  "cmdChart": {
+   "sv": "Diagram",
+   "en": "Chart"
+  },
+  "cmdClose": {
+   "sv": "Stäng",
+   "en": "Close"
+  },
+  "cmdShowFormInput": {
+   "sv": "Indata och navigering",
+   "en": "Input and navigation"
+  },
+  "lbl_Fodd": {
+   "sv": "Född",
+   "en": "Born"
+  },
+  "lbl_Go_Pens": {
+   "sv": "Går i pension",
+   "en": "Retirement year"
+  },
+  "lbl_Start_Work": {
+   "sv": "Börjar jobba",
+   "en": "Start to work"
+  },
+  "lbl_Wage": {
+   "sv": "Nuvarande lön",
+   "en": "Current earnings"
+  },
+  "lbl_Yearly_Inflation": {
+   "sv": "Årlig inflation",
+   "en": "Yearly inflation"
+  },
+  "lbl_FondAvkastning": {
+   "sv": "Fondavkastning",
+   "en": "Found"
+  },
+  "lbl_Real_Growth": {
+   "sv": "Real tillväxt",
+   "en": "Real growth"
+  },
+  "lbl_Historisk_Avkastning": {
+   "sv": "Premiepensionens historiska avkastning",
+   "en": "Premiepension historical return"
+  },
+  "lbl_Tjenste_Pension": {
+   "sv": "Val av tjäntepension",
+   "en": "Choose of occupational pension"
+  },
+  "lbl_Married": {
+   "sv": "Civilstånd",
+   "en": "Marital status"
+  },
+  "lbl_Nominal": {
+   "sv": "Löpande priser",
+   "en": "Current prices"
+  },
+  "cmdPrint": {
+   "sv": "Visa / Skriv ut / PDF…",
+   "en": "Show / Print / PDF…"
+  },
+  "cmdPrint_Form": {
+   "sv": "Skriv ut",
+   "en": "Print"
+  },
+  "lbl_Yearly_Inflation_Comment": {
+   "sv": "Framtida årlig förändring av konsumentpriserna (KPI)",
+   "en": "Future annual change in consumer price index (CPI)"
+  },
+  "lbl_FondAvkastning_Comment": {
+   "sv": "Avser framtida avkastningen för avgiftsbestämda pensioner (premiepensionen och tjänstepensionen samt ev. individuellt pensionssparande).",
+   "en": "Refers to the premium pension, occupational premiumin and also ev. individual private savings. The occupational premium both historically and in the future."
+  },
+  "lbl_Real_Growth_Comment": {
+   "sv": "Löneökningen realt i framtiden med angiven tillväxt. Historiskt i den förenklade löneprofilen så förändras lönerna med historiskt löneindex.",
+   "en": "Wage increase in real terms in the future with the specified growth. Historically, in the simplified earning profile, is the historical income index"
+  },
+  "cmdComment": {
+   "sv": "Hjälp/kommentarer…",
+   "en": "Help/comments…"
+  },
+  "cmd_mod_User": {
+   "sv": "Normalt läge",
+   "en": "User mode"
+  },
+  "cmd_mod_Adv": {
+   "sv": "Avancerat läge",
+   "en": "Advanced mode"
+  },
+  "cmdNagraTal": {
+   "sv": "Några tal",
+   "en": "\"Några tal\""
+  },
+  "chart_Priser": {
+   "sv": "Diagram priser",
+   "en": "chart prices"
+  },
+  "chart_Lön_Year": {
+   "sv": "Diagram lön årsvis",
+   "en": "chart earning yearly"
+  },
+  "chart_Inkomst_Year": {
+   "sv": "Diagram inkomst årsvis",
+   "en": "chart income yearly"
+  },
+  "cmdPDF": {
+   "sv": "Spara som PDF",
+   "en": "Save as PDF"
+  },
+  "cmdShowFormInput_old": {
+   "sv": "Visa indata…",
+   "en": "Show input…"
+  },
+  "cmdShow_chart": {
+   "sv": "Visa/dölja diagram",
+   "en": "Show/hide chart"
+  },
+  "lblAbout": {
+   "sv": "Pensionsmyndighetens \nTypfallsmodell ver.  4.8\n\nObs! Modellen är en förenkling av verkligheten. \n\nFörslag på förbättringar tas tacksamt emot och kan skickas till:\n\ntypfallsmodellen@pensionsmyndigheten.se",
+   "en": "Pensionsmyndighetens \nTypfallsmodell ver.  4.8\n\nNote! This model for 'tycical cases' is a simplification of reality.\n\nComments on improvements are gratefully accepted and can be sent to:\n\ntypfallsmodellen@pensionsmyndigheten.se"
+  },
+  "cmdAbout": {
+   "sv": "Om Typfallsmodellen…",
+   "en": "About the model for typical cases (Typfallsmodellen)…"
+  },
+  "cmdEconomy": {
+   "sv": "Återställ standardvärden för ekonomiska parametrar",
+   "en": "Reset default value for economical parameters"
+  },
+  "lbl_Read_More": {
+   "sv": "Läs mer i användarmanualen",
+   "en": "Read more in the user manual"
+  },
+  "lbl_Input_Header": {
+   "sv": "Indata:",
+   "en": "Input:"
+  },
+  "cmd_Avkastning_Risk": {
+   "sv": "Nya slumptal",
+   "en": "New random digits"
+  },
+  "lbl_Pdf_header": {
+   "sv": "(PDF-filerna sparas i modellens mapp)",
+   "en": "(PDF-files will be saved in folder of modell)"
+  },
+  "cmd_Reset_Start": {
+   "sv": "Återställ bladet Start",
+   "en": "Reset worksheet Start"
+  },
+  "Page_Indata": {
+   "sv": "Indata",
+   "en": "Input"
+  },
+  "Page_Vid_Pens": {
+   "sv": "Vid pension",
+   "en": "At pension"
+  },
+  "lbl_Vidpens_IP": {
+   "sv": "IP",
+   "en": "IP"
+  },
+  "lbl_Vidpens_PP": {
+   "sv": "PP",
+   "en": "PP"
+  },
+  "lbl_Vidpens_GP": {
+   "sv": "GARP",
+   "en": "GARP"
+  },
+  "lbl_Vidpens_TP": {
+   "sv": "TP",
+   "en": "TP"
+  },
+  "lbl_Vidpens_Andel": {
+   "sv": "Kompensationsgrad",
+   "en": "Compensation ratio"
+  },
+  "lbl_Vidpens_Garantibelopp": {
+   "sv": "Garantibelopp",
+   "en": "Guarantee fee"
+  },
+  "lbl_per_month": {
+   "sv": "per månad",
+   "en": "per month"
+  },
+  "lbl_Balance_IP": {
+   "sv": "IP Behållningen vid 66 år (31/12)",
+   "en": "IP balance at 66 year (31/12)"
+  },
+  "lbl_Balance_PP": {
+   "sv": "PP balance at 66 year ultimo",
+   "en": "PP Behållningen vid 66 år ultimo"
+  },
+  "lbl_Balance_Pension": {
+   "sv": "Pension (Allmänna+Tjänste)",
+   "en": "Pension (general+occupational)"
+  },
+  "lbl_balance_GARP": {
+   "sv": "Garp behållning",
+   "en": "Garp balance"
+  },
+  "lbl_Quota_Pens_Earning": {
+   "sv": "Andel Pension vs Slutlön",
+   "en": "Quota Pension vs Final earning"
+  },
+  "lbl_FinalEraning": {
+   "sv": "Slutlön",
+   "en": "Final earning"
+  },
+  "cmdShowTaxRows": {
+   "sv": "Visa/dölja skatteeffekter",
+   "en": "Show/hide tax effects"
+  },
+  "optEarn": {
+   "sv": "Lönevektor",
+   "en": "Incom array"
+  },
+  "optFound": {
+   "sv": "Avkastning",
+   "en": "Foundyield"
+  },
+  "chk_show_monthly_chart": {
+   "sv": "Visa månadsinkomster",
+   "en": "Show monthly income"
+  },
+  "optBalance_ratio": {
+   "sv": "Balanstal",
+   "en": "Balance ratio"
+  },
+  "optPrivate_save": {
+   "sv": "Privat pensionsparande",
+   "en": "Pensions savings with taxcredits"
+  },
+  "chart_Lön_month": {
+   "sv": "Diagram lön månadsvis",
+   "en": "chart earning monthly"
+  },
+  "chart_Inkomst_month": {
+   "sv": "Diagram inkomst månadsvis",
+   "en": "chart income monthly"
+  },
+  "OptReal_Growth": {
+   "sv": "Real tillväxt",
+   "en": "Real growth"
+  },
+  "cmdShow": {
+   "sv": "Visa",
+   "en": "Show"
+  },
+  "Page_Adv_Settings": {
+   "sv": "Avancerade inställningar",
+   "en": "Advance settings"
+  },
+  "chkShow_input_form": {
+   "sv": "Visa inte mig igen",
+   "en": "Don't show me again"
+  },
+  "cmdInputFormShow": {
+   "sv": "Visa indataparametrar förmuläret",
+   "en": "Show form of indata parameters"
+  },
+  "cmdShowInput": {
+   "sv": "Inmatning…",
+   "en": "Input…"
+  },
+  "cmdDetails": {
+   "sv": "Kalkylator",
+   "en": "Calculator"
+  },
+  "cmdUpdate": {
+   "sv": "Uppdatera",
+   "en": "Update"
+  },
+  "cmdHideSheets": {
+   "sv": "Normal vy",
+   "en": "User mode"
+  },
+  "lbl_Eco_parametrar": {
+   "sv": "De ekonomiska parametrarna är vid start ifyllda enligt prognosstandard och kan ändras.",
+   "en": "Economical parameters are already at start mentioned based on standard prognos."
+  },
+  "cmdResetStart": {
+   "sv": "Nollställ ingångsvärden",
+   "en": "Reset input values"
+  },
+  "cmdBackTostart": {
+   "sv": "Klar, gå till Start",
+   "en": "Ready, go to Start"
+  },
+  "cmdMarried": {
+   "sv": "Gift",
+   "en": "Married"
+  },
+  "cmdShowSheets": {
+   "sv": "Avancerad vy",
+   "en": "Advanced mode"
+  },
+  "lbl_FAQ": {
+   "sv": "Frågor och svar",
+   "en": "FAQ"
+  },
+  "cmdGo": {
+   "sv": "Gå till",
+   "en": "Go to"
+  },
+  "cmdShowSettings": {
+   "sv": "Inställningar…",
+   "en": "Settings…"
+  },
+  "cmdStart": {
+   "sv": "Start flik",
+   "en": "Start sheet"
+  },
+  "optAdvanced": {
+   "sv": "Avancerat läge",
+   "en": "Advanced mode"
+  },
+  "grpMode": {
+   "sv": "Modell läge",
+   "en": "Mode of modell"
+  },
+  "optNormal": {
+   "sv": "Normal läge",
+   "en": "Normal mode"
+  },
+  "chkAdvanced_setting": {
+   "sv": "Avancerade inställningar",
+   "en": "Advance settings"
+  },
+  "lblModellLimit": {
+   "sv": "Dessa inställningar är inaktiva i normalt modelläge. Välj Avancerat modelläge om du vill ändra inställningarna.",
+   "en": "Settings are available i Advanced mode."
+  },
+  "cmdShowDefaultValues": {
+   "sv": "Visa standard värden",
+   "en": "Show default values"
+  },
+  "chkRecPensAge": {
+   "sv": "Riktålder",
+   "en": "Contribution age"
+  },
+  "chkRecPensAge_old": {
+   "sv": "Alternativ pensionsålder",
+   "en": "Alternative pension age"
+  },
+  "cmdFörklarning": {
+   "sv": "Gå till förklaringar",
+   "en": "Go to descriptions"
+  },
+  "cmdNågratal": {
+   "sv": "Gå till Några tal",
+   "en": "Go to Några tal"
+  },
+  "cmdSaveAsDefaut": {
+   "sv": "Mina typfall",
+   "en": "My typical case"
+  },
+  "cmdGetMyTypfall": {
+   "sv": "Hämta mitt typfall",
+   "en": "Get my typfall"
+  },
+  "cmdCancel": {
+   "sv": "Avbryt",
+   "en": "Cancel"
+  },
+  "cmdDelete": {
+   "sv": "Ta bort",
+   "en": "delete"
+  },
+  "cmdShow1": {
+   "sv": "Visa/Ladda",
+   "en": "Show/Load"
+  },
+  "cmdSaveAs": {
+   "sv": "Spara som",
+   "en": "Save as"
+  },
+  "lblMinaTypfallList": {
+   "sv": "Mina typfall",
+   "en": "My typfall"
+  },
+  "cmd_UpdateList": {
+   "sv": "Uppdatera lista",
+   "en": "Update list"
+  },
+  "cmdCleanIndata": {
+   "sv": "Rensa Indata flik",
+   "en": "Clean Indata worksheet"
+  },
+  "chkSaveResultIndata": {
+   "sv": "Spara resultatet",
+   "en": "Save result"
+  },
+  "cmdCleanResult": {
+   "sv": "Rensa fliken Sparade resultat",
+   "en": "Clean Sparade resultat worksheet"
+  },
+  "cmdOrdlista": {
+   "sv": "Förkortningar & ordlista",
+   "en": "Shortcut & dictionary"
+  },
+  "cmdAbortRun": {
+   "sv": "Avbryt körningen",
+   "en": "Abort run"
+  },
+  "lblUpdateModell": {
+   "sv": "Modellen uppdateras senast 2026-01-20.",
+   "en": "The model is last updated 2026-01-20."
+  },
+  "chkUpdateModell": {
+   "sv": "Visa inte mig igen",
+   "en": "Don't show me again"
+  },
+  "cmdToStart": {
+   "sv": "Gå till start fliken",
+   "en": "Go to Start sheet"
+  },
+  "cmd_Calculate_annuity": {
+   "sv": "Beräkna livränta faktorer",
+   "en": "Calculate annuity factors"
+  },
+  "cmd_Put_defaultvalue": {
+   "sv": "Använd normala inställningar",
+   "en": "Use default values"
+  },
+  "cmdGetStartSheetValue": {
+   "sv": "Hämta värden från StartFliken till första raden",
+   "en": "Get value från Start sheet to first row"
+  },
+  "cmdStart_Avbryt": {
+   "sv": "Avbryt och gå till\n start fliken",
+   "en": "Cancel and back to Start"
+  },
+  "Index": {
+   "sv": "",
+   "en": "MånaderIndex"
+  },
+  "0.0": {
+   "sv": "",
+   "en": "0 månad"
+  },
+  "1.0": {
+   "sv": "",
+   "en": "1 månad"
+  },
+  "2.0": {
+   "sv": "",
+   "en": "2 månader"
+  },
+  "3.0": {
+   "sv": "",
+   "en": "3 månader"
+  },
+  "4.0": {
+   "sv": "",
+   "en": "4 månader"
+  },
+  "5.0": {
+   "sv": "",
+   "en": "5 månader"
+  },
+  "6.0": {
+   "sv": "",
+   "en": "6 månader"
+  },
+  "7.0": {
+   "sv": "",
+   "en": "7 månader"
+  },
+  "8.0": {
+   "sv": "",
+   "en": "8 månader"
+  },
+  "9.0": {
+   "sv": "",
+   "en": "9 månader"
+  },
+  "10.0": {
+   "sv": "",
+   "en": "10 månader"
+  },
+  "11.0": {
+   "sv": "",
+   "en": "11 månader"
+  }
+ },
+ "counts": {
+  "labels": 481,
+  "messages": 50,
+  "captions": 129
+ }
+}

@@ -1,0 +1,615 @@
+{
+ "source": "Ordlista, Förklaring and Versionsinformation",
+ "modelVersion": "Version 4.8",
+ "glossary": [
+  {
+   "term": "Administrationsavgift",
+   "body": [
+    "Administrationsavgiften dras från premien och/eller ditt pensionskapital och ska täcka kostnaderna för drift och förvaltning av pensionen. Avgiften tas ut av den som administrerar eller förvaltar pensionen, till exempel Pensionsmyndigheten, Försäkringskassan och försäkringsbolagen. Om en valcentral hanterar din tjänstepension kan den också dra en administrationsavgift."
+   ]
+  },
+  {
+   "term": "Allmän pension",
+   "body": [
+    "Allmän pension är den pension du har rätt till enligt lag och som betalas ut av Pensionsmyndigheten. Den allmänna ålderspensionen består av inkomstpension, premiepension, garantipension och tilläggspension.",
+    "Personer födda före 1938 får hela sin pension som tilläggspension och personer födda 1938-1953 får en del av pensionen som tilläggspension och resten som inkomstpension och premiepension."
+   ]
+  },
+  {
+   "term": "Allmän pensionsavgift",
+   "body": [
+    "Allmän pensionsavgift är den del av pensionsavgiften som du själv betalar via preliminärskatten. Den allmänna pensionsavgiften är 7 procent av din inkomst upp till avgiftstaket (8,07 inkomstbasbelopp). Vid taxeringen reduceras din skatt med ett belopp som motsvarar den allmänna pensionsavgiften. Det innebär i praktiken att avgiften finansieras direkt över statsbudgeten."
+   ]
+  },
+  {
+   "term": "Alternativ pensionsålder",
+   "body": [
+    "Alternativ pensionsålder är den pensionsålder som krävs för att få samma pension som andel av slutlönen, som man hade fått vid 65 år om livslängden inte hade ökat sedan det nya pensionssystemet beslutades (1994). Den alternativa pensionsåldern är ett sätt att beskriva den ökade livslängdens effekt på pensionerna."
+   ]
+  },
+  {
+   "term": "Arvsvinst",
+   "body": [
+    "Arvsvinst innebär att pensionskapitalet efter dem som dör fördelas ut mellan dem som fortfarande lever och har samma försäkring. I tjänstepension eller privat pension finns arvsvinst bara för dem som har en pensionsförsäkring utan återbetalningsskydd."
+   ]
+  },
+  {
+   "term": "Avgiftstaket",
+   "body": [
+    "Avgiftstaket för allmän pension är 8,07 inkomstbasbelopp per år. Det innebär att allmän pensionsavgift och statlig ålderspensionsavgift betalas enbart på inkomster upp till det beloppet. Eftersom din pensionsgrundande inkomst är din inkomst minskad med den allmänna pensionsavgiften på 7 procent motsvarar därför beloppet för avgiftstaket en pensionsgrundande inkomst på 7,5 inkomstbasbelopp, det så kallade inkomsttaket."
+   ]
+  },
+  {
+   "term": "Avkastningsskatt",
+   "body": [
+    "Avkastningsskatt är en schablonskatt — det innebär att den ska betalas oavsett om du under året har fått någon avkastning på ditt pensionskapital eller inte. Det är pensionsförvaltaren (till exempel försäkringsbolaget eller banken) som drar avkastningsskatten från ditt pensionskapital och betalar in den till Skatteverket.",
+    "På ditt sparande i den allmänna pensionen dras ingen avkastningsskatt."
+   ]
+  },
+  {
+   "term": "Avtalspension",
+   "body": [
+    "Avtalspension är en tjänstepension som grundas på ett kollektivavtal mellan arbetsgivare och fack och som de flesta anställda har via jobbet. Avtalspension får du utöver den allmänna pensionen. Det är arbetsgivaren som betalar för avtalspensionen.",
+    "Exempel på avtalspensioner är ITP för privatanställda tjänstemän, Avtalspension SAF-LO för privatanställda arbetare, PA 03 för statligt anställda och KAP-KL för anställda i kommuner och landsting."
+   ]
+  },
+  {
+   "term": "Balansering",
+   "body": [
+    "Balansering innebär att inkomstpension, tilläggspension och pensionsbehållning i det allmänna pensionssystemet inte räknas upp i takt med inkomstindex eller att de till och med sänks. Detta inträffar när pensionssystemets skulder är större än tillgångarna, dvs. balanstalet är mindre än ett.",
+    "När tillgångarnas värde åter blir större än skulderna innebär balanseringen att pensionsbehållningens och pensionernas värde återställs."
+   ]
+  },
+  {
+   "term": "Balanstal",
+   "body": [
+    "Balanstalet uttrycker förhållandet mellan tillgångar och skulder i den allmänna pensionen. Om balanstalet är ett, är tillgångarna och skulderna lika stora. Är talet mindre än ett, är skulderna större än tillgångarna. Då påbörjas en balansering."
+   ]
+  },
+  {
+   "term": "Balansindex",
+   "body": [
+    "Under en period med balansering räknas pensioner och pensionsbehållningar om med förändringen i ett balansindex i stället för inkomstindex. Förändringar i balansindex är beroende av förändringen i inkomstindex och balanstalets storlek."
+   ]
+  },
+  {
+   "term": "Delningstal",
+   "body": [
+    "För att beräkna din årliga pension fastställs ett delningstal. Ditt pensionskapital delas med delningstalet för att få fram hur stor pension du kommer att få ut under året. Delningstalet baseras på livslängdsantagandet och en antagen framtida ränta.",
+    "För den allmänna pensionen är det Pensionsmyndigheten som beräknar delningstalet. Inom tjänstepension och privat pension fastställer varje enskilt försäkringsbolag delningstalen, som alltså skiljer sig åt mellan bolagen."
+   ]
+  },
+  {
+   "term": "Depåförsäkring",
+   "body": [
+    "Depåförsäkring påminner om fondförsäkring, det vill säga du bestämmer själv hur dina pensionspengar ska förvaltas. Men depåförsäkringen räknas inte som en fondförsäkring eftersom den kan innehålla andra tillgångsslag än fonder t ex enskilda aktier, likvida medel, obligationer med mera. Den klassas som en traditionell försäkring."
+   ]
+  },
+  {
+   "term": "Efterlevandeskydd",
+   "body": [
+    "Efterlevandeskydd kan antingen vara ett återbetalningsskydd vilket innebär att pensionskapitalet ska betalas ut till din familj (förmånstagarna) om du dör medan försäkringen gäller. Eller kan det vara en livförsäkring som du väljer att teckna som ett tillägg till din pensionsförsäkring. Då får din familj ett på förhand bestämt belopp om du dör medan försäkringen gäller. Ibland kan försäkringsbolaget kräva en godkänd hälsodeklaration för att du ska få efterlevandeskydd. Har du ett efterlevandeskydd blir din ålderspension lägre.",
+    "Inom premiepensionen finns också ett efterlevandeskydd som kan tecknas först när pensionen ska börja betalas ut. Din egen ålderspension blir då lägre, men betalas efter din död ut till din efterlevande så länge han eller hon lever."
+   ]
+  },
+  {
+   "term": "Fasta priser",
+   "body": [
+    "Fasta priser (reala priser) – priset justerat för inflation"
+   ]
+  },
+  {
+   "term": "Fondavgift",
+   "body": [
+    "Fondavgiften, ibland kallad fondförvaltningsavgift, tar fondbolaget eller värdepappersbolaget ut för att täcka kostnaderna för förvaltning av fonden. Avgiften anges i procent av fondandelarnas värde. Tänk på att fondförsäkringsbolaget normalt också tar ut en avgift."
+   ]
+  },
+  {
+   "term": "Fondbolag",
+   "body": [
+    "Ett fondbolag har tillstånd att driva fondverksamhet. Fondbolag väljer ut de aktier, obligationer eller andra värdepapper som deras fonder ska investera i och förvaltar sedan fonderna."
+   ]
+  },
+  {
+   "term": "Läs mer: fondförsäkring, fondförsäkringsbolag",
+   "body": [
+    "Fondförsäkring",
+    "I en fondförsäkring bestämmer du i allmänhet själv i vilka fonder du vill placera dina pensionspengar. Du tar då själv hela risken för hur ditt pensionskapital utvecklas. Det finns numera även fondförsäkringar där försäkringsbolaget bestämmer i vilka fonder pengarna ska placeras och kan då ge någon form av garanti.",
+    "Gränsen mellan fondförsäkring och traditionell försäkring är inte längre helt tydlig. Numera finns det mellanformer, till exempel fondförsäkringar med garantiinslag och traditionella försäkringar utan garantier, till exempel depåförsäkring."
+   ]
+  },
+  {
+   "term": "Fribrev",
+   "body": [
+    "Ett fribrev är en pensionsförsäkring som det inte görs några nya premieinbetalningar till, exempelvis om du har en tjänstepension och slutar på ditt jobb. Din pensionsförsäkring läggs då i fribrev och den framtida pensionen baseras på de premier som redan har betalats in samt eventuell värdeförändring."
+   ]
+  },
+  {
+   "term": "Följsamhetsindexering",
+   "body": [
+    "För att pensionerna ska följa den allmänna inkomstutvecklingen i Sverige räknas inkomstpension och tilläggspension årligen om genom en följsamhetsindexering.  Följsamhetsindexering är förändringen i"
+   ]
+  },
+  {
+   "term": "Förmånsbestämd pension",
+   "body": [
+    "Förmånsbestämd pension kallas det när man på förhand bestämmer hur stor pensionen ska bli, att den exempelvis ska vara en viss procent av den lön du har när du går i pension. Förmånsbestämda pensioner finns inom tjänstepensionsområdet och i det gamla ATP-systemet."
+   ]
+  },
+  {
+   "term": "Förtida uttag",
+   "body": [
+    "Du kan börja ta ut din tjänstepension före ordinarie pensionsålder. En privat pensionsförsäkring kan du också ta ut före den avtalade pensionsåldern. Detta kallas förtida uttag. Tänk på att förtida uttag sänker din pension, eftersom inbetalningarna avbryts och utbetalningarna ska pågå under fler år."
+   ]
+  },
+  {
+   "term": "Garantipension",
+   "body": [
+    "Om du haft låg eller ingen inkomst kan du få garantipension, som ger dig en lägsta nivå inom den allmänna pensionen. Även den som har haft medelinkomster kan få en mindre del garantipension. Om du har bott i Sverige i mindre än 40 år blir garantipensionen lägre."
+   ]
+  },
+  {
+   "term": "Garantitillägg",
+   "body": [
+    "Är du född 1938-1953 (den så kallade mellangenerationen) är du garanterad att inte få mindre pension än du har tjänat in i ATP-systemet fram till och med 1994. Om din pension beräknad helt enligt de nya reglerna blir lägre, betalas mellanskillnaden ut som garantitillägg."
+   ]
+  },
+  {
+   "term": "Inkomstbasbeloppet",
+   "body": [
+    "Varje år fastställer regeringen ett inkomstbasbelopp baserat på löneutvecklingen i samhället. Inkomstbasbeloppet används för att beräkna inkomsttaket inom allmän pension. Inkomstbasbeloppet används i regel också för att bestämma storleken på förmånsbestämd pension (inom tjänstepension) samt för att bestämma hur stor premie/avgift arbetsgivaren ska betala in till en premiebestämd tjänstepension."
+   ]
+  },
+  {
+   "term": "Inkomstindex",
+   "body": [
+    "Inkomstindex är ett mått som visar den årliga förändringen av genomsnittsinkomsten i Sverige."
+   ]
+  },
+  {
+   "term": "Inkomstpension",
+   "body": [
+    "Inkomstpensionen är den största delen av den allmänna pensionen. 16 procent av pensionsunderlaget går till inkomstpensionen. Är du född 1938-1953 är procentsatsen lägre, eftersom du får en del av din pension som tilläggspension."
+   ]
+  },
+  {
+   "term": "Inkomstpensionstillägg",
+   "body": [
+    "Inkomstpensionstillägget kan du få som ett tillägg till allmän pension. Den baseras främst på storleken på din inkomstgrundade pension, men även på hur många år med pensionsgrundande inkomst du har tjänat in i Sverige"
+   ]
+  },
+  {
+   "term": "Inkomsttaket",
+   "body": [
+    "Inkomsttaket (eller intjänandetaket) för allmän pension är 7,5 inkomstbasbelopp per år. Det betyder att du inte får någon allmän pension för pensionsgrundande inkomster som ligger över denna gräns. Inom tjänstepension får man pension även för den del av inkomsten som ligger över 7,5 inkomstbasbelopp.",
+    "En livförsäkring är ett samlingsbegrepp för försäkringar där utbetalningen beror på den försäkrades ålder, hälsa eller dödsfall. Till livförsäkringar räknas pensionsförsäkring, kapitalförsäkring och sjukförsäkring."
+   ]
+  },
+  {
+   "term": "Kassamässig redovisning",
+   "body": [
+    "Kassamässig redovisning visar hur utbetalningen av pensionen verkligen betalas ut. Den sist intjänade pensionsrätten betalas ut först året efter intjänandet. Det bero på att taxeringen av inkomsten blir klar året efter inkomståret."
+   ]
+  },
+  {
+   "term": "Kompensationsgrad",
+   "body": [
+    "Kompensationsgraden är slutlönen i förhållande till den första pensionsutbetalningen. För att måttet kompensationsgrad ska vara meningsfullt ska uttaget vara 100 procent."
+   ]
+  },
+  {
+   "term": "Löpande priser",
+   "body": [
+    "Löpande priser (nominella priser) – priset angivet i aktuell prisnivå"
+   ]
+  },
+  {
+   "term": "Pensionsavgift",
+   "body": [
+    "Den allmänna pensionen finansieras genom en pensionsavgift som består av ålderspensionsavgift, allmän pensionsavgift och statlig ålderspensionsavgift. Den totala pensionsavgiften är 18,5 procent av pensionsunderlaget."
+   ]
+  },
+  {
+   "term": "Pensionsbehållning",
+   "body": [
+    "Pensionsbehållningen är det aktuella värdet på ditt sparande till inkomstpensionen i den allmänna pensionen. Pensionsbehållningen består av summan av dina pensionsrätter och värdet har också påverkats av arvsvinster, administrationsavgifter och förändringen av inkomstindex.",
+    "Inom premiepension, tjänstepension och privat pension motsvaras pensionsbehållning av försäkringskapital/pensionskapital."
+   ]
+  },
+  {
+   "term": "Pensionsförsäkring",
+   "body": [
+    "En pensionsförsäkring är ett sätt att spara till din pension. En pensionsförsäkring kan betalas av din arbetsgivare och kallas då tjänstepension. Den kan också betalas av dig själv och är då en privat pensionsförsäkring. Pensionen kan du börja ta ut tidigast vid 55 år. Den kan betalas ut så länge du lever eller under en viss tidsperiod, ofta minst 5 år. Du betalar inkomstskatt på den pension du får ut.",
+    "Om du sparar i en privat pensionsförsäkring får du dra av premien (under år 2015 gäller 150 kronor per månad) i din deklaration."
+   ]
+  },
+  {
+   "term": "Pensionsgrundande belopp",
+   "body": [
+    "Pensionsgrundande belopp kan läggas till ditt pensionsunderlag i den allmänna pensionen när du har små barn, studerar eller när du har sjuk- eller aktivitetsersättning."
+   ]
+  },
+  {
+   "term": "Pensionsgrundande inkomst",
+   "body": [
+    "För den allmänna pensionen gäller att pensionsgrundande inkomst är lika med förvärvsinkomst (till exempel lön, sjukpenning, föräldrapenning och a-kasseersättning) efter avdrag med den allmänna pensionsavgiften. Den pensionsgrundande inkomsten är högst 7,5 inkomstbasbelopp. Om du har så låg inkomst att du inte är skyldig att betala skatt är inkomsten inte pensionsgrundande.",
+    "I tjänstepensionssystem förekommer även termerna pensionsgrundande lön och pensionsmedförande lön. Reglerna för vad som räknas in i dessa kan variera beroende på hur avtalet är skrivet. Även inkomster över 7,5 inkomstbasbelopp kan vara pensionsgrundande."
+   ]
+  },
+  {
+   "term": "Pensionsgrundande tjänstetid",
+   "body": [
+    "I en förmånsbestämd tjänstepension måste du ha arbetat en viss tid för att komma upp i full pension, exempelvis 360 månader (30 år). Om din pensionsgrundande tjänstetid är kortare än 360 månader, kommer din pension att minska med 1/360-del för varje månad som saknas."
+   ]
+  },
+  {
+   "term": "Pensionskapital/försäkringskapital",
+   "body": [
+    "Pensionskapitalet är det aktuella värdet på din pensionsförsäkring. Pensionskapitalet består av inbetalda premier, eventuella arvsvinster, avkastning eller värdeförändring med avdrag för avgifter och avkastningsskatt.",
+    "Inom inkomstpensionen i den allmänna pensionen kallas pensionskapital/försäkringskapital pensionsbehållning."
+   ]
+  },
+  {
+   "term": "Pensionsmedförande lön",
+   "body": [
+    "I vissa tjänstepensionssystem kan den pensionsmedförande lönen skilja sig från din verkliga lön. Reglerna för vad som räknas in i den pensionsmedförande lönen kan variera beroende på kollektivavtal eller det individuella avtalet. Även årsinkomst över 7,5 inkomstbasbelopp är oftast pensionsmedförande. I den allmänna pensionen används pensionsgrundande inkomst."
+   ]
+  },
+  {
+   "term": "Pensionspoäng",
+   "body": [
+    "För dig som är född mellan 1938 och 1953 (den så kallade mellangenerationen) beräknas varje år pensionspoäng utifrån årets pensionsgrundande inkomst. Pensionspoängen används för att beräkna tilläggspensionen."
+   ]
+  },
+  {
+   "term": "Pensionsrätt",
+   "body": [
+    "Det belopp som varje år betalas in till din allmänna pension kallas pensionsrätt. För inkomstpensionen utgör pensionsrätten 16 procent av ditt pensionsunderlag och för premiepensionen 2,5 procent.",
+    "Är du född 1938-1953 är procentsatserna lägre, eftersom du får en del av din pension som tilläggspension."
+   ]
+  },
+  {
+   "term": "Pensionsålder",
+   "body": [
+    "I Sverige finns inte längre någon fast pensionsålder. Den allmänna pensionen kan du börja ta ut tidigast 3 år innan fastställd riktålder, tjänstepension och privat pension tidigast från 55 år. Garantipension, inkomstpensionstillägg och bostadstillägg kan beviljas från och med riktålder."
+   ]
+  },
+  {
+   "term": "Periodiserad redovisning",
+   "body": [
+    "Periodiserad redovisning innebär att utbetald pension hänförs till den period som den är intjänad. Det betyder att den sist intjänade pensionsrätten redovisas ut samma år som den tjänades in."
+   ]
+  },
+  {
+   "term": "Premie",
+   "body": [
+    "Premien är det belopp du eller din arbetsgivare betalar in till din pension. Har du valt efterlevandeskydd eller en premiebefrielseförsäkring blir det mindre pengar som sätts av till din ålderspension/ditt sparande.",
+    "I den allmänna pensionen och inom vissa tjänstepensionsområden används inte ordet premie, utan där säger man pensionsavgift eller avgift."
+   ]
+  },
+  {
+   "term": "Premiebestämd pension",
+   "body": [
+    "Premiebestämd pension innebär att premiens storlek är bestämd på förhand. Den kan exempelvis vara en viss procent av lönen eller ett visst belopp. Storleken på din pension beror på hur stort pensionskapitalet är när du går i pension. Premiebestämda pensioner finns inom den allmänna pensionen, tjänstepensionsområdet och all privat pension.  Premiebestämd pension kan också kallas avgiftsbestämd pension."
+   ]
+  },
+  {
+   "term": "Premiepension",
+   "body": [
+    "Premiepension är den del av den allmänna pensionen som du själv kan påverka genom att bestämma hur dina premiepensionspengar ska förvaltas. Till premiepensionen går 2,5 procent av ditt pensionsunderlag. Är du född 1938-1953 är procentsatsen lägre, eftersom du får en del av din pension som tilläggspension."
+   ]
+  },
+  {
+   "term": "Prisbasbeloppet",
+   "body": [
+    "Varje år fastställer regeringen prisbasbeloppet som anpassas efter den allmänna prisutvecklingen i samhället. Prisbasbeloppet används exempelvis för att beräkna garantipensionen."
+   ]
+  },
+  {
+   "term": "Privat pension",
+   "body": [
+    "Privat pension är en pension som du frivilligt sparar till, antingen som en pensionsförsäkring eller ett individuellt pensionssparande (IPS). Du kan spara till din privata pension i ett försäkringsbolag, en bank eller ett fondbolag."
+   ]
+  },
+  {
+   "term": "Riktålder",
+   "body": [
+    "Riktåldern avser den ålder då garantipension och bostadstillägg kan beviljas. Riktåldern kommer att fastställas och beslutas av riksdagen varje år men användas först sex år senare. Den kan ändras med max ett år i taget, förutsatt att den inte har ändrats under de tre föregående åren."
+   ]
+  },
+  {
+   "term": "Tilläggspension",
+   "body": [
+    "Du som är född 1938-1953 (den så kallade mellangenerationen) får en del av din pension som tilläggspension. Den beräknas enligt reglerna i ATP-systemet. Är du född 1937 eller tidigare får du hela din pension som tilläggspension."
+   ]
+  },
+  {
+   "term": "Tjänstepension",
+   "body": [
+    "Tjänstepensionen grundas antingen på ett kollektivavtal mellan arbetsgivare och fack (avtalspension) eller på ett individuellt avtal mellan dig och din arbetsgivare. De flesta har en tjänstepension via jobbet och det är arbetsgivaren som betalar för tjänstepensionen. Tjänstepension får du utöver den allmänna pensionen.",
+    "Tjänstepensionsområde (även äldre avtal är beaktade i modellen)",
+    "ITP 1(TJÄNSTEMÄN FÖDDA 1979 OCH SENARE)\nInom ITP 1 betalas pensionspremier som motsvarar 4,5 procent av lönen upp till 7,5 prisbasbelopp för tjänstemän som fyllt 25 år. För lön överstigande 7,5 prisbasbelopp betalas 30 procent in i premie. Inom ITP 1 är hela pensionen premiebestämd och får placeras valfritt. Pensionen tjänas in till 66 års ålder (från och med 2023, tidigare till 65 års ålder)",
+    "ITP 2(TJÄNSTEMÄN FÖDDA 1978 OCH TIDIGARE, vissa företag har ITP 1 för alla, oavsett ålder)\nFör de tjänstemän som omfattas av ITP 2 består premien dels av en förmånsbestämd pension som placeras hos Alecta och dels av premiebaserad pension som placeras valfritt. Storleken på den förmånsbestämda pensionen beror på vilken tjänstetid och slutlön tjänstemannen. Vid 30 års tjänstetid från 28 års ålder är den förmånsbestämda pensionen 10 procent av slutlöner upp till 444 750 kronor och 65 procent av löner mellan 44 750 – 1 186 000 kronor (2016). Den premiebaserade delen inom ITP2 kallas ITPK och pensionspremien som betalas in motsvarar 2 procent av lönen.",
+    "KAP-KL och AKAP-KR\nAnställda inom kommun, region, kommunförbund och kommunala bolag omfattas av avtalsområdet KAP-KL eller AKAP-KR. Avtalsområdet KAP-KL avser personer födda 1985 eller tidigare och pensionspremien motsvarar 4,5 procent av lönen upp till 7,5 prisbasbelopp. För inkomster över 7,5 prisbasbelopp betalar arbetsgivaren in en förmånsbestämd pension. Personer födda 1986 eller senare omfattades av AKAP-KL som infördes 2014 och är en helt premiebaserad pension. Pensionspremien motsvarade 4,5 procent av inkomster upp till 7,5 inkomstbasbelopp och 30 procent av inkomster mellan 7,5 och 30 prisbasbelopp. Från och med 2023 omfattas alla som tidigare hade AKAP-KL istället av AKAP-KR. Premien från och med 2023 är 6 procent av inkomster upp till 7,5 inkomstbasbelopp och 31,5 procent av inkomster mellan 7,5 och 30 prisbasbelopp. Från och med LAS-ålder är premien 6 % för alla inkomster. KAP-KL tjänades in från 25 års ålder till 65 år. AKAP-KL tjänades in från 21 års ålder till 67 år. AKAP-KR tjänas in för alla åldrar.",
+    "PA16\nStatsanställda omfattas av avtalsområdet PA-16 avdelning I eller II. Premierna administreras av valcentralen Statens tjänstepensionsverk (SPV). \nPA-16 avdelning I omfattar personer födda 1988 eller senare och består av tre premiebaserade delar. Den första delen motsvarar 2,5 procent av inkomster upp till 7,5 prisbasbelopp och 20 procent av inkomster från 7,5 prisbasbelopp och uppåt. Den andra delen, Kåpan Tjänste, motsvarar 2 procent av inkomster upp till 7,5 prisbasbelopp och 10 procent av inkomster från 7,5 prisbasbelopp och uppåt. Kåpan Tjänste placeras i en traditionell försäkring hos Kåpan. Den sista delen, Ålderpension Flex, motsvarar 1,5 procent av lönen och placeras även den i en traditionell försäkring hos Kåpan. Ålderspension Flex kan användas till att gå ner i arbetstid inför pensionsinträdet eller öka på tjänstepensionen. Pensionen tjänas in från 0 till 69 års ålder.\nPA-16 avdelning II omfattar personer födda 1987 eller tidigare och består av två premiebaserade delar och en förmånsbestämd del. De premiebaserade delarna är liknande som de två första inom PA-16 avdelning I. Dels finns en del en valbar del som motsvarar 2,5 procent av lönen.Den andra delen, Kåpan Tjänste (tidigare Kompletterande ålderspension), motsvarar 2 procent av lönen och placeras i traditionell försäkring hos Kåpan.  Den förmånsbestämda delen uppgår till minst 60 procent av lön mellan 7,5 och 20 inkomstbasbelopp och minst 30 procent av lön mellan 20 och 30 inkomstbasbelopp. Pensionen tjänas in från 23 till 65 års ålder. Den förmånsbestämda delen tjänas in från 28 års ålder.",
+    "SAF-LO\nAvtalspension SAF-LO är tjänstepensionen för privatanställda arbetare . \nTjänstepensionspremien betalas in till valcentralen Fora från det att individen fyller 24 år (från och med 2023, tidigare 25 år) och är helt premiebaserad. Premien motsvarar 4,5 procent av inkomster upp 7,5 IBb och 30 procent av inkomster därutöver."
+   ]
+  },
+  {
+   "term": "Traditionell försäkring",
+   "body": [
+    "I en traditionell försäkring bestämmer försäkringsbolaget hur dina premier placeras. Försäkringsbolaget placerar i räntebärande papper, aktier, fastigheter etc. och sköter förvaltningen. Du är ofta garanterad en viss lägsta värdetillväxt. Det finns också nyare förvaltningsformer som räknas som traditionell försäkring, men där den garanterade värdetillväxten kan vara låg eller noll.",
+    "Gränsen mellan fondförsäkring och traditionell försäkring är inte längre helt tydlig. Numera finns det mellanformer, till exempel fondförsäkringar med garantiinslag och traditionella försäkringar utan garantier, till exempel depåförsäkring."
+   ]
+  },
+  {
+   "term": "Uppskjutet uttag",
+   "body": [
+    "Du kan börja ta ut din tjänstepension efter ordinarie pensionsålder. En privat pensionsförsäkring kan du också börja ta ut efter den avtalade pensionsåldern. Detta kallas uppskjutet uttag. Ett uppskjutet uttag höjer din månadspension."
+   ]
+  },
+  {
+   "term": "Återbetalningsskydd",
+   "body": [
+    "Återbetalningsskydd är en typ av efterlevandeskydd som du kan välja om du vill att din familj ska kunna få del av det pensionskapital som finns kvar när du dör. Om du dör och det inte finns något återbetalningsskydd fördelas pengarna från din pensionsförsäkring ut som arvsvinst till andra som sparar i samma sorts försäkring. Har du återbetalningsskydd får du inte del av arvsvinster från andra, vilket innebär att du får en lägre ålderspension."
+   ]
+  },
+  {
+   "term": "Återbäring",
+   "body": [
+    "Om du har en traditionell pensionsförsäkring kan du få återbäring om försäkringsbolaget lyckas bra med sin förvaltning. Återbäringen är dock aldrig garanterad. Försäkringsbolaget kan ta tillbaka den del som överstiger den garanterade räntan, om förvaltningen går sämre än väntat."
+   ]
+  },
+  {
+   "term": "Återbäringsränta",
+   "body": [
+    "Återbäringsräntan använder försäkringsbolag för att fördela totalavkastningen mellan samtliga traditionella pensionsförsäkringar."
+   ]
+  }
+ ],
+ "explanations": [
+  {
+   "term": "KPI junidata",
+   "body": "Konsumentprisindex (KPI) är det mest använda måttet för prisutveckling och används bl.a. som inflationsmått och vid avtalsreglering. KPI avser att visa hur konsumentpriserna i genomsnitt utvecklar sig för hela den privata inhemska konsumtionen, de priser konsumenterna faktiskt betalar. Källa SCB.\nKPI antas till 4% per år före 1957."
+  },
+  {
+   "term": "KPI årsmedeltal",
+   "body": "Konsumentprisindex (KPI) är det mest använda måttet för prisutveckling och används bl.a. som inflationsmått och vid avtalsreglering. KPI avser att visa hur konsumentpriserna i genomsnitt utvecklar sig för hela den privata inhemska konsumtionen, de priser konsumenterna faktiskt betalar. Källa SCB"
+  },
+  {
+   "term": "Prisbas-belopp",
+   "body": "Prisbasbeloppet räknas fram på grundval av ändringarna i det allmänna prisläget enligt bestämmelserna i socialförsäkringsbalken. Beräkningarna görs med utgångspunkt i förändringen av KPI. Källa: SCB"
+  },
+  {
+   "term": "Medel PGI",
+   "body": "Skatteverket beslutar varje år om den pensionsgrundande inkomsten (PGI). För de allra flesta i Sverige bestäms PGI utifrån uppgifterna i inkomstdeklarationen. PGI ligger till grund för pensionsspararens framtida pension. Källa: Skatteverket"
+  },
+  {
+   "term": "Inkomst-basbeloppet",
+   "body": "Basbelopp som räknas fram varje år med förändringen i inkomstindex. Inkomstbasbeloppet används främst för att beräkna avgifts- och intjänandetaket. Det vill säga den högsta inkomst som ger rätt till allmän ålderspension."
+  },
+  {
+   "term": "Förhöjda Prisbasbelopp",
+   "body": "Det förhöjda prisbasbeloppet räknas fram på grundval av ändringarna i det allmänna prisläget enligt bestämmelserna i socialförsäkringsbalken. Källa: SCB."
+  },
+  {
+   "term": "Inkomstindex",
+   "body": "Nyckeltal som mäter genomsnittlig inkomstutveckling i samhället för varje år."
+  },
+  {
+   "term": "Balanstal",
+   "body": "Tal som uttrycker förhållandet mellan tillgångar och pensionsskuld i inkomstpensionen och tilläggspensionen."
+  },
+  {
+   "term": "Balansindex",
+   "body": "Nyckeltal som ersätter inkomstindex under en balanseringsperiod. När balanseringen är aktiv indexeras pensionsbehållningar och pensioner med förändringen i balansindex i stället för inkomstindex."
+  },
+  {
+   "term": "Gällande index",
+   "body": "Balansindex om balanseringen är aktiv annars inkomstindex."
+  },
+  {
+   "term": "Kvar efter administrationsavgift, inkomstpension",
+   "body": "1 - (Avgift för att täcka administration)"
+  },
+  {
+   "term": "Kvar efter total avgift, premiepension",
+   "body": "1 - (Den totala avgiften för premiepensionen, det vill säga administrationsavgiften och förvaltningsavgiften)"
+  },
+  {
+   "term": "Fond-utvecklingen (Premiepensionen)",
+   "body": "Historiskt: den tidsviktade avkastningen för fondrörelsen i premiepensionen, efter avdragen förvaltningsavgift. Rabatter på förvaltningsavgifter, myndighetens avgift och arvsvinster är inte medräknade. Antaganden framtid: realt avkastningsantagande innan avdrag för förvaltnings- och administrationsavgifter."
+  },
+  {
+   "term": "Fond-utvecklingen AP7",
+   "body": "Se ovan. Motsvarande för förvalsalternativet inom premiepensionen. Fram till 21 maj 2010 är det värdeutvecklingen i Premiesparfonden. Efter den tidpunkten är det värdeutvecklingen i Sjunde AP-fonden."
+  },
+  {
+   "term": "Avkastningsräntan hos Riksgälden i %",
+   "body": "Används till årliga premiepensionsrätten som ligger hos Riksgälden under en löptid upp till 2 år."
+  },
+  {
+   "term": "Administrationsavgift premiepension",
+   "body": "Administrationsavgift som tas ut av Pensionsmyndigheten, avser försäkringsadministrationen av premiepensionen."
+  },
+  {
+   "term": "Förvaltningsavgift premiepension",
+   "body": "Förvaltningsavgiften till fondbolagen i premiepensionen. Redovisad efter återbetald rabatt."
+  },
+  {
+   "term": "Vald avkastning",
+   "body": "Den historiska avkastning som valts för att räkna typfallet, antingen fondrörelsen eller förvalet i premiepensionen."
+  }
+ ],
+ "changelog": [
+  {
+   "version": "Version 4.8",
+   "changes": [
+    "Rättat funktionalitet för partiellt uttag.",
+    "Regelförändringar för 2026, nytt grundavdrag.",
+    "Mindre grafiska justeringar.",
+    "Tagit bort flik \"Sparade resultat\".",
+    "Ökad avsättning inom PA16 Avd I och Avd II för flexpension, stegvis implementering från 1,5 till 1,7%.",
+    "Rättning av funktionalitet för förmånen inkomstpensionstillägg",
+    "Lagt till funktionalitet för investeringssparkonto och kapitalförsäkring. Även justerat funktionen för utbetalning av IPS.",
+    "Mindre buggfixar, t.ex. löpande priser, fasta löner och för lång kod i huvudmodulen."
+   ]
+  },
+  {
+   "version": "Version 4.7",
+   "changes": [
+    "Flyttat ut förmånsbestämda tjänstepensioner till egen modul i VBA, samt tagit bort problematisk indexering i bostadstilläggs funktionen",
+    "Uppdateringar av nyckeltal och några tal (delningstal, förra årets utveckling, ekonomiska storheter m.m.)",
+    "Regelförändringar för 2025, nytt grundavdrag",
+    "Rättning av formel för prisbasbeloppet i flik Några Tal. Rättning av funktion för respektavstånd. Rättning av funktion använd normala inställningar i flik Adv_settings.",
+    "Mindre grafiska uppdateringar",
+    "Ny funktionalitet för flexpension från och med 2014 för tjänstepensionsavtalen SAF-LO och ITP 1.",
+    "Intjänad pensionsrätt 1997 nu inlagt för bättre estimerad tjänstepension för personer som arbetade inom kommun & region under PA-KL och KAP-KL.",
+    "Rättat felaktighet i Tabell 1 vid redovisning av resultaten i fasta priser."
+   ]
+  },
+  {
+   "version": "Version 4.5 - 4.6",
+   "changes": [
+    "Uppdateringar i av nyckeltal och några tal (delningstal, förra årets utveckling, ekonomiska storheter m.m.)",
+    "Regelförändringar för 2023, 2024",
+    "Möjlighet att visa pensionsförmögenheten samt s.k. \"respektavstånd\" på startsidan",
+    "Sista pensionsrätten fångas gnm att hämta pensionsuppgifterna för nästa år. Möjlighet finns för att hämta uppgifterna för godtyckligt antal år i framtiden",
+    "Möjlighet till medelfristig (fem år) prognos och beräkning av några typfall och deras historiska pensionsutfall (regleringsbrevsupdraget om typfallsberäkningar)",
+    "Justering av delningstal för IP och TP (delningstal vid pensionering i mitten av året istället för början)",
+    "Grafiska justeringar",
+    "Rättning av funktionaliteteten för att beräkna partiella uttag"
+   ]
+  },
+  {
+   "version": "Version 4.3 - 4.4",
+   "changes": [
+    "Uppdateringar i av nycketal och några tal (delningstal, förra årets utveckling, ekonomiska storheter m.m.)",
+    "Regelförändringar tom 2023,",
+    "Ändrad prognosstandard (prognos för tillväxt, avkastning, statslåneränta)",
+    "Höjning av garantipensionen från och med augusti 2022",
+    "Ändrade åldergränser för intjänande inom tjänstepensionsavtalen SAF-LO och ITP1 från och med 2023",
+    "Höjd avsättning och ändrade åldergränser inom tjänstepensionen för kommunal och regionanställda från 2023 (AKAP-KR)",
+    "Nya valmöjligheter under Adv_settings",
+    "-  Möjlighet beräkna utfallet för andra regelår och skatteår (se cell B122 och B123)",
+    "-  Möjlighet att låta modellen beräkna ett respektavstånd (Se cell B127)"
+   ]
+  },
+  {
+   "version": "Version 4.1 - 4.2",
+   "changes": [
+    "Uppdateringar i av nycketal och några tal (delningstal, förra årets utveckling, ekonomiska storheter m.m.)",
+    "Regelförändringar för 2022, nytt grundavdrag",
+    "Ändrad prognosstandard (prognos för tillväxt, avkastning, statslåneränta)",
+    "Garantipensionstillägget och höjt BT i ny prop",
+    "Höjd avsättning till tjänstepensionen för kommunal och regionanställda från 2023 (AKAP-KR)"
+   ]
+  },
+  {
+   "version": "Version 4.0",
+   "changes": [
+    "Uppdateringar av ekonomiska parametrar och vissa äldre skatteregler",
+    "Riktålder, nytt grundavdrag mm",
+    "Pensionstilägget överfört från nypropp till beslutat i modellen"
+   ]
+  },
+  {
+   "version": "Version 3.9",
+   "changes": [
+    "Uppdateringar i av nycketal och regler för 2021",
+    "Uppdateringar av ekonomiska storheter, delningstal m.m.",
+    "Pensionstilägget i nypropp"
+   ]
+  },
+  {
+   "version": "Version 3.8",
+   "changes": [
+    "Uppdateringar i av nycketal och regler för 2020",
+    "Uppdateringar av ekonomiska storheter, delningstal m.m.",
+    "Nya beräkningsregler för bostadstillägg fr.o.m. 2020",
+    "Riktåldrar införda i modellen",
+    "Justering så att inte adminsitrationsavgiften i premiepensionen tas med vid valet \"avkastning efter fondavgifter\""
+   ]
+  },
+  {
+   "version": "Version 3.6 - 3.7",
+   "changes": [
+    "Uppdateringar i allmänhet av nycketal och regler",
+    "Tabell 1 och premiepension korrigerat och hänsyn till antagen avkastning och förskottsräntan i premiepensionen",
+    "Pensionskapital samt att figur 2 centerat för första pensionsuttaget och +- 10 år"
+   ]
+  },
+  {
+   "version": "Version 3.5",
+   "changes": [
+    "Grafisk uppdatering av modellen",
+    "Rättning av hur eventuell tilläggspension påverkar garantipensionen",
+    "Andra mindre justeringar (BT, avkastningskatt)",
+    "Möjlighet att välja en tidigare startålder"
+   ]
+  },
+  {
+   "version": "Version 3.4",
+   "changes": [
+    "Uppdateringar av ekonomiska storheter, delningstal mm",
+    "Hänsyn till regeländringar i budgetprop. För 2018",
+    "Maken har för samboende hushåll samma pensionsinkomster mm som makan i default läge",
+    "Möjlighet att analysera tre regeländringar, höjt avgiftstak, höjd pensionsavgift samt höjd pensionsålder",
+    "Viss möjlighet att använda egna delningstal och arvsvinster (via ändrade dödsrisker)"
+   ]
+  },
+  {
+   "version": "Version 3.3",
+   "changes": [
+    "Alla ActiveX kontroller har ersatts (efter önskemål från Riksdagens utredningstjänst",
+    "Vissa uppdateringar och rättelser (GARP, AKAP-KL)"
+   ]
+  },
+  {
+   "version": "Version 3.2",
+   "changes": [
+    "Snabbare, VBA-baserad",
+    "Bättre hantering av delningstalen för tjänstepension som tar hänsyn till annat bestånd och portfölj",
+    "Lite annorlunda Layout där önskad redovisning av månads eller årsdata ges i figurerna",
+    "Tabell 2 (kassamässiga redovisningen) går att styra från när inkomsterna ska redovisas och tabellens trycksvärta avtar efter förväntad återstående livslängd (vid pensionsåldern)",
+    "Möjligt att kompensationsgraden utgår från pensionen som andel av medellönen för de senaste fem åren",
+    "Möjligt att läsa in ett givet års pensionsbehållning för inkomst- premie-, tjänste- och privat pensionssparnde",
+    "Hänsyn till budgetpropositionen för 2017 (siktgränser m.m.)",
+    "KPI junidata 2016",
+    "Några rättelser",
+    "Privat sparande som andel av inkomsten antas om cellvärdet är större än 0 och är mindre än 1."
+   ]
+  },
+  {
+   "version": "Version 2.1",
+   "changes": [
+    "Renodla kalkylen. Färre flikar och sammanställning av all data i ett blad. Uppdaterade nyckeltal.",
+    "Snabbare modell",
+    "Enklare navigering i fliken data",
+    "Kunna avbryta långkörningar i fliken Indata",
+    "Bättre layout i fliken Indata",
+    "Betydligt snabbare att köra flera typfall samtidigt",
+    "Temporärt uttag av tjänstepension",
+    "Pensionsrätten beräknas med hänsyn till balansindex från och med 2016",
+    "AKAP-KL, tjänstepension för kommunalanställda födda 1986 och senare infört",
+    "Avkastningsskatt på tjänstepension och eget sparande",
+    "Arvsvinster TJP (saknas dessa så fås efterlevandeskydd, utfall av detta anlyseras inte)",
+    "Möjligt att använda egna typfall även i fliken Indata",
+    "Skatteregler för 2016 är införda",
+    "Kollektivavtal PA16 är infört."
+   ]
+  },
+  {
+   "version": "Version 2.0",
+   "changes": [
+    "Enklare val av modellläge",
+    "Nollställa värden i indata",
+    "Enklare hantering av inställningar",
+    "Spara och ladda in egna typfall",
+    "Förändrad layout på startsidan",
+    "Välja alternativ pensionsålder",
+    "Bättre funktion för egna löneutveckling"
+   ]
+  }
+ ]
+}
