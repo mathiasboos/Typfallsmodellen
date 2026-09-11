@@ -33,11 +33,11 @@ The quietest source of wrong answers. The model rounds deliberately at dozens of
 | `As Single` | `vbaSingle` | 32-bit narrowing, for ruling out a boundary divergence |
 | `WorksheetFunction.Large/Average/Max/Min` | `wsLarge`, `wsAverage`, `wsMax`, `wsMin` | `Large` is 1-indexed and does not mutate its input |
 
-**Open question.** `vbaRound` at more than zero digits is unverified against a running VBA. It
-scales by a power of ten and then tests the half exactly, which is what the VBA runtime does, but
-that differs from a decimal-aware implementation for values like 2.675. The model calls
-`Round(x, 2)` about ten times, on continuous quantities where landing exactly on a half is rare.
-Phase 2's golden-file comparison settles it; a disagreement of a hundredth points here first.
+**`vbaRound` at more than zero digits — resolved.** This was an open question: the implementation
+scales by a power of ten and tests the half exactly, mirroring the VBA runtime, which differs from
+a decimal-aware implementation for values like 2.675. `Calculate_Deltal` rounds every one of its
+outputs with `Round(x, 2)` or `Round(x, 6)`, and the port reproduces all 114 345 cached values
+exactly — so the behaviour is now confirmed against the original at both digit counts.
 
 ## Age-indexed arrays — `src/vba/ageArray.ts`
 
@@ -52,6 +52,31 @@ than yielding `undefined`, except `getOrZero` for the `x(age - 1)` idiom at the 
 |---|---|---|
 | `startsetup`'s sheet reads | `packages/data` + `projectEconomicData` | Actuals extracted; later years projected. See `PROJECTION-RULES.md` |
 | `Balansindex` (`Pensionssystemet.bas:1296`) | `balansindex` | Four arguments, per the VBA's own commented test line |
+
+## Mortality and annuity factors — `src/pension/mortality.ts`
+
+| VBA | TypeScript |
+|---|---|
+| `ReadMortality` (loading half) | `DeathProbabilities`, `loadDeathProbabilities` |
+| `Calculate_Deltal` | `calculateDeltal` |
+
+### Two quirks kept on purpose
+
+`Calculate_Deltal` contains two pieces of behaviour that look like slips and that a clean
+reimplementation would quietly correct. Both are kept, and both are load-bearing — reverting
+either one breaks thousands of the cached values:
+
+1. **`riktage` carries across the sex loop.** It is initialised once, before `For sex = 1 To 2`,
+   and the loop leaves it at its final value — so the early ages for women inherit whatever the
+   men's pass ended on, shifting which mortality year they read. Resetting it per sex changes
+   **10 660** of 114 345 values.
+2. **The discount rate reads a leftover `year`.** By the time the premium pension's
+   forskottsränta is selected, `year` holds `cohort + 106` from the preceding age loop rather
+   than the year being discounted. For every cohort the model runs this lands past 2017, so the
+   rate is 1.0165 throughout. Using the year actually being discounted changes **23 540** values.
+
+The port keeps both and says so at the site. Parity with the model is the goal; a better model is
+a different project.
 
 ### Deviations
 
@@ -69,7 +94,8 @@ than yielding `undefined`, except `getOrZero` for the `x(age - 1)` idiom at the 
 |---|---|---|
 | Arithmetic semantics | — | ✅ `src/vba/` |
 | Economic series + projection | `startsetup`, `Balansindex` | ✅ `src/data/` |
-| Mortality, delningstal, arvsvinster | `Mortality.bas`, `aaDeltal.bas` | |
+| Mortality, delningstal, arvsvinster | `Mortality.bas` | ✅ `src/pension/mortality.ts` |
+| Delningstal lookup | `aaDeltal.bas` | |
 | Wage vector | `Lön_mm.bas` | |
 | Public pension | `Pensionssystemet.bas` | |
 | Occupational pension | `Tjänstepensioner.bas`, `TjänstepensionerFörmån.bas` | |
