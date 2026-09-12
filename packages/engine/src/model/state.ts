@@ -201,6 +201,8 @@ export interface RunState {
   mpension: number;
   /** `gpundtab1` -- that amount as it stood at retirement, which Table 1 reuses. */
   gpundtab1: number;
+  /** `gp_und` -- the garantipension's own underlying balance, carried year to year. */
+  gpUnd: number;
 
   /** The output matrix, one row per age from `startage`. */
   readonly rows: MvaluesRow[];
@@ -261,6 +263,7 @@ export function createRunState(startage: number, slutage = SLUTAGE): RunState {
     dtalPp: 0,
     mpension: 0,
     gpundtab1: 0,
+    gpUnd: 0,
 
     rows: [],
   };

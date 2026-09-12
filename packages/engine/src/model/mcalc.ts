@@ -26,6 +26,7 @@ import type { ModelContext } from "./context.js";
 import type { PgbManualYear, TypfallInput } from "./input.js";
 import type { RunProfile, SetupResult, Warning } from "./setup.js";
 import type { RunState, SetupVectors } from "./state.js";
+import { drawdownPhase } from "./drawdown.js";
 
 /** Everything a loop section needs, gathered from Mcalc's globals and ranges. */
 export interface Run {
@@ -475,6 +476,17 @@ export function earningPhase(run: Run, age: number): { utgyear: number; skyear: 
   earnOccupational(run, age);
   earnPrivateSaving(run, age);
   resolveWithdrawal(run, age);
+  return years;
+}
+
+/**
+ * One age, earning phase then drawdown.
+ *
+ * The tax, benefit and output sections follow in `taxAndBenefits`.
+ */
+export function simulateYear(run: Run, age: number): { utgyear: number; skyear: number } {
+  const years = earningPhase(run, age);
+  drawdownPhase(run, age, years.utgyear);
   return years;
 }
 

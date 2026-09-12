@@ -103,6 +103,21 @@ export class DeltalTables {
     return lookupPublished(table, cohort, age);
   }
 
+  /**
+   * Expected remaining lifetime for a cohort at a whole age.
+   *
+   * The workbook keeps this in a cell (`rng_Exp_life`) computed on the mortality
+   * sheet; `calculateDeltal` produces the same figure, and is exact against the
+   * 114 345 values the workbook had cached. Table 2 greys out the years past
+   * `PAR + this`, the life-income sums stop there, and the private-saving payout
+   * divides the balance by it.
+   *
+   * ASSUMPTION: the unisex basis, sex 0, as every other lookup here uses.
+   */
+  expectedLife(cohort: number, age: number): number {
+    return this.ownFigures(cohort).expLife[0]?.[age] ?? 0;
+  }
+
   /** The single divisor for cohorts born 1937 or earlier. */
   oldRules(cohort: number, kind: "income" | "premium"): number {
     const old = this.published.bornBefore1938;
