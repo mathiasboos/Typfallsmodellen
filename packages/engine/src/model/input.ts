@@ -75,6 +75,24 @@ export interface TypfallInput {
    * instead of a wage profile. Present means on, and forces `startage` to 15.
    */
   readonly ownIncome?: readonly OwnIncomeYear[];
+
+  /**
+   * The PGB sheet's hand-typed pensionsgrundande belopp for sickness and
+   * activity compensation, conscription and study. The shipped workbook has
+   * none, so childcare years are the only PGB a default run earns.
+   */
+  readonly pgbManual?: readonly PgbManualYear[];
+}
+
+/** One age's manual entries on the PGB sheet. */
+export interface PgbManualYear {
+  readonly age: number;
+  /** Column 5: sickness and activity compensation. */
+  readonly sa: number;
+  /** Column 9: conscription. */
+  readonly vpl: number;
+  /** Column 16: study. */
+  readonly studier: number;
 }
 
 const NORMAL = optionsJson.normalDefaults as {
