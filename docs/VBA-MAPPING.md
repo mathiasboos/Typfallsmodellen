@@ -238,12 +238,50 @@ Both forms are kept as written. The first reads like a dropped `* 12`.
 - **`STP_` rounds with 0.49** where the rest of the module uses 0.5, and has a dead inner branch
   testing `par < 65` inside a `par > 65` block.
 
+### Defined benefit — `formansbestamd.ts`
+
+`FTJP` adds a benefit-based amount for the four agreements that carry one: ITP 2, SAF-LO (through
+the legacy STP), KAP-KL and PA16 avdelning 2. Each scales its benefit by the ratio of the divisor
+at 65 to the divisor at the actual retirement age, which is how drawing early or late is priced.
+
+The fixed cell `mortality!J27` that the temporary-withdrawal correction reads is not stored data:
+it indexes the table `Calculate_Deltal` writes, and holds the income pension divisor at 65 for the
+cohort. For the default 1959 cohort the sheet shows 17.6, which the ported calculation reproduces —
+asserted by a test, so the reading is pinned rather than assumed.
+
+#### `PA_KLBPP`'s fallbacks can never fire
+
+The function averages the best five of seven years' pension points, with a chain of fallbacks for a
+shorter working life. Every one of them reads
+
+```vba
+ElseIf yearpoint7 = 0 & yearpoint6 <> 0 Then
+```
+
+and VBA's `&` is **string concatenation**, not `And`. The expression parses as
+`yearpoint7 = ((0 & yearpoint6) <> 0)` — a comparison against a boolean, so `yearpoint7 = True`,
+i.e. `-1`, which a salary ratio never is. With fewer than seven years of salary the chain therefore
+falls through to the final `Else` and averages the **single** best year, never the four, three or
+two the intermediate branches intend.
+
+Kept as written, with a test that distinguishes the two behaviours so it cannot be silently
+"corrected".
+
+#### Smaller things kept
+
+- `tlPA03` has a duplicated `ElseIf fodar = 1943` branch; the second is unreachable.
+- `KAPKL_f`'s 1966 row reads `par3 = 0.268` where the sequence around it would suggest `0.2768`.
+- In `FTJP`'s KAP-KL branch a negative carry-over from PA-KL is passed into `KAPKL_f` *as the
+  salary basis* rather than added to the result.
+- Only the PA16 avdelning 2 branch floors the cohort at 1938 when looking up divisors.
+
 ### A side effect for Mcalc to own
 
 `STP_` assigns `born = Int(born)`, truncating the birth-month fraction on the module-level global
 for everything computed after it in a run — and `born` does carry a month fraction whenever a
 birth month other than January is chosen. It is called only from `FTJP`, so the truncation belongs
-there rather than hidden inside the function. Not yet applied; `FTJP` is still to be ported.
+there rather than hidden inside the function. **Still to apply**: `FTJP` is ported, but the port
+takes `born` as a value, so the truncation will be wired in when `Mcalc` lands and owns that state.
 
 ## A precision trap in the extracted data
 
@@ -272,7 +310,7 @@ again, this is why not.
 | Wage vector | `Lön_mm.bas` | ✅ `src/income/wages.ts` |
 | Public pension | `Pensionssystemet.bas` | ✅ `src/pension/incomePension.ts` (ATP `tp_` still to do) |
 | Occupational pension, defined contribution | `Tjänstepensioner.bas` | ✅ `src/tjanstepension/` |
-| Occupational pension, defined benefit | `TjänstepensionerFörmån.bas` (`FTJP`), `tlPA03`, `KAPKL_f`, `PA_KL`, `PA_KLBPP` | |
+| Occupational pension, defined benefit | `TjänstepensionerFörmån.bas` (`FTJP`), `tlPA03`, `KAPKL_f`, `PA_KL`, `PA_KLBPP` | ✅ `src/tjanstepension/formansbestamd.ts` |
 | Private saving | `PrivatSparande.bas` | |
 | Tax rules | `Skatteregler.bas` | |
 | Benefits | `Bidrag.bas` | |

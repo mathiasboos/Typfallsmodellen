@@ -19,6 +19,7 @@ export * from "./safLo.js";
 export * from "./kommunal.js";
 export * from "./statlig.js";
 export * from "./tjpkassa.js";
+export * from "./formansbestamd.js";
 
 /**
  * The occupational pension premium earned in one year.
