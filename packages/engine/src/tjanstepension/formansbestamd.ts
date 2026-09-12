@@ -15,30 +15,17 @@
  */
 
 import type { ModelContext } from "../model/context.js";
+import type { RunVectors } from "../model/runVectors.js";
 import type { DeltalTables } from "../pension/deltal.js";
 import { deltal } from "../pension/incomePension.js";
 import { vbaInt, vbaRound, wsLarge } from "../vba/math.js";
 import { STP_ } from "./safLo.js";
 import { tlITP2F } from "./itp.js";
 import { tjp_ddeltal } from "./tjpkassa.js";
+export type { RunVectors };
+
 import { Scheme } from "./types.js";
 import type { SchemeContext, SchemeId } from "./types.js";
-
-/** The age-indexed series these functions read off Mcalc's globals. */
-export interface RunVectors {
-  /** `Wage_(age)` -- earnings at each age. */
-  wage(age: number): number;
-  /** `IBB(age)` -- income base amount. */
-  ibb(age: number): number;
-  /** `pbb(age)` -- price base amount. */
-  pbb(age: number): number;
-  /** `FPB(age)` -- raised price base amount. */
-  fpb(age: number): number;
-  /** `KPI_j(age)` -- KPI, June figure. */
-  kpiJune(age: number): number;
-  /** `year_(age)` -- the income year at each age. */
-  year(age: number): number;
-}
 
 /**
  * The pensionable salary basis, after the salary-capping rules.

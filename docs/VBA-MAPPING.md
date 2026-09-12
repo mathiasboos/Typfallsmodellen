@@ -305,6 +305,48 @@ answers depending on what ran before. `resetPrivateSavingState()` clears them be
 runs; the VBA has no equivalent, so a run following another in the same Excel session inherits the
 earlier one's leftovers, which the port does not try to reproduce.
 
+## Tax rules — `src/skatt/`
+
+| VBA | TypeScript |
+|---|---|
+| `avdrag95`…`avdrag26`, `avdragxx`, `Xage` | `grundavdrag.ts` |
+| `Jobb07`…`Jobb26`, `Jobbxx` | `jobbskatteavdrag.ts` |
+| `statlig`, `PublicAvg`, `sared`, `FAared`, `pandred`, `arbgiv`, `avdragRES`, `avkskatt` | `reduktioner.ts` |
+
+### The only mechanically translated code in the engine
+
+`Skatteregler.bas` holds 32 near-identical rule functions — one per tax year — that are nothing but
+thresholds and coefficients: roughly 1 300 lines of numbers. Typing those by hand invites exactly
+the transposed digit no test would catch, so `tools/transpile/skatteregler.py` translates them, and
+the result is reviewed and committed.
+
+`npm run check:transpile` re-translates from `reference/vba/Skatteregler.bas` and verifies the
+committed TypeScript still matches. That catches a hand-edit of a generated function, and it
+catches the committed code drifting from a newly downloaded workbook. **Do not edit those
+functions by hand** — change the VBA dump or the translator and re-run.
+
+The translator handles a deliberately tiny subset (If/ElseIf/Else, assignment, arithmetic) and
+raises on anything else, so an unhandled construct fails loudly rather than producing plausible
+wrong code. Two things it has to get right:
+
+- `Dim jobb As Long` in `Jobb07` and `Jobb08` means **every assignment there rounds** to a whole
+  krona; the other ten declare `As Double` and do not. Those assignments are wrapped in `vbaCLng`.
+- VBA reads and assigns the function's own name as a variable (`If Jobb14 < 0 Then Jobb14 = 0`), on
+  both sides of a condition.
+
+### Things kept as written
+
+- **`sared` reads `alder` and `binkomst` that are not its parameters** and are never assigned
+  anywhere in the module. With no `Option Explicit` they are implicit module-level Variants, always
+  Empty — so both are passed as 0.
+- **`sared`'s year blocks are `If`, not `ElseIf`**, so for a year before 2022 the second block
+  overwrites what the first computed.
+- **`korr` in `avdrag13` is computed and then zeroed**; the comments show the values it was meant
+  to carry.
+- **`arbgiv` multiplies the wage by a percentage** taken straight from K_skatt (31.42), so its
+  amount is a hundred times too large. It is only ever written to the output sheet "för studier av
+  arbetsgivarna" and never feeds a pension or a tax, so nothing downstream depends on it.
+
 ## A precision trap in the extracted data
 
 The extractor originally rounded every value to twelve significant digits, to keep the generated
@@ -334,6 +376,6 @@ again, this is why not.
 | Occupational pension, defined contribution | `Tjänstepensioner.bas` | ✅ `src/tjanstepension/` |
 | Occupational pension, defined benefit | `TjänstepensionerFörmån.bas` (`FTJP`), `tlPA03`, `KAPKL_f`, `PA_KL`, `PA_KLBPP` | ✅ `src/tjanstepension/formansbestamd.ts` |
 | Private saving | `PrivatSparande.bas` | ✅ `src/saving/privateSaving.ts` |
-| Tax rules | `Skatteregler.bas` | |
+| Tax rules | `Skatteregler.bas` | ✅ `src/skatt/` |
 | Benefits | `Bidrag.bas` | |
 | Main loop | `Mcalc` | |
