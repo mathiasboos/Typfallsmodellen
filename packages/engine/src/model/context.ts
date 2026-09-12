@@ -87,6 +87,15 @@ export interface ModelContext {
   readonly occupationalInheritanceGains: number;
   /** `rng_FlexPens`: extra flexpension premium for ITP1 and SAF-LO from 2014. */
   readonly flexPension: number;
+  /**
+   * `Rng_riktage`: riktålder for the current cohort, read from Nyckeltal.
+   * AKAP-KR ties its higher premium to the LAS age, which is this plus three.
+   */
+  readonly riktage: number;
+  /** `rng_Temp_Tjp_Uttag`: years of temporary occupational withdrawal; 0 is lifelong. */
+  readonly tempTjpUttag: number;
+  /** `rng_Temp_IPS_Uttag`: the same for private saving. */
+  readonly tempIpsUttag: number;
 }
 
 /**
@@ -95,6 +104,10 @@ export interface ModelContext {
  * `socTak` and `socialAvg` are policy-experiment switches with no entry on the
  * Adv_settings sheet; both are guarded by `> 1999` in the VBA, so 0 leaves them
  * inert, which is how the shipped workbook behaves.
+ *
+ * `riktage` defaults to the value the shipped workbook carries. It properly
+ * varies by cohort, and Mcalc will set it from `riktage(year)` once the main
+ * loop lands.
  */
 export function defaultContext(overrides: Partial<ModelContext> = {}): ModelContext {
   const base: ModelContext = {
@@ -118,6 +131,9 @@ export function defaultContext(overrides: Partial<ModelContext> = {}): ModelCont
     rgk: workbookDefault("Rgk", 0.01),
     occupationalInheritanceGains: workbookDefault("rng_Arvsvinster_TJP", 1),
     flexPension: workbookDefault("rng_FlexPens", 0),
+    riktage: 66,
+    tempTjpUttag: workbookDefault("rng_Temp_Tjp_Uttag", 0),
+    tempIpsUttag: workbookDefault("rng_Temp_IPS_Uttag", 0),
   };
   return Object.freeze({ ...base, ...overrides });
 }
