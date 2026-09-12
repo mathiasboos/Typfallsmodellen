@@ -27,18 +27,17 @@ import type { GoldenSettings } from "./map.js";
 interface ColumnSpec {
   readonly offset: number;
   readonly vba: string;
-  /** The Table 1 row to compare against, or null where the port has no such row. */
+  /**
+   * The Table 1 row to compare against.
+   *
+   * Null where the port has no such row -- every column has one today, but a
+   * future model version may add one before the port catches up, and reporting
+   * that column as not comparable beats scoring it against nothing.
+   */
   readonly key: Table1Key | null;
   /** Words the sheet's own label is expected to contain, accent-insensitive. */
   readonly expectLabel: readonly string[];
-  /** Why the port cannot produce this column yet. */
-  readonly notPortedBecause?: string;
 }
-
-const NOT_PORTED =
-  "Table 1's Efterskatt, Bidrag and Disp_efterskatt rows come from the second tax " +
-  "and benefits pass at the retirement age (VBA_go.bas 2607-2800), which the port " +
-  "does not have yet";
 
 /** Column 1 follows `Rng_CompareTo` (mdlIndataInputOutput.bas:331-336). */
 const FIRST_COLUMN: Record<0 | 1 | 2, ColumnSpec> = {
@@ -99,23 +98,20 @@ const REST: readonly ColumnSpec[] = [
   {
     offset: 15,
     vba: "Netto(Int(PAR))",
-    key: null,
+    key: Table1Key.PensionAfterTax,
     expectLabel: ["skatt", "netto", "tax"],
-    notPortedBecause: NOT_PORTED,
   },
   {
     offset: 16,
     vba: "Bidrag(Int(PAR))",
-    key: null,
+    key: Table1Key.BenefitsAtRetirement,
     expectLabel: ["bidrag", "benefit"],
-    notPortedBecause: NOT_PORTED,
   },
   {
     offset: 18,
     vba: "IndDisp(Int(PAR))",
-    key: null,
+    key: Table1Key.DisposableAtRetirement,
     expectLabel: ["disp"],
-    notPortedBecause: NOT_PORTED,
   },
 ];
 
@@ -281,5 +277,3 @@ export function failedCase(row: GoldenCase, error: unknown): CaseComparison {
     failed: error instanceof Error ? error.message : String(error),
   };
 }
-
-export const NOT_PORTED_REASON = NOT_PORTED;

@@ -39,6 +39,9 @@ re-used on every subsequent build.
 
 6. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
 
+7. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
+   you.
+
 ## What the macro does
 
 It fills the `Mikrosim` sheet — the batch runner already built into the workbook — with a spread of
@@ -83,6 +86,36 @@ following `Rng_CompareTo`.
 
 Every output value is read from **column D of Table 1** on the Start sheet — the adjusted column,
 expressed in the reference year's prices or wage level — and divided by 12 when `Rng_belopp12` is 1.
+
+## Reading the comparison
+
+`npm run compare` runs the engine over every case in the file and diffs all twelve output columns.
+It prints a column summary and writes the full report to `reference/golden/report.md`, which is not
+committed.
+
+Each cell is scored by how far apart the two sides are: **exact** below a millionth of a krona,
+**close** below half an öre or a millionth in relative terms, **off** below one per cent, and
+**bad** above it. Both sides do the same IEEE-754 arithmetic on the same inputs, so a faithful port
+lands in exact or close. Anything else is a real difference in the rules, not floating-point noise.
+
+The report groups the same divergences four ways — by case block, cohort, agreement and retirement
+age — because that is what tells you where to look:
+
+| What the grouping shows | Where to look |
+|---|---|
+| One agreement wrong across every cohort | `packages/engine/src/tjanstepension/` |
+| One cohort wrong across every agreement | a rule-year boundary in `contributions.ts` or `atp.ts` |
+| Every column off by the same factor | `adjustmentFactors` in `result.ts`, and the price basis |
+| Only the last three columns wrong | `atRetirement.ts`, the second pass at the retirement age |
+| One block wrong | whatever that block varies — see `BuildCases` in the macro |
+
+Divergences that are a whole number of rounding steps (12 kr a year, or 1 kr a month) are counted
+separately: they point at where the model rounds rather than at what it computes.
+
+If the settings in the file's provenance block disagree with the model's normal values, the report
+says so. For the eight that decide what the numbers *mean* — the price basis, `Alt_p_age`, `Risk`,
+`Average_Earning`, `marginal`, `w_ref`, `rng_Sista_PensRatt` and `rngPens_Inflation` — the run stops
+instead, because a comparison against the wrong settings would report agreement that is not there.
 
 ## If the run halts in the VBA debugger
 

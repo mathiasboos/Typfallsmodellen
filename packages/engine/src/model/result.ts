@@ -11,6 +11,7 @@
  */
 
 import { gp, tillagg } from "../bidrag/garantipension.js";
+import { recomputeAtRetirement } from "./atRetirement.js";
 import { incomePensionYear } from "../pension/incomePension.js";
 import { fnDeltalIp, fnDeltalPp } from "../pension/deltal.js";
 import { tpFaktor } from "../pension/atp.js";
@@ -47,6 +48,12 @@ export const Table1Key = {
   PrivateSaving: "ips",
   TotalGross: "totBrutto",
   PrivateSavingAfterTax: "pps",
+  /** `rng_Tabell1_Efterskatt`: the pension after tax. */
+  PensionAfterTax: "efterSkatt",
+  /** `rng_Tabell1_Bidrag`: benefits at the retirement age. */
+  BenefitsAtRetirement: "bidrag",
+  /** `rng_Tabell1_Disp_efterskatt`: disposable income in retirement. */
+  DisposableAtRetirement: "dispEfterSkatt",
 } as const;
 
 export type Table1Key = (typeof Table1Key)[keyof typeof Table1Key];
@@ -207,7 +214,35 @@ function adjustmentFactors(run: Run): { atRetirement: number; beforeRetirement: 
   };
 }
 
-/** Table 1: the summary at retirement. */
+/**
+ * The retirement year's salary is zeroed and the gross recomputed from it.
+ *
+ * VBA_go.bas 2507 and 2533, between the final pension right and Table 1: the
+ * table reports a full year of pension against the previous year's salary, and
+ * the gross has to be rebuilt because `creditLastPensionRight` has just changed
+ * the components. `pps` and `kapital` are outside it, as the original leaves
+ * them (`'+ kapital` is commented out on the line itself).
+ */
+function closeRetirementYear(run: Run): void {
+  const { v, s, p } = run;
+  const par = vbaInt(p.par);
+
+  v.income.set(par, 0);
+  v.wage.set(par, 0);
+
+  s.brutto.set(
+    par,
+    v.income.get(par) + s.ip.get(par) + s.tp.get(par) + s.pp.get(par) + s.garp.get(par) +
+      s.tjp.get(par) + s.ips.get(par) + s.ptillagg.get(par),
+  );
+}
+
+/**
+ * Table 1: the summary at retirement.
+ *
+ * `closeRetirementYear` must have run first, and `recomputeAtRetirement` too
+ * where the settings call for it -- `buildResult` does both in order.
+ */
 export function buildTable1(run: Run): Table1Row[] {
   const { v, s, p, context } = run;
   const par = vbaInt(p.par);
@@ -215,12 +250,6 @@ export function buildTable1(run: Run): Table1Row[] {
   const korr = vbaInt(p.par + p.born) > par + born ? 1 : 0;
   const years = context.finalSalaryYears;
   const factors = adjustmentFactors(run);
-
-  // The retirement year's salary is zeroed before the summary is drawn, so the
-  // table reports a full year of pension against the previous year's salary.
-  const salaryAtRetirement = v.income.get(par);
-  v.income.set(par, 0);
-  v.wage.set(par, 0);
 
   // `growth` -- reused as a scratch variable in the original, overwriting the
   // real growth assumption -- puts a part-year salary on a full-year footing.
@@ -272,10 +301,10 @@ export function buildTable1(run: Run): Table1Row[] {
     dispAdjusted = dispNominal * factors.beforeRetirement;
   }
 
-  // Gross income for the table, with the salary now zeroed.
-  const gross =
-    s.ip.get(par) + s.tp.get(par) + s.pp.get(par) + s.garp.get(par) + s.tjp.get(par) +
-    s.ips.get(par) + s.ptillagg.get(par);
+  // `brutto(Int(PAR))` as `closeRetirementYear` rebuilt it, rather than a second
+  // sum of the same components -- so this row cannot drift from what the tax
+  // and benefit recomputation was given.
+  const gross = s.brutto.get(par);
   const publicTotal =
     s.ip.get(par) + s.tp.get(par) + s.pp.get(par) + s.garp.get(par) + s.ptillagg.get(par);
 
@@ -312,8 +341,44 @@ export function buildTable1(run: Run): Table1Row[] {
     pensionRow(Table1Key.TotalGross, gross),
   ];
 
-  // Put the salary back, so the per-age matrix is unaffected by the summary.
-  v.income.set(par, salaryAtRetirement);
+  // The last three rows measure themselves against different denominators from
+  // the pension rows: net against net, and both benefits and disposable income
+  // against disposable income (VBA_go.bas 2679, 2776 and 2790).
+  const against = (amount: number, base: number, guard: number): number =>
+    guard > 0 ? (amount * factors.atRetirement) / base : 0;
+
+  const netAtRetirement = s.netto.get(par);
+  const benefitsAtRetirement = s.bidrag.get(par);
+  const dispAtRetirement = s.indDisp.get(par);
+
+  table.push(
+    {
+      key: Table1Key.PensionAfterTax,
+      nominal: netAtRetirement,
+      adjusted: netAtRetirement * factors.atRetirement,
+      monthly: (netAtRetirement * factors.atRetirement) / 12,
+      shareOfFinalSalary: against(netAtRetirement, netAdjusted, s.netto.getOrZero(par - 1)),
+    },
+    {
+      key: Table1Key.BenefitsAtRetirement,
+      nominal: benefitsAtRetirement,
+      adjusted: benefitsAtRetirement * factors.atRetirement,
+      monthly: (benefitsAtRetirement * factors.atRetirement) / 12,
+      // QUIRK: the guard tests last year's *benefits* but the division is by
+      // last year's *disposable income* (VBA_go.bas:2776). So a household with
+      // no benefits the year before retirement reports a share of 0 however
+      // much it receives after.
+      shareOfFinalSalary: against(benefitsAtRetirement, dispAdjusted, s.bidrag.getOrZero(par - 1)),
+    },
+    {
+      key: Table1Key.DisposableAtRetirement,
+      nominal: dispAtRetirement,
+      adjusted: dispAtRetirement * factors.atRetirement,
+      monthly: (dispAtRetirement * factors.atRetirement) / 12,
+      shareOfFinalSalary: against(dispAtRetirement, dispAdjusted, s.indDisp.getOrZero(par - 1)),
+    },
+  );
+
   return table;
 }
 
@@ -384,6 +449,15 @@ export function lifeIncome(run: Run): LifeIncome {
 /** Assembles the whole result, after the loop has run. */
 export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResult {
   if (run.context.lastPensionRight > 0) creditLastPensionRight(run);
+
+  closeRetirementYear(run);
+
+  // With `rng_Sista_PensRatt` off, Table 1 reports the tax, benefits and
+  // disposable income the loop computed at that age; the second pass exists
+  // only because the final pension right has just changed the gross. It writes
+  // its results back into the run state, which is where `buildTable1` reads
+  // them from either way.
+  if (run.context.lastPensionRight > 0) recomputeAtRetirement(run);
 
   return {
     table1: buildTable1(run),

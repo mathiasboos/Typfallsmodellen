@@ -231,6 +231,12 @@ export function taxes(run: Run, age: number, utgyear: number, skyear: number): T
   );
   s.netto.set(age, s.brutto.get(age) - tax);
 
+  // Still in scope when the loop ends, and read by the recomputation at the
+  // retirement age. See `RunState.leftovers`.
+  s.leftovers.gage = gage;
+  s.leftovers.rakassa = rakassa;
+  s.leftovers.saavdrag = saavdrag;
+
   return { ctxfvi, grundavdrag, cbefvi, kapskatt };
 }
 
@@ -359,11 +365,25 @@ export function benefits(run: Run, age: number, utgyear: number, tax: TaxResult)
       bostadsbidrag = 0;
     }
     bostadstillagg = (btp_sbtp(bostadstillagg, sbostadstillagg, marginal, utgyear) * run.pmonth) / 12;
+
+    // NOTE: these four are set only inside this block, so what survives the
+    // loop is the last age that *reached* it, not the last age of the loop.
+    s.leftovers.ap = ap;
+    s.leftovers.apm = apm;
+    s.leftovers.makaInk = makaInk;
+    s.leftovers.tjpm = tjpm;
   }
 
   s.bidrag.set(age, barnbidrag + bostadsbidrag + bostadstillagg);
   if (s.bidrag.get(age) < 0) s.bidrag.set(age, 0);
   s.indDisp.set(age, s.netto.get(age) + s.bidrag.get(age) + bidragovr + s.pps.get(age));
+
+  // As above: the recomputation at the retirement age does not work these out
+  // again, it reads whatever the loop left behind.
+  s.leftovers.barnbidrag = barnbidrag;
+  s.leftovers.bostadsbidrag = bostadsbidrag;
+  s.leftovers.hyraT = hyraT;
+  s.leftovers.bidragovr = bidragovr;
 
   // Social assistance, on Socialstyrelsen's norm plus the rent.
   const bands = CalcBarnPerAlder(vbaInt(p.born) + age, barn1, barn2, barn3, barn4);

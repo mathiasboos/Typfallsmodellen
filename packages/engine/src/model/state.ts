@@ -213,8 +213,53 @@ export interface RunState {
   /** `maxhyra` -- a replacement rent ceiling, set in the same block. */
   maxhyra: number;
 
+  /**
+   * What the age loop's own local variables still held when it ended.
+   *
+   * Mcalc's tax and benefit sections are written inline in one very long
+   * procedure, so when the loop finishes its locals are still in scope --
+   * and the recomputation at the retirement age (VBA_go.bas 2607-2800) reads
+   * several of them rather than working them out again. `pensredukt = rakassa`
+   * at :2652 is the plainest example: the a-kassa reduction from the *last*
+   * age the loop ran stands in for the pension contribution reduction.
+   *
+   * Splitting the procedure into functions loses that, so the values the
+   * recomputation reaches for are kept here deliberately. See atRetirement.ts.
+   */
+  readonly leftovers: Leftovers;
+
   /** The output matrix, one row per age from `startage`. */
   readonly rows: MvaluesRow[];
+}
+
+/** The loop locals the post-loop recomputation reads. See `RunState.leftovers`. */
+export interface Leftovers {
+  /**
+   * The loop counter. VBA leaves a completed `For` one past its limit, so this
+   * is `slutage + 1`, which is what `year_(mini(age, 100))` at :2614 and
+   * `year_(mini(age, slutage))` at :2749 are indexed with.
+   */
+  age: number;
+  /** `Gage` -- the age the higher grundavdrag starts at, from the last iteration. */
+  gage: number;
+  /** `rakassa` -- which :2652 uses as `pensredukt`. */
+  rakassa: number;
+  /** `SAavdrag` -- read by the FAavdrag cap at :2658. */
+  saavdrag: number;
+  /** `ap` / `apm` -- whether the individual and the spouse draw a pension. */
+  ap: number;
+  apm: number;
+  /** `MakaInk` -- the spouse's income. */
+  makaInk: number;
+  /** `tjpm` -- the spouse's occupational pension. */
+  tjpm: number;
+  /** `barnbidrag` and `bostadsbidrag`, whose recomputation at :2687 is commented out. */
+  barnbidrag: number;
+  bostadsbidrag: number;
+  /** `hyra_t` -- the rent, indexed to the year. */
+  hyraT: number;
+  /** `bidragovr` -- benefits paid under the `Rng_Ansokt = 9` special case. */
+  bidragovr: number;
 }
 
 /** A fresh set of zeroed vectors for `startage..slutage`. */
@@ -275,6 +320,21 @@ export function createRunState(startage: number, slutage = SLUTAGE): RunState {
     gpUnd: 0,
     kvoten: 1,
     maxhyra: 0,
+
+    leftovers: {
+      age: slutage + 1,
+      gage: 0,
+      rakassa: 0,
+      saavdrag: 0,
+      ap: 0,
+      apm: 0,
+      makaInk: 0,
+      tjpm: 0,
+      barnbidrag: 0,
+      bostadsbidrag: 0,
+      hyraT: 0,
+      bidragovr: 0,
+    },
 
     rows: [],
   };

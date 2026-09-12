@@ -124,15 +124,20 @@ describe("the golden-file harness", () => {
     expect(blockOf(295)).toBe("F");
   });
 
-  it("reports the three unported columns rather than scoring them", () => {
+  it("scores all twelve columns, and says so when a Table 1 row is missing", () => {
     const settings = readSettings(file);
     const result = {
       table1: [{ key: "slutlon", nominal: 0, adjusted: 458000, monthly: 0, shareOfFinalSalary: 0 }],
       warnings: [],
     } as unknown as Parameters<typeof compareCase>[1];
     const comparison = compareCase(file.cases[0]!, result, settings, file.outputLabels);
-    expect(comparison.cells.filter((cell) => cell.status === "not-ported")).toHaveLength(3);
+
+    expect(comparison.cells).toHaveLength(12);
+    expect(comparison.cells.filter((cell) => cell.status === "not-ported")).toHaveLength(0);
     expect(comparison.cells[0]!.status).toBe("exact");
+    // A Table 1 the engine did not produce a row for reads as missing, not as
+    // a silent zero.
+    expect(comparison.cells[1]!.status).toBe("bad");
   });
 });
 

@@ -70,16 +70,44 @@ describe("Table 1", () => {
     expect(row(r, Table1Key.TotalGross).nominal).toBeCloseTo(gross, 6);
   });
 
+  /**
+   * The last three rows measure themselves against something other than the
+   * final salary, so they are checked separately below.
+   */
+  const OWN_DENOMINATOR: readonly string[] = [
+    Table1Key.PensionAfterTax,
+    Table1Key.BenefitsAtRetirement,
+    Table1Key.DisposableAtRetirement,
+  ];
+
   it("keeps its four columns consistent", () => {
     const r = compute();
     const salary = row(r, Table1Key.FinalSalary);
     for (const line of r.table1) {
       expect(line.monthly).toBeCloseTo(line.adjusted / 12, 6);
-      if (salary.adjusted > 0) {
+      if (salary.adjusted > 0 && !OWN_DENOMINATOR.includes(line.key)) {
         expect(line.shareOfFinalSalary).toBeCloseTo(line.adjusted / salary.adjusted, 9);
       }
     }
     expect(salary.shareOfFinalSalary).toBe(1);
+  });
+
+  it("measures the last three rows against net and disposable income", () => {
+    // VBA_go.bas 2679, 2776 and 2790: the pension after tax is compared with
+    // the salary after tax, and both the benefits and the disposable income
+    // with last year's disposable income -- not with the final salary.
+    const r = compute();
+    const net = row(r, Table1Key.SalaryAfterTax);
+    const disp = row(r, Table1Key.DisposableBeforeRetirement);
+
+    expect(row(r, Table1Key.PensionAfterTax).shareOfFinalSalary).toBeCloseTo(
+      row(r, Table1Key.PensionAfterTax).adjusted / net.adjusted,
+      9,
+    );
+    expect(row(r, Table1Key.DisposableAtRetirement).shareOfFinalSalary).toBeCloseTo(
+      row(r, Table1Key.DisposableAtRetirement).adjusted / disp.adjusted,
+      9,
+    );
   });
 
   it("gives a plausible compensation level for the shipped typfall", () => {

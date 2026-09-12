@@ -34,7 +34,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 |---|---|---|
 | 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
-| 2. Golden-file harness vs. Excel | awaiting an Excel run | export kit ready in `reference/golden/` |
+| 2. Golden-file harness vs. Excel | awaiting the CSV | harness written and `npm run compare` wired up; needs `reference/golden/golden-cases.csv` out of Excel |
 | 3. Normal-mode website | | |
 | 4. Advanced mode | | |
 | 5. Polish, CI, deploy | | |
@@ -48,7 +48,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | Pension-qualifying income and contributions | the `Brutto` sheet, which calls those VBA functions as worksheet UDFs | exact |
 | Income pension accumulation | the same sheet, term by term — gains, indexation, cost, balance | exact |
 | The earning phase of the main loop, end to end | the `Brutto` sheet's per-age trace — PGI, PGB and all three contributions | exact |
-| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 524 unit and property tests | — |
+| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 542 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
 | The social assistance norm for one 2025 household | the workbook author's own `verb()` comment | 46 240 kr/month, exact |
@@ -56,8 +56,13 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 The `Brutto` fixture covers the earning phase only — that sheet never draws a pension, and it
 pairs each year's pension right with the following year's indexation where the loop pairs it with
 this year's — so no **drawdown** figure and no end-to-end result is verified against the workbook
-yet. That is Phase 2, and it needs a run of the real model on Windows: see
-[`reference/golden/HOWTO.md`](reference/golden/HOWTO.md).
+yet.
+
+That is what Phase 2 closes. The comparison harness is written and `npm run compare` is wired up;
+what it still needs is `reference/golden/golden-cases.csv`, which only a run of the real model on
+Windows can produce. Until that file lands the comparison skips rather than fails. See
+[`reference/golden/HOWTO.md`](reference/golden/HOWTO.md) for how to produce it and how to read the
+report.
 
 `reference/fixtures/default-run.json` holds the engine's own output for the shipped typfall. It is
 a regression snapshot, not a check against the workbook: it makes an unintended change to any rule

@@ -453,6 +453,7 @@ fall below one month's subsistence need in a whole year's income before anything
 | `Mcalc`, 1290–1744 (the drawdown) | `drawdown.ts` |
 | `Mcalc`, 1745–2117 (tax, benefits, `mvalues`) | `taxAndBenefits.ts` |
 | `Mcalc`, 2119–2844 (Table 1, Table 2, life income) | `result.ts` |
+| `Mcalc`, 2607–2800 (tax and benefits at retirement) | `atRetirement.ts` |
 | — | `run.ts`, `input.ts`, `state.ts` |
 
 `Mcalc` is a pure function wearing an Excel costume: about sixty `Application.Range` reads and
@@ -529,6 +530,38 @@ Everything past the retirement age — the drawdown, the tax, the benefits, both
 offline fixture at all. `reference/fixtures/default-run.json` is the engine's own output for the
 shipped typfall, committed so an unintended change shows up as a diff; it is a regression snapshot,
 not a check against the workbook.
+
+**The golden file is what closes that gap**, and it is the only check in the project that compares
+the engine against the real model end to end. `reference/golden/golden-cases.csv` holds 294 cases
+the workbook itself computed, and `npm run compare` runs the engine over the same inputs and diffs
+all twelve output columns — the final salary, the five public pensions and their total, the
+occupational pension, private saving, and the tax, benefits and disposable income at retirement.
+Everything downstream of the earning phase depends on it; until it is committed, the gate skips and
+what is written above still stands.
+
+It does not cover Table 2, the life-income sums or the pension-wealth box: the workbook's batch
+runner writes Table 1 only. Nor does it reach a part-year retirement, a hand-entered wage list,
+private saving, children, or a spouse — the generated cases use none of those, so those paths stay
+on unit tests.
+
+### The second pass at the retirement age
+
+`Mcalc` computes tax, benefits and disposable income twice for the retirement year: once in the age
+loop, and again at 2607–2800 once the final year's pension right has changed the gross. The second
+pass is what Table 1's last three rows report, and it is **not** the first one repeated:
+
+- pensioner rules — no cost deductions, no pensionsavgift, no jobbskatteavdrag, capital income
+  counted unconditionally, and no social assistance;
+- `pensredukt = rakassa` (2652): the pension contribution reduction is whatever a-kassa reduction
+  the loop last computed, at `slutage`;
+- the child and housing allowances are not recomputed at all, so `Bidrag(Int(PAR))` adds the values
+  the loop left behind at `slutage` — decades after any children have gone;
+- `SBTP` is passed `hyra_t` where every other call passes `12 * hyra_t`;
+- the housing-supplement gate is narrower: `PAR >= riktalder And uttagIP = 1 And uttagPP = 1`.
+
+The original is one long procedure, so its loop locals are still in scope when the loop ends and the
+second pass reads several of them. `RunState.leftovers` keeps exactly those, which is why splitting
+`Mcalc` into functions did not lose them.
 
 ### Quirks kept on purpose
 

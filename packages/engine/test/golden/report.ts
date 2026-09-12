@@ -7,7 +7,6 @@
  * lets the shape of the failure point at the module that caused it.
  */
 
-import { NOT_PORTED_REASON } from "./compare.js";
 import type { CaseComparison, CellStatus } from "./compare.js";
 import { BLOCKS, blockOf } from "./harness.js";
 import type { ComparisonRun } from "./harness.js";
@@ -199,8 +198,12 @@ export function formatReport(comparison: ComparisonRun, worstLimit = 20): string
   }
   out.push("");
 
-  if (columns.some((c) => c.notPorted)) {
-    out.push(`Three columns are not comparable yet: ${NOT_PORTED_REASON}.`);
+  const unported = columns.filter((c) => c.notPorted);
+  if (unported.length > 0) {
+    out.push(
+      `${unported.length} column(s) have no Table 1 row in the port yet and were not ` +
+        `scored: ${unported.map((c) => `${c.column} (${c.label})`).join(", ")}.`,
+    );
     out.push("");
   }
 

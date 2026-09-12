@@ -102,6 +102,27 @@
    "adjusted": 244572,
    "monthly": 20381,
    "shareOfFinalSalary": 0.533451
+  },
+  {
+   "key": "efterSkatt",
+   "nominal": 177471,
+   "adjusted": 177471,
+   "monthly": 14789.25,
+   "shareOfFinalSalary": 0.502317
+  },
+  {
+   "key": "bidrag",
+   "nominal": 28536,
+   "adjusted": 28536,
+   "monthly": 2378,
+   "shareOfFinalSalary": 0
+  },
+  {
+   "key": "dispEfterSkatt",
+   "nominal": 206007,
+   "adjusted": 206007,
+   "monthly": 17167.25,
+   "shareOfFinalSalary": 0.583086
   }
  ],
  "lifeIncome": {
