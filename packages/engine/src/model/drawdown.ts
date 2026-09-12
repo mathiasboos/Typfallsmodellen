@@ -268,7 +268,7 @@ function garantipension(run: Run, age: number, underlag: number, utgyear: number
     utgyear,
     run.iyear,
     v.ibb.get(age),
-    run.kvoten,
+    s.kvoten,
     p.riktalder,
     s.uttagIp,
   );

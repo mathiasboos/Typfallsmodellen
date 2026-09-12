@@ -203,6 +203,15 @@ export interface RunState {
   gpundtab1: number;
   /** `gp_und` -- the garantipension's own underlying balance, carried year to year. */
   gpUnd: number;
+  /**
+   * `kvoten` -- pbb over IBB at the boundary year.
+   *
+   * Seeded by `prepareRun` and then *reassigned inside the loop*, in the
+   * housing-supplement block, so it is run state rather than a constant.
+   */
+  kvoten: number;
+  /** `maxhyra` -- a replacement rent ceiling, set in the same block. */
+  maxhyra: number;
 
   /** The output matrix, one row per age from `startage`. */
   readonly rows: MvaluesRow[];
@@ -264,6 +273,8 @@ export function createRunState(startage: number, slutage = SLUTAGE): RunState {
     mpension: 0,
     gpundtab1: 0,
     gpUnd: 0,
+    kvoten: 1,
+    maxhyra: 0,
 
     rows: [],
   };

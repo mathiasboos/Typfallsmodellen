@@ -27,6 +27,7 @@ import type { PgbManualYear, TypfallInput } from "./input.js";
 import type { RunProfile, SetupResult, Warning } from "./setup.js";
 import type { RunState, SetupVectors } from "./state.js";
 import { drawdownPhase } from "./drawdown.js";
+import { taxAndBenefits } from "./taxAndBenefits.js";
 
 /** Everything a loop section needs, gathered from Mcalc's globals and ranges. */
 export interface Run {
@@ -409,11 +410,11 @@ export function prepareRun(
   }
 
   /**
-   * NOTE: `kvoten` is only ever 1. Its guard opens with `If Iyear < slutage`,
-   * comparing a calendar year against the constant 105, which no real year
-   * satisfies -- so the pbb/IBB ratio is never taken and the earnings-indexed
-   * branches in `gp`, `BTP` and `SBTP` (all guarded by `kvoten < 1`) never fire.
-   * Kept as written; the arithmetic is here so a corrected guard would work.
+   * NOTE: this opening `kvoten` is only ever 1. Its guard reads `If Iyear <
+   * slutage`, comparing a calendar year against the constant 105, which no real
+   * year satisfies -- so the pbb/IBB ratio is never taken here. The
+   * housing-supplement block later in the loop reassigns `kvoten` on a guard
+   * that *can* hold, which is why it lives on `RunState`.
    */
   let kvoten = 1;
   const iyearAge = iyear - vbaInt(born);
@@ -434,6 +435,8 @@ export function prepareRun(
   const pgbManual = new Map(
     (input.pgbManual ?? []).map((row) => [row.age, row] as const),
   );
+
+  state.kvoten = kvoten;
 
   return {
     input,
@@ -487,7 +490,13 @@ export function earningPhase(run: Run, age: number): { utgyear: number; skyear: 
 export function simulateYear(run: Run, age: number): { utgyear: number; skyear: number } {
   const years = earningPhase(run, age);
   drawdownPhase(run, age, years.utgyear);
+  taxAndBenefits(run, age, years.utgyear, years.skyear);
   return years;
+}
+
+/** The whole loop, `startage` to `slutage`. */
+export function runLoop(run: Run): void {
+  for (let age = run.v.startage; age <= run.v.slutage; age += 1) simulateYear(run, age);
 }
 
 export { withdrawalShare };
