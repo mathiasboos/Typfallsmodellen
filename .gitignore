@@ -11,3 +11,6 @@ dist/
 
 # OS
 .DS_Store
+
+# Written by the golden-file comparison
+reference/golden/report.md
