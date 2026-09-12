@@ -108,6 +108,158 @@ export interface ModelContext {
    * which makes that correction a pass-through.
    */
   readonly adjustOccupationalDivisor: boolean;
+
+  // ---- Retirement ages and withdrawal -------------------------------------
+
+  /**
+   * `TJP_PAR`: the age the occupational pension is drawn from. 0 follows the
+   * public pension age.
+   *
+   * The Adv_settings cell is `=IF(ISBLANK(...), ..., ...)`, so a blank entry
+   * falls back to the retirement age -- which is why the extracted value reads
+   * 66, the shipped retirement age, rather than a constant. `setup.ts` resolves
+   * 0 the same way.
+   */
+  readonly tjpPar: number;
+  /**
+   * `rng_def_ar`: the age at which withdrawal becomes final and full. Below the
+   * retirement age, or 0, means the same as it -- which is what `startsetup`
+   * does with the blank cell the workbook ships.
+   */
+  readonly defAr: number;
+  /** `UttagIP`: the share of income pension drawn during partial withdrawal. */
+  readonly uttagIp: number;
+  /** `UttagPP`: the same for premium pension. */
+  readonly uttagPp: number;
+  /**
+   * `rngLönPartUttag`: a number fixes work at that share while pension is drawn
+   * partially; any other value means work follows the withdrawal.
+   */
+  readonly workDuringPartialWithdrawal: number | string;
+  /** `Wage_profil`: 0 a straight wage path, 1-4 an age profile. */
+  readonly wageProfile: number;
+  /**
+   * `w_time`: the age the entered salary refers to. 0 derives it.
+   *
+   * The Adv_settings cell is a subtraction of two named ranges, which the label
+   * ("Inkomståret 2025") and the shipped value put at `Modell_year - born`,
+   * i.e. the typfall's age today. ASSUMPTION: the operands are inferred from
+   * the label and value, because the LibreOffice conversion the extractor uses
+   * cannot resolve defined names inside formulas. Worth confirming against the
+   * golden files.
+   */
+  readonly wTime: number;
+  /** `Nominal`: the salary is given in nominal money rather than fixed prices. */
+  readonly nominalWage: boolean;
+  /** `wStartYear_AdvSettings`: the model's first income age, 1 in the shipped workbook. */
+  readonly modelStartAge: number;
+
+  // ---- Household -----------------------------------------------------------
+
+  /**
+   * `Hyra`: housing cost per month in the reference year. The sheet holds
+   * `=6300 + 1200 * x`, which comes to the shipped 6 300.
+   */
+  readonly hyra: number;
+  /** `rng_Formogenhet`: wealth beyond the home. */
+  readonly formogenhet: number;
+  /** `rng_Makens_inkomst`: the spouse's annual income. */
+  readonly makensInkomst: number;
+  /** `rng_Make_Bald`: the spouse's year of birth; 0 takes the typfall's own. */
+  readonly makeBorn: number;
+  /** `rng_forstidM`: the spouse's försäkringstid. */
+  readonly makeInsuranceYears: number;
+  /** `rng_Kapital_pens`: gross capital income, assumed to start at retirement. */
+  readonly kapital: number;
+  /** `Rng_Ansokt`: 1 when the household applies for the benefits it is entitled to. */
+  readonly ansokt: number;
+  /** `rng_Född_Barn1`..`4`: the children's years of birth, 0 for an empty slot. */
+  readonly childBirthYears: readonly [number, number, number, number];
+
+  // ---- Private saving ------------------------------------------------------
+
+  /** `IPS_Monthly`: monthly private pension saving. */
+  readonly ipsMonthly: number;
+  /** `IPS_start`: the year that saving starts. The sheet holds `=YEAR(TODAY())`. */
+  readonly ipsStart: number;
+  /** `rng_Kapitalförsäkring`: 0 IPS, 1 kapitalförsäkring, 2 ISK. */
+  readonly privateSavingKind: number;
+  /** `rng_Fondförsäkring`: fund insurance rather than traditional. */
+  readonly fundInsurance: number;
+
+  // ---- Taxes and fees ------------------------------------------------------
+
+  /** `rng_Kommunalskatt`: a fixed municipal rate; below 0.1 uses the historical average. */
+  readonly kommunalskatt: number;
+  /** `rng_Begravningsavgift`: the burial fee and any church fee, used with the above. */
+  readonly begravningsavgift: number;
+  /** `fack`: union fee per month. */
+  readonly fack: number;
+  /** `akasseavg`: unemployment insurance fee per month. */
+  readonly akasseavg: number;
+  /** `satagare`: on sickness or activity compensation since this year; 0 for never. */
+  readonly satagare: number;
+
+  // ---- Opening balances ----------------------------------------------------
+
+  /** `rng_PBHYear`: the income year an opening balance is injected for; 0 for none. */
+  readonly pbhYear: number;
+  /** `rng_PBH_IP`: that year's income pension balance. */
+  readonly pbhIp: number;
+  /** `rng_PBH_PP`: premium pension. */
+  readonly pbhPp: number;
+  /** `rng_PBH_tjp`: occupational pension. */
+  readonly pbhTjp: number;
+  /** `rng_PBH_IPS`: private saving. */
+  readonly pbhIps: number;
+
+  // ---- Rule-year experiments ----------------------------------------------
+
+  /** `rng_Boundray_Year` (`Iyear`): the year from which expenditure rules follow earnings. */
+  readonly boundaryYear: number;
+  /** `Tl_spec_y`: an income year from which the salary is multiplied by `tlSpecial`. */
+  readonly tlSpecYear: number;
+  /** `TL_special`: that multiplier. */
+  readonly tlSpecial: number;
+  /** `rng_Sista_PensRatt`: 1 credits a final year of pension rights at retirement. */
+  readonly lastPensionRight: number;
+  /** `rng_alt_last_pratt`: years after retirement for an alternative final right. */
+  readonly altLastPensionRight: number;
+  /** `rngPens_Inflation`: 1 puts retirement in the same year as the final salary. */
+  readonly pensionSameYearAsFinalSalary: number;
+
+  // ---- Presentation --------------------------------------------------------
+
+  /**
+   * `rng_Bara_fastapriser`: 1 fixed prices, 0 expressed in the reference year's
+   * wage level, -1 nominal.
+   */
+  readonly priceBasis: number;
+  /**
+   * `rng_tabell2_startAge`: the age table 2 and the figures start at. 0 derives
+   * it as `Int(retirement age - 10)`, which is what the sheet's `=INT(x - 10)`
+   * does and what the shipped 56 comes to at a retirement age of 66.
+   */
+  readonly table2StartAge: number;
+  /** `rng_Chart_Earning_factor`: 1 shows annual amounts, 12 monthly. */
+  readonly chartEarningFactor: number;
+  /** `rng_discount`: the rate the life-income sums are discounted at. */
+  readonly discountRate: number;
+  /**
+   * `Modell_year`: the workbook's own current year, which the yield series
+   * switches on. 0 derives it as `w_ref + 1`: the reference year is
+   * `=YEAR(NOW()) - 1`, so the two differ by exactly one.
+   */
+  readonly modelYear: number;
+
+  // ---- Advanced-mode extras, off by default -------------------------------
+
+  /** `Risk`: the standard deviation of the return. 0 makes the yield deterministic. */
+  readonly risk: number;
+  /** `lognormal`: 1 draws the return lognormally, anything else normally. */
+  readonly lognormal: number;
+  /** `Wealth`: 1 shows the pension wealth and respektavstånd box. Not yet ported. */
+  readonly wealth: number;
 }
 
 /**
@@ -148,6 +300,66 @@ export function defaultContext(overrides: Partial<ModelContext> = {}): ModelCont
     tempTjpUttag: workbookDefault("rng_Temp_Tjp_Uttag", 0),
     tempIpsUttag: workbookDefault("rng_Temp_IPS_Uttag", 0),
     adjustOccupationalDivisor: workbookDefault("Rng_ddelat", 0) === 1,
+
+    // 0, not the extracted 66: that value is the formula's fallback to the
+    // shipped retirement age, and following it is the behaviour, not the 66.
+    tjpPar: 0,
+    defAr: workbookDefault("rng_def_ar", 0),
+    uttagIp: 1,
+    uttagPp: 1,
+    workDuringPartialWithdrawal: "Arbetar deltid",
+    wageProfile: workbookDefault("Wage_profil", 0),
+    wTime: 0,
+    nominalWage: false,
+    modelStartAge: workbookDefault("wStartYear_AdvSettings", 1),
+
+    hyra: workbookDefault("Hyra", 6300),
+    formogenhet: workbookDefault("rng_Formogenhet", 0),
+    makensInkomst: workbookDefault("rng_Makens_inkomst", 0),
+    makeBorn: 0,
+    makeInsuranceYears: workbookDefault("rng_forstidM", 40),
+    kapital: workbookDefault("rng_Kapital_pens", 0),
+    ansokt: workbookDefault("Rng_Ansokt", 1),
+    childBirthYears: [
+      workbookDefault("rng_Född_Barn1", 0),
+      workbookDefault("rng_Född_Barn2", 0),
+      workbookDefault("rng_Född_Barn3", 0),
+      workbookDefault("rng_Född_Barn4", 0),
+    ],
+
+    ipsMonthly: workbookDefault("IPS_Monthly", 0),
+    ipsStart: workbookDefault("IPS_start", 2026),
+    privateSavingKind: workbookDefault("rng_Kapitalförsäkring", 0),
+    fundInsurance: workbookDefault("rng_Fondförsäkring", 1),
+
+    kommunalskatt: workbookDefault("rng_Kommunalskatt", 0),
+    begravningsavgift: workbookDefault("rng_Begravningsavgift", 0),
+    fack: workbookDefault("fack", 0),
+    akasseavg: workbookDefault("akasseavg", 0),
+    satagare: workbookDefault("satagare", 0),
+
+    pbhYear: workbookDefault("rng_PBHYear", 0),
+    pbhIp: workbookDefault("rng_PBH_IP", 0),
+    pbhPp: workbookDefault("rng_PBH_PP", 0),
+    pbhTjp: workbookDefault("rng_PBH_tjp", 0),
+    pbhIps: workbookDefault("rng_PBH_IPS", 0),
+
+    boundaryYear: workbookDefault("rng_Boundray_Year", 0),
+    tlSpecYear: workbookDefault("Tl_spec_y", 0),
+    tlSpecial: workbookDefault("TL_special", 1),
+    lastPensionRight: workbookDefault("rng_Sista_PensRatt", 1),
+    altLastPensionRight: workbookDefault("rng_alt_last_pratt", 0),
+    pensionSameYearAsFinalSalary: workbookDefault("rngPens_Inflation", 0),
+
+    priceBasis: workbookDefault("rng_Bara_fastapriser", 1),
+    table2StartAge: 0,
+    chartEarningFactor: 1,
+    discountRate: workbookDefault("rng_discount", 0.05),
+    modelYear: 0,
+
+    risk: workbookDefault("Risk", 0),
+    lognormal: workbookDefault("lognormal", 1),
+    wealth: workbookDefault("Wealth", 0),
   };
   return Object.freeze({ ...base, ...overrides });
 }
