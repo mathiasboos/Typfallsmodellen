@@ -184,13 +184,14 @@ describe("garantipension", () => {
   });
 
   it("is not paid before the riktålder", () => {
-    // Retiring at 63 is allowed for this cohort, and its riktålder is the one
-    // in force in that year -- 65, because 2022 is before the step to 66.
+    // Retiring at 63 is allowed for this cohort -- its lowest age is 62 -- but
+    // the basic protection waits for the riktålder, which is a property of the
+    // cohort and not of the year they happen to retire in. The Nyckeltal table
+    // puts 1959 at 66, so drawing early does not bring it forward.
     const { run, state } = plain({ retirementAge: 63, monthlySalary: 12_000 });
-    expect(run.p.riktalder).toBe(65);
-    expect(state.garp.get(63)).toBe(0);
-    expect(state.garp.get(64)).toBe(0);
-    expect(state.garp.get(65)).toBeGreaterThan(0);
+    expect(run.p.riktalder).toBe(66);
+    for (const age of [63, 64, 65]) expect(state.garp.get(age)).toBe(0);
+    expect(state.garp.get(66)).toBeGreaterThan(0);
   });
 });
 

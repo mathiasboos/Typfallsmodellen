@@ -27,6 +27,7 @@ import extract_deltal
 import extract_i18n
 import extract_mortality
 import extract_options
+import extract_retirement_ages
 import extract_riksnorm
 import extract_series
 import extract_tax
@@ -130,6 +131,13 @@ def main() -> int:
         DATA_DIR / "annuity-tables.json",
         extract_deltal.extract(wb),
         description="published delningstal from Nyckeltal",
+    )
+
+    print("Retirement ages per cohort...")
+    write_json(
+        DATA_DIR / "retirement-ages.json",
+        extract_retirement_ages.extract(wb),
+        description="lowest pension age and riktålder per cohort",
     )
 
     print("Contribution-phase fixture...")

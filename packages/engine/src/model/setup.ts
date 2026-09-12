@@ -26,6 +26,7 @@ import type { RawEconomicSeries } from "../data/types.js";
 import { wages, withdrawalShare } from "../income/wages.js";
 import type { WageProfile } from "../income/wages.js";
 import { andel, riktage } from "../pension/contributions.js";
+import { lowestPensionAge, riktalderFor } from "../pension/retirementAges.js";
 import { AgeArray } from "../vba/ageArray.js";
 import { vbaInt } from "../vba/math.js";
 import type { ModelContext } from "./context.js";
@@ -138,7 +139,10 @@ function validate(
     ? 15
     : Math.min(context.modelStartAge, input.startWorkAge);
 
-  let riktl = riktage(vbaInt(born) + vbaInt(input.retirementAge), 0);
+  // `Rng_riktL`, a cell looked up by cohort -- not `riktage(year, 0)`, which is
+  // keyed on the income year and gives a different answer for about half the
+  // cohorts. See pension/retirementAges.ts.
+  let riktl = lowestPensionAge(born);
   if (context.rulesFromUtg !== 0) {
     // Pinning the expenditure rules pins the riktålder with them.
     if (context.rules === 1 || vbaInt(born) + riktl > context.rulesFromUtg) {
@@ -500,7 +504,8 @@ export function startsetup(input: TypfallInput, context: ModelContext): SetupRes
       civ: input.married ? 1 : 0,
       andelnya: andel(born),
       riktl,
-      riktalder: riktage(vbaInt(born) + vbaInt(par), 1),
+      // `Rng_riktage`, by cohort, for the same reason as `riktl` above.
+      riktalder: riktalderFor(born),
       modelYear,
       wTime,
     },

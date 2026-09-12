@@ -174,7 +174,7 @@ describe("fees and inheritance gains", () => {
     // at the riktålder -- and the VBA's `If IP_arv1 = 0 Then IP_arv1 = 1` is
     // what covers the years where the riktålder is higher than that.
     const { vectors: v, profile: p } = run();
-    expect(p.riktl).toBe(63);
+    expect(p.riktl).toBe(62);
     expect(v.ipArv1.get(60)).toBeGreaterThan(1);
     expect(v.ipArv1.get(62)).toBe(1);
   });
@@ -339,7 +339,16 @@ describe("validation", () => {
     expect(run().profile.andelnya).toBe(1);
     // A twentieth per cohort from 1938, which puts 1945 at 11/20.
     expect(run({ born: 1945 }).profile.andelnya).toBeCloseTo(0.55, 9);
+    // Both come from the Nyckeltal cohort table, not from riktage(year, typ):
+    // the 1959 row reads 66 and 62. See pension/retirementAges.ts.
     expect(run().profile.riktalder).toBe(66);
-    expect(run().profile.riktl).toBe(63);
+    expect(run().profile.riktl).toBe(62);
+    // And they do not move when the typfall retires later, as the year-keyed
+    // function would have them do.
+    expect(run({ retirementAge: 70 }).profile.riktl).toBe(62);
+    expect(run({ retirementAge: 70 }).profile.riktalder).toBe(66);
+    // A 1970 typfall is where the two rules part company most plainly: the
+    // sheet says 65, riktage(1970 + 64, 0) would say 64.
+    expect(run({ born: 1970, retirementAge: 67 }).profile.riktl).toBe(65);
   });
 });

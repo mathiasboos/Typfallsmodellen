@@ -26,6 +26,7 @@ export * from "./income/wages.js";
 export * from "./pension/mortality.js";
 export * from "./pension/deltal.js";
 export * from "./pension/contributions.js";
+export * from "./pension/retirementAges.js";
 export * from "./pension/incomePension.js";
 export * from "./pension/atp.js";
 export * from "./tjanstepension/index.js";
