@@ -117,6 +117,39 @@ code reads as intending. Kept, and marked at the site.
 bites are never exercised — reverting the quirk does not break any test. The golden files will
 settle it.
 
+## Delningstal — `src/pension/deltal.ts`
+
+Ports `aaDeltal.bas`, which assembles one table from two sources: published values from the
+Nyckeltal sheet for every cohort, overwritten from 1958 with the model's own unisex figures.
+
+**Deviation.** The VBA reads those second values from the mortality sheet's cached output; the
+port computes them with `calculateDeltal`, which reproduces that table exactly. Equivalent, and it
+means only the cohort being modelled is computed rather than all 121 — which matters in a browser.
+
+Two details worth knowing before touching this file:
+
+- The two-decimal rounding here is `Int(x * 100 + 0.4999) / 100`, which sends an exact `.xx5`
+  **down**. It is not `vbaRound`, and the VBA comments on the difference.
+- Part-year ages are weighted by **whole months**, not the raw fraction.
+
+`fnDeltal_PP2` omits the clamp at the final withdrawal age that `fnDeltal_IP2` applies. Kept, with
+a test asserting the asymmetry so the two do not get tidied into agreement.
+
+## Wages — `src/income/wages.ts`
+
+**Deviation.** The VBA computes the pension withdrawal share into the global `uttagIP` as a side
+effect of asking for a wage. Here that is `withdrawalShare`, an exported function the caller
+applies — same arithmetic, but a wage function that only returns a wage.
+
+### Dead code kept
+
+`If PAR = def_ar Then uttagIP = 1` sits inside a branch that requires `age >= par` **and**
+`age < defAr` at once — impossible when the two are equal, which is the ordinary case. So in the
+year pension is both first and finally drawn the share falls through untouched and stays at the
+previous year's value. It changes no result: the months worked that year are computed by a formula
+whose withdrawal term is multiplied by `defAr - par`, i.e. zero. Kept and marked, because a reader
+would otherwise "fix" it.
+
 ## Status
 
 | Area | VBA source | Ported |
@@ -124,10 +157,10 @@ settle it.
 | Arithmetic semantics | — | ✅ `src/vba/` |
 | Economic series + projection | `startsetup`, `Balansindex` | ✅ `src/data/` |
 | Mortality, delningstal, arvsvinster | `Mortality.bas` | ✅ `src/pension/mortality.ts` |
-| Delningstal lookup | `aaDeltal.bas` | |
+| Delningstal lookup | `aaDeltal.bas` | ✅ `src/pension/deltal.ts` |
 | Contributions (PGI, avgifter) | `Pensionssystemet.bas` (first part) | ✅ `src/pension/contributions.ts` |
 | Settings | ~40 named ranges | ✅ `src/model/context.ts` |
-| Wage vector | `Lön_mm.bas` | |
+| Wage vector | `Lön_mm.bas` | ✅ `src/income/wages.ts` |
 | Public pension | `Pensionssystemet.bas` | |
 | Occupational pension | `Tjänstepensioner.bas`, `TjänstepensionerFörmån.bas` | |
 | Private saving | `PrivatSparande.bas` | |

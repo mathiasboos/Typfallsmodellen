@@ -48,8 +48,23 @@ COLUMNS = {
     21: "arvsvinstIpUnder65",
     22: "arvsvinstIpOver65",
     23: "arvsvinstPp",
+    # The income-pension balance, decomposed the way Brutto builds it:
+    #   pbhIp(t) = INT(pbhIp(t-1) + ipavgift + arvsvinst + index + fees
+    #                  + limited uprating + withdrawal reversal)
+    24: "ipArvsvinst",
+    25: "ipIndexering",
+    26: "ipForvaltningskostnad",
+    27: "ipBegransadUppskrivning",
+    28: "ipAterkallatUttag",
     29: "pbhIp",
+    # And the premium-pension balance likewise.
+    30: "ppAterkallatUttag",
+    31: "ppAvkastning",
+    32: "ppArvsvinst",
+    33: "ppVardeforandring",
+    34: "ppForvaltningskostnad",
     35: "pbhPp",
+    36: "garpBehallning",
 }
 
 
@@ -68,8 +83,9 @@ def extract(wb) -> dict:
         "source": f"{SHEET}, rows {FIRST_DATA_ROW}+ - cached results of the VBA functions called as worksheet UDFs",
         "note": (
             "One typfall, earning above the contribution ceiling every year. Validates pgi, "
-            "ipavgift, ppavgift and gpavgift against the original without Excel. Column 42 "
-            "(ATP points) is excluded because its formula adds RAND()."
+            "ipavgift, ppavgift and gpavgift against the original without Excel, and -- through "
+            "the decomposed balance columns -- the capital accumulation behind IP_ and ppkassa. "
+            "Column 42 (ATP points) is excluded because its formula adds RAND()."
         ),
         "referenceYear": round_sig(sheet.num(4, 2)),
         "shareOfNewSystem": round_sig(sheet.num(4, 10)),
