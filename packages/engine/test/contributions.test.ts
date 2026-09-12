@@ -13,6 +13,7 @@ import {
   PgiResult,
   riktage,
 } from "../src/pension/contributions.js";
+import type { PgiResultKind } from "../src/pension/contributions.js";
 
 /**
  * The Brutto sheet's cached values. Its formulas call PGI, IPavgift, ppavgift
@@ -213,7 +214,7 @@ describe("pgi below and around the ceiling", () => {
   const pbb = 57_300;
   const ibb = 76_200;
   const fhb = 58_500;
-  const of = (income: number, typ = PgiResult.Income) =>
+  const of = (income: number, typ: PgiResultKind = PgiResult.Income) =>
     pgi(year, income, pbb, ibb, fhb, context, typ, 40, 0);
 
   it("gives nothing below the floor", () => {
