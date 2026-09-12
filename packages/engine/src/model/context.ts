@@ -92,6 +92,12 @@ export interface ModelContext {
    * AKAP-KR ties its higher premium to the LAS age, which is this plus three.
    */
   readonly riktage: number;
+  /**
+   * `RNG_dela`: how a cohabiting household's benefits are reported -- 1 the
+   * household's combined amount, 2 the individual's, 3 an equal split between
+   * the spouses. At the default 2 every spouse term in BTP and SBTP is inert.
+   */
+  readonly dela: number;
   /** `rng_Temp_Tjp_Uttag`: years of temporary occupational withdrawal; 0 is lifelong. */
   readonly tempTjpUttag: number;
   /** `rng_Temp_IPS_Uttag`: the same for private saving. */
@@ -138,6 +144,7 @@ export function defaultContext(overrides: Partial<ModelContext> = {}): ModelCont
     occupationalInheritanceGains: workbookDefault("rng_Arvsvinster_TJP", 1),
     flexPension: workbookDefault("rng_FlexPens", 0),
     riktage: 66,
+    dela: workbookDefault("RNG_dela", 2),
     tempTjpUttag: workbookDefault("rng_Temp_Tjp_Uttag", 0),
     tempIpsUttag: workbookDefault("rng_Temp_IPS_Uttag", 0),
     adjustOccupationalDivisor: workbookDefault("Rng_ddelat", 0) === 1,
