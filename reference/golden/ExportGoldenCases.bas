@@ -15,7 +15,13 @@ Attribute VB_Name = "ExportGoldenCases"
 ' Retirement ages are clamped to each cohort's lowest permitted age, read from
 ' the Nyckeltal sheet. Below that the model opens a Yes/No dialog mid-run and,
 ' if answered Yes, silently changes the case -- which would put an input in the
-' file that did not produce the output beside it.
+' file that did not produce the output beside it. It also trips Mcalc's guard at
+' VBA_go.bas:529, which exits without restoring automatic calculation.
+'
+' ExportGoldenCasesFromSheet writes the CSV from whatever is already on the
+' Mikrosim sheet, without running anything. Use it if a run halts part way: the
+' batch runner writes each row's results as it goes, so a halted run still has
+' every completed case on the sheet.
 '==============================================================================
 Option Explicit
 
@@ -26,6 +32,9 @@ Private Const COL_FIRST_OUTPUT As Long = 13    ' M: Slutlön
 Private Const COL_LAST_OUTPUT As Long = 24     ' X: Disponibel inkomst
 Private Const CELL_FROM_ROW As String = "P3"
 Private Const CELL_UNTIL_ROW As String = "U3"
+' Rows per call to the batch runner. Small enough that a halt costs little,
+' large enough that the per-call overhead stays out of the way.
+Private Const CHUNK_ROWS As Long = 25
 
 Private mCases() As Variant
 Private mCaseCount As Long
@@ -54,8 +63,12 @@ Public Sub ExportGoldenCases()
 
     ' Clear anything already on the sheet, inputs and outputs alike, so a
     ' shorter run cannot leave a previous run's results behind.
-    ws.Range(ws.Cells(MIKROSIM_FIRST_DATA_ROW, COL_FIRST_INPUT), _
-             ws.Cells(ws.Rows.Count, COL_LAST_OUTPUT)).ClearContents
+    '
+    ' Bounded deliberately. Clearing to ws.Rows.Count is about 24 million cells,
+    ' which is slow and leaves Excel with a very large dirty range -- and the
+    ' model's own calculation watchdog allows only 0.2 seconds for the sheet to
+    ' settle before it hits a Stop (mdlIndataInputOutput.bas:33).
+    ClearPreviousRun ws, mCaseCount
 
     For i = 1 To mCaseCount
         For c = 0 To COL_LAST_INPUT - COL_FIRST_INPUT
@@ -63,18 +76,120 @@ Public Sub ExportGoldenCases()
         Next c
     Next i
 
-    ws.Range(CELL_FROM_ROW).Value = MIKROSIM_FIRST_DATA_ROW
-    ws.Range(CELL_UNTIL_ROW).Value = MIKROSIM_FIRST_DATA_ROW + mCaseCount - 1
-
     Application.ScreenUpdating = True
 
-    ' The model's own batch runner: reads each input row, runs Mcalc, writes the
-    ' results beside it.
-    InputXGetY
+    ' Run in chunks rather than as one 295-row call. The batch runner writes
+    ' results as it goes either way, but chunking means a halt costs one chunk,
+    ' the calculation mode is put back between them, and progress is visible.
+    Dim firstRow As Long, lastRow As Long, chunkEnd As Long
+    firstRow = MIKROSIM_FIRST_DATA_ROW
+    lastRow = MIKROSIM_FIRST_DATA_ROW + mCaseCount - 1
+
+    Do While firstRow <= lastRow
+        chunkEnd = firstRow + CHUNK_ROWS - 1
+        If chunkEnd > lastRow Then chunkEnd = lastRow
+
+        ws.Range(CELL_FROM_ROW).Value = firstRow
+        ws.Range(CELL_UNTIL_ROW).Value = chunkEnd
+
+        ' Mcalc sets calculation to manual on its third line and only restores
+        ' it at its normal end (VBA_go.bas:523 and :2834); the guard at :529
+        ' exits in between. Putting it back before each chunk keeps one such
+        ' case from affecting the rest.
+        Application.Calculation = xlCalculationAutomatic
+
+        ' The model's own batch runner: reads each input row, runs Mcalc,
+        ' writes the results beside it.
+        InputXGetY
+
+        Application.Calculation = xlCalculationAutomatic
+        Application.StatusBar = "Typfall " & (chunkEnd - MIKROSIM_FIRST_DATA_ROW + 1) & _
+                                " of " & mCaseCount & " done"
+        firstRow = chunkEnd + 1
+    Loop
+
+    ws.Range(CELL_FROM_ROW).Value = MIKROSIM_FIRST_DATA_ROW
+    ws.Range(CELL_UNTIL_ROW).Value = lastRow
+    Application.StatusBar = False
 
     WriteCsv savePath, ws, mCaseCount
     MsgBox mCaseCount & " cases exported to" & vbCrLf & savePath, vbInformation
 End Sub
+
+
+'==============================================================================
+' Writes the CSV from whatever is already on the Mikrosim sheet.
+'
+' Nothing is recomputed. Use this when a run halted part way -- the batch runner
+' writes each row's results beside it as it goes, so every case that finished is
+' still there. Rows with no output are left out.
+'==============================================================================
+Public Sub ExportGoldenCasesFromSheet()
+    Dim ws As Worksheet
+    Dim savePath As String
+    Dim completed As Long
+
+    Set ws = ThisWorkbook.Worksheets("Mikrosim")
+    completed = CompletedRows(ws)
+
+    If completed = 0 Then
+        MsgBox "No completed rows found on the Mikrosim sheet." & vbCrLf & _
+               "Columns M to X are empty from row " & MIKROSIM_FIRST_DATA_ROW & " on.", vbExclamation
+        Exit Sub
+    End If
+
+    savePath = Application.GetSaveAsFilename( _
+        InitialFileName:="golden-cases.csv", _
+        FileFilter:="CSV files (*.csv), *.csv", _
+        Title:="Save reference results as")
+    If VarType(savePath) = vbBoolean Then Exit Sub
+
+    WriteCsv savePath, ws, completed
+    MsgBox completed & " completed cases exported to" & vbCrLf & savePath, vbInformation
+End Sub
+
+
+' Clears the input and output block, bounded to the rows that could hold data:
+' whatever the sheet already used, or this run's case count, whichever is more.
+Private Sub ClearPreviousRun(ByVal ws As Worksheet, ByVal caseCount As Long)
+    Dim lastRow As Long
+    lastRow = ws.UsedRange.Row + ws.UsedRange.Rows.Count - 1
+    If lastRow < MIKROSIM_FIRST_DATA_ROW + caseCount Then
+        lastRow = MIKROSIM_FIRST_DATA_ROW + caseCount
+    End If
+    lastRow = lastRow + 10      ' a margin, in case the used range under-reports
+
+    ws.Range(ws.Cells(MIKROSIM_FIRST_DATA_ROW, COL_FIRST_INPUT), _
+             ws.Cells(lastRow, COL_LAST_OUTPUT)).ClearContents
+End Sub
+
+
+' How many consecutive rows from the first data row carry both an input and a
+' result. A row whose output columns are all empty ends the count -- a halted
+' run leaves exactly that.
+Private Function CompletedRows(ByVal ws As Worksheet) As Long
+    Dim r As Long, c As Long
+    Dim hasOutput As Boolean
+
+    r = MIKROSIM_FIRST_DATA_ROW
+    Do
+        ' A bound, so a sheet in an odd state cannot walk to row a million.
+        If r > MIKROSIM_FIRST_DATA_ROW + 100000 Then Exit Do
+        If Len(Trim$(CStr(ws.Cells(r, COL_FIRST_INPUT).Value))) = 0 Then Exit Do
+
+        hasOutput = False
+        For c = COL_FIRST_OUTPUT To COL_LAST_OUTPUT
+            If Len(Trim$(CStr(ws.Cells(r, c).Value))) > 0 Then
+                hasOutput = True
+                Exit For
+            End If
+        Next c
+        If Not hasOutput Then Exit Do
+
+        r = r + 1
+    Loop
+    CompletedRows = r - MIKROSIM_FIRST_DATA_ROW
+End Function
 
 
 '--- case design -------------------------------------------------------------

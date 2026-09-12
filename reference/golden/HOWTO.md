@@ -31,9 +31,9 @@ re-used on every subsequent build.
 4. **Run it.** Still in the VBA editor, press `F5` (or **Run → Run Sub/UserForm**) with
    `ExportGoldenCases` selected. Excel asks where to save the CSV.
 
-5. **Wait.** It runs roughly 400 typfall through the model one at a time. Expect several minutes;
-   Excel may look unresponsive while it works. A dialog reporting the number of cases means it
-   finished.
+5. **Wait.** It runs **295** typfall through the model, twenty-five at a time. Expect a couple of
+   hours; Excel will look unresponsive while it works, and the status bar shows how far it has got.
+   A dialog reporting the number of cases means it finished.
 
 6. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
 
@@ -59,7 +59,36 @@ Retirement ages are clamped to each cohort's lowest permitted age, read from the
 sheet. Below that the model opens a Yes/No dialog mid-run and, answered Yes, quietly changes the
 case — which would write an input into the file that did not produce the output beside it.
 
-## If something goes wrong
+## If the run halts in the VBA debugger
+
+This has happened, and it is worth knowing it is not a failure.
+
+The workbook has its own breakpoint: `Stop` at line 33 of `mdlIndataInputOutput`, inside
+`WaitIfCalculationStateIsNotDone`, with the author's own comment beside it — *"Should never happen,
+the full rebuild should fix the calculation state"*. It fires when Excel has not finished
+recalculating within **0.2 seconds** (two 0.1-second waits) of being asked. On a sheet with a lot of
+dirty cells that is a hair-trigger, not a fault, and it is the workbook's code rather than this
+macro's.
+
+**Nothing is lost when it fires.** The batch runner writes each row's results beside it as it goes,
+so every case that finished is still on the `Mikrosim` sheet.
+
+To recover:
+
+1. In the VBA editor: **Run → Reset**.
+2. Open the Immediate window (`Ctrl+G`) and run this one line, which puts back the application
+   state the model changes while it runs:
+   ```
+   Application.Calculation = xlCalculationAutomatic: Application.EnableEvents = True: Application.ScreenUpdating = True
+   ```
+3. Run **`ExportGoldenCasesFromSheet`**. It writes the CSV from what is already on the sheet, runs
+   nothing, and stops at the first row with no results — so a half-finished row is left out rather
+   than exported as zeros.
+
+If you would rather finish the remaining cases first, set `P3` and `U3` on the `Mikrosim` sheet to
+the rows you still want and call `InputXGetY` directly, then export from the sheet.
+
+## If something else goes wrong
 
 **A dialog appears mid-run.** Note what it says and stop the run; the resulting CSV may contain
 rows whose inputs and outputs disagree. Please report it rather than working around it.
