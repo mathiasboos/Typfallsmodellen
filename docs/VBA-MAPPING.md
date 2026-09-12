@@ -173,6 +173,28 @@ inheritance gains, indexation, management cost and the closing balance are each 
 original across ~50 years. That sheet never draws a pension, so **none of the drawdown branches are
 verified** — those wait on the golden files.
 
+## Tilläggspension — `src/pension/atp.ts`
+
+| VBA | TypeScript |
+|---|---|
+| `tp_`, `tp_faktor`, `pts`, `fnorm` | `tp`, `tpFaktor`, `pts`, `fnorm` |
+
+### The withdrawal factor is applied twice
+
+`tp_` runs `ATP = ATP * faktor` and then returns `ATP * andel_ * faktor`. It reads as a leftover
+from the 2021 rewrite that cut the function down to the first withdrawal — most of the original
+body sits commented out between those two lines. At exactly 65 the factor is 1 and it makes no
+difference; at any other retirement age it squares the adjustment.
+
+Kept, marked, and asserted in a test. It affects only cohorts born 1953 or earlier. The golden
+files will confirm it.
+
+### One coupling made explicit
+
+`tp_` reads the price base amount as `pbb(age)` off the module-level array, using the **global**
+loop age rather than its own `alder` argument. Every call site passes the same value for both, so
+the port takes `pbb` as a parameter.
+
 ## A precision trap in the extracted data
 
 The extractor originally rounded every value to twelve significant digits, to keep the generated
