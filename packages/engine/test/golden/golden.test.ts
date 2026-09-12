@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { compareCase, checkLabels } from "./compare.js";
+import { blocksOf, caseSet, resolveCaseSet } from "./caseSets.js";
 import { GOLDEN_PATH, compareGoldenFile, blockOf, goldenFileExists } from "./harness.js";
 import type { ComparisonRun } from "./harness.js";
 import { readSettings, toInput } from "./map.js";
@@ -117,11 +118,44 @@ describe("the golden-file harness", () => {
     expect(checkLabels(shuffled, 0).length).toBeGreaterThan(0);
   });
 
-  it("knows which block a case number belongs to", () => {
-    expect(blockOf(1)).toBe("A");
-    expect(blockOf(144)).toBe("A");
-    expect(blockOf(145)).toBe("B");
-    expect(blockOf(295)).toBe("F");
+  it("knows which block a case number belongs to, in either set", () => {
+    const full = blocksOf("full");
+    expect(blockOf(1, full)).toBe("A");
+    expect(blockOf(144, full)).toBe("A");
+    expect(blockOf(145, full)).toBe("B");
+    expect(blockOf(295, full)).toBe("F");
+
+    const quick = blocksOf("quick");
+    expect(blockOf(32, quick)).toBe("A");
+    expect(blockOf(33, quick)).toBe("B");
+    expect(blockOf(61, quick)).toBe("F");
+
+    // Nothing to group by when the set is unknown.
+    expect(blockOf(1, [])).toBe("?");
+  });
+
+  it("generates the same cases the macro does", () => {
+    // The block totals are the contract the report's grouping rests on; if the
+    // macro's BuildQuickCases and caseSets.ts drift apart, the report labels
+    // the wrong cases.
+    expect(caseSet("quick")).toHaveLength(61);
+    expect(caseSet("full")).toHaveLength(295);
+    for (const name of ["quick", "full"] as const) {
+      const total = blocksOf(name).reduce((sum, b) => sum + b.count, 0);
+      expect(total, `${name} blocks do not add up to its cases`).toBe(caseSet(name).length);
+    }
+    expect(blocksOf("quick").map((b) => b.count)).toEqual([32, 12, 8, 4, 4, 1]);
+  });
+
+  it("picks a case set by its declared name, then by count", () => {
+    expect(resolveCaseSet("quick", 61)).toBe("quick");
+    expect(resolveCaseSet("full", 61)).toBe("full");      // the file's word wins
+    expect(resolveCaseSet(undefined, 61)).toBe("quick");
+    expect(resolveCaseSet(undefined, 295)).toBe("full");
+    // A halted run is labelled from the smallest set that could hold it.
+    expect(resolveCaseSet(undefined, 40)).toBe("quick");
+    expect(resolveCaseSet(undefined, 294)).toBe("full");
+    expect(resolveCaseSet(undefined, 5000)).toBeNull();
   });
 
   it("scores all twelve columns, and says so when a Table 1 row is missing", () => {

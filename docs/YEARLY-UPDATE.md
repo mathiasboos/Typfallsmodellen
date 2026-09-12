@@ -85,6 +85,8 @@ Mirror each new VBA function in `packages/engine/src/`, keeping the 1:1 structur
 npm test              # unit tests, including the cached-table fixtures
 npm run check:transpile   # the 32 tax functions still match Skatteregler.bas
 npm run check:riksnorm    # riksnorm.json still matches Bidrag.bas
+npm run check:ages    # the per-cohort retirement ages still match Nyckeltal
+npm run check:names   # the sheet addresses the golden-file export depends on
 npm run compare       # engine vs. the Excel golden files in reference/
 ```
 

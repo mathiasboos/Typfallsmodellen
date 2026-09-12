@@ -544,6 +544,44 @@ runner writes Table 1 only. Nor does it reach a part-year retirement, a hand-ent
 private saving, children, or a spouse — the generated cases use none of those, so those paths stay
 on unit tests.
 
+### Where the workbook's addresses are
+
+The golden-file export fills the Mikrosim sheet and reads the results back, and the comparison
+harness decodes those results by position. Both rest on where things sit in the workbook, read out
+of `source/Typfallsmodellen.xlsb` directly (the `BrtName` records in `xl/workbook.bin`) and asserted
+by `npm run check:names`:
+
+| Defined name | Address | What depends on it |
+|---|---|---|
+| `rngXTopleft` | B7 | the ten input columns, data from row 8 |
+| `rngYtopleft` | M7 | the twelve result columns |
+| `rngExecuteFromRow` / `rngExecuteUntilRow` | P3 / U3 | the batch runner's row range |
+| `rngTopXYOutput` | D28 | Table 1 **column D**, which every exported value is read from |
+| `rng_Top_tabell1` | C24 | Table 1's first column, so column D is C + 1 |
+
+Those addresses confirm the column decode independently of the `Select Case` in `InputXGetY`: its
+row offsets −3, 1, 6, 9, 15, 16 and 18 from D28 land on Slutlön A24, IP A28, Tot_Allmänpension A33
+(the row the runner skips), Tot_Brutto A36, Efterskatt A42, Bidrag A43 and Disp_efterskatt A45 —
+exactly the rows `rng_Tabell1_*` name.
+
+### `riktage(year)` is not `Rng_riktL`
+
+The VBA has a `riktage(year, typ)` function giving the lowest pension age and the riktålder for an
+**income year**. It also has two cells, `Rng_riktL` and `Rng_riktage`, that look the same two values
+up on the Nyckeltal sheet by **cohort** (columns 121 and 122, "Lägsta ålder" and "riktalder").
+
+`startsetup` and `Mcalc` read the cells (VBA_go.bas 155 and 781–782), not the function, and the
+author flags it twice — "för aktuell årskull" and "Nedan avseende årskull men lagstiftningen ser
+till inkomstår". They are not interchangeable: for 38 of the 86 cohorts the model offers, the
+function's answer depends on which retirement age is chosen where the cell's does not, and for
+several it is lower. A 1970 typfall's lowest age is 65 on the sheet; `riktage(1970 + 64, 0)` gives
+64.
+
+So `src/pension/retirementAges.ts` serves the cohort table, and `riktage` is kept only for the two
+places the VBA genuinely uses it: a pinned expenditure-rule year (VBA_go.bas 161 and 789) and
+`bostadstillagg.ts`, which is keyed on the benefit year. `npm run check:ages` re-reads the table
+from the workbook.
+
 ### The second pass at the retirement age
 
 `Mcalc` computes tax, benefits and disposable income twice for the retirement year: once in the age

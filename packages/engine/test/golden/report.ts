@@ -8,7 +8,7 @@
  */
 
 import type { CaseComparison, CellStatus } from "./compare.js";
-import { BLOCKS, blockOf } from "./harness.js";
+import { blockOf } from "./harness.js";
 import type { ComparisonRun } from "./harness.js";
 
 const DIVERGENT: readonly CellStatus[] = ["off", "bad", "missing"];
@@ -132,7 +132,13 @@ export function formatReport(comparison: ComparisonRun, worstLimit = 20): string
   out.push("");
   out.push(`- model: ${settings.modelVersion}`);
   out.push(`- exported: ${settings.exportedAt}`);
-  out.push(`- cases: ${cases.length} (${BLOCKS.map((b) => `${b.name} ${b.count}`).join(", ")} when complete)`);
+  const blocks = comparison.blocks;
+  out.push(
+    `- cases: ${cases.length}` +
+      (blocks.length > 0
+        ? ` of the ${comparison.caseSet} set (${blocks.map((b) => `${b.name} ${b.count}`).join(", ")} when complete)`
+        : " (no case set recognised, so divergences are not grouped by block)"),
+  );
   out.push(`- amounts: ${settings.monthly ? "per month" : "per year"}, Table 1 column D (adjusted)`);
   out.push(`- ran in ${(comparison.elapsedMs / 1000).toFixed(1)}s`);
   out.push("");
@@ -221,7 +227,7 @@ export function formatReport(comparison: ComparisonRun, worstLimit = 20): string
     out.push("## Where the divergences sit");
     out.push("");
     for (const [title, keyOf] of [
-      ["block", (c: CaseComparison) => blockOf(c.index)],
+      ["block", (c: CaseComparison) => blockOf(c.index, blocks)],
       ["cohort", (c: CaseComparison) => String(c.inputs[0])],
       ["agreement", (c: CaseComparison) => SCHEME_NAMES[c.inputs[9] ?? 0] ?? String(c.inputs[9])],
       ["retirement age", (c: CaseComparison) => String(c.inputs[2])],
@@ -264,7 +270,7 @@ export function formatReport(comparison: ComparisonRun, worstLimit = 20): string
     for (const c of worst) {
       const [born, start, retire, salary, , , , , , scheme] = c.inputs;
       out.push(
-        `### Case ${c.index} (block ${blockOf(c.index)}, line ${c.line}) — born ${born}, ` +
+        `### Case ${c.index} (block ${blockOf(c.index, blocks)}, line ${c.line}) — born ${born}, ` +
           `${start}→${retire}, ${kr(salary ?? 0)} kr/yr, ${SCHEME_NAMES[scheme ?? 0] ?? scheme}`,
       );
       out.push("");

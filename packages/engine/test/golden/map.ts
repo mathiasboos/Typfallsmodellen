@@ -40,6 +40,8 @@ export interface GoldenSettings {
   readonly compareTo: 0 | 1 | 2;
   /** `Gift`, from the Start sheet. Applies to every case. */
   readonly married: boolean;
+  /** `# caseset`: which set the macro generated, when it said. */
+  readonly caseSet: string | undefined;
   /** The model version string, for the report. */
   readonly modelVersion: string;
   readonly exportedAt: string;
@@ -162,6 +164,7 @@ export function readSettings(file: GoldenFile): GoldenSettings {
     monthly: asBoolean(belopp12, false),
     compareTo: compareToValue as 0 | 1 | 2,
     married: asBoolean(gift, defaultInput().married),
+    caseSet: lookup(file, "caseset"),
     modelVersion: lookup(file, "model") ?? "unknown",
     exportedAt: lookup(file, "exported") ?? "unknown",
     assumed,

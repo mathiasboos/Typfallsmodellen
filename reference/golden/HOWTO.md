@@ -30,23 +30,48 @@ re-used on every subsequent build.
    right-click it → **Remove ExportGoldenCases…** → **No** (do not export it) before importing,
    or the import lands beside it as `ExportGoldenCases1` and you will run the wrong one.
 
-4. **Run it.** Still in the VBA editor, press `F5` (or **Run → Run Sub/UserForm**) with
-   `ExportGoldenCases` selected. Excel asks where to save the CSV.
+4. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
+   `F5` (or **Run → Run Sub/UserForm**). Excel asks where to save the CSV.
 
-5. **Wait.** It runs **295** typfall through the model, twenty-five at a time. Expect a couple of
-   hours; Excel will look unresponsive while it works, and the status bar shows how far it has got.
-   A dialog reporting the number of cases means it finished.
+5. **Wait.** It runs **61** typfall through the model, twenty-five at a time — about half an hour.
+   Excel will look unresponsive while it works, and the status bar shows how far it has got. A
+   dialog reporting the number of cases means it finished.
 
-6. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
+   **The CSV is rewritten after every chunk**, so the file on disk is always complete for the cases
+   that have finished. A halt costs the chunk in progress, not the run.
 
-7. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
+6. **Save the workbook** if you might want to add the rest later. The results live on the `Mikrosim`
+   sheet, and closing without saving loses them — which is what makes `ExportGoldenCasesResume`
+   possible or impossible.
+
+7. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
+
+8. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
    you.
+
+### The other entry points
+
+| Sub | What it does |
+|---|---|
+| `ExportGoldenCasesQuick` | 61 cases, ~30 min. The boundaries that carry the most information. |
+| `ExportGoldenCases` | all 295, a couple of hours. Maximum coverage. |
+| `ExportGoldenCasesResume` | keeps the inputs on the sheet and runs only the rows without results. Use it after a halt, or to work through the full set in sittings. |
+| `ExportGoldenCasesFromSheet` | writes the CSV from what is on the sheet, recomputing nothing. |
+| `ReportMikrosimState` | says what is actually on the sheet. **Start here when something looks wrong.** |
+
+To go from the quick set to the full one: run `ExportGoldenCases` and let it re-run everything, or
+run the quick set, save, and add cases by hand — there is no merge step, because the CSV is always
+written from the sheet as a whole.
 
 ## What the macro does
 
 It fills the `Mikrosim` sheet — the batch runner already built into the workbook — with a spread of
 cases, calls the model's own `InputXGetY` over them, and writes the inputs and results to CSV
 along with the model version and the settings in force.
+
+Where things sit on the sheet is read from the workbook's own defined names (`rngXTopleft`,
+`rngYtopleft`) rather than hardcoded, so a moved column in a future release cannot send it looking
+in the wrong place. `npm run check:names` asserts those addresses from the committed workbook.
 
 The cases are chosen for **coverage of rule boundaries**, not for row count. A thousand ordinary
 cases would prove less than a few hundred that straddle the places where the rules change:
@@ -148,6 +173,17 @@ the rows you still want and call `InputXGetY` directly, then export from the she
 
 ## If something else goes wrong
 
+**Run `ReportMikrosimState` first.** It prints the resolved layout, the used range, how many rows
+carry inputs, how many carry results, and the first rows in full. Nearly every question below is
+answered by it in one click.
+
+**"No completed rows found on the Mikrosim sheet."** The results are not there. Either the workbook
+was closed without saving after a run — the batch runner writes to the sheet, and the sheet is only
+kept if you save — or the sheet was cleared. The message says whether the inputs are still there:
+if they are, `ExportGoldenCasesResume` will finish the job; if not, start again with
+`ExportGoldenCasesQuick`. This is also why the CSV is now written after every chunk: the file on
+disk is the copy that survives.
+
 **A dialog appears mid-run.** Note what it says and stop the run; the resulting CSV may contain
 rows whose inputs and outputs disagree. Please report it rather than working around it.
 
@@ -168,6 +204,6 @@ This macro was written without access to Excel. Read it before you run it — it
 and it writes to the `Mikrosim` sheet (a scratch sheet the model provides for exactly this) and to
 the CSV you choose. It does not modify the model or save the workbook.
 
-It has been run once, against the 2025 workbook: 294 of the 295 cases completed before the
-workbook's own watchdog tripped, and the run was recovered with `ExportGoldenCasesFromSheet` as
-described above.
+It has been run once against the 2025 workbook. 294 of the 295 cases completed before the
+workbook's own watchdog tripped, and the results were then lost with the unsaved workbook — because
+that version wrote the CSV only at the end. That is what the per-chunk write fixes.

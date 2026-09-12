@@ -34,7 +34,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 |---|---|---|
 | 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
-| 2. Golden-file harness vs. Excel | awaiting the CSV | harness written and `npm run compare` wired up; needs `reference/golden/golden-cases.csv` out of Excel |
+| 2. Golden-file harness vs. Excel | awaiting the CSV | harness written and `npm run compare` wired up; needs `reference/golden/golden-cases.csv` out of Excel — `ExportGoldenCasesQuick`, about half an hour |
 | 3. Normal-mode website | | |
 | 4. Advanced mode | | |
 | 5. Polish, CI, deploy | | |
@@ -51,6 +51,8 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 542 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
+| The lowest pension age and riktålder, per cohort | re-read from the workbook by `npm run check:ages` | 128 cohorts match |
+| The workbook addresses the export and the harness depend on | re-read from the workbook by `npm run check:names` | 11 defined names match |
 | The social assistance norm for one 2025 household | the workbook author's own `verb()` comment | 46 240 kr/month, exact |
 
 The `Brutto` fixture covers the earning phase only — that sheet never draws a pension, and it

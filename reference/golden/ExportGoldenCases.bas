@@ -7,6 +7,23 @@ Attribute VB_Name = "ExportGoldenCases"
 '
 ' See reference/golden/HOWTO.md in the web port's repository for how to use it.
 '
+' Entry points:
+'
+'   ExportGoldenCasesQuick      61 cases, about half an hour. The rule
+'                               boundaries that carry the most information.
+'   ExportGoldenCases           all 295 cases. A couple of hours.
+'   ExportGoldenCasesResume     keeps the inputs already on the sheet and runs
+'                               only the rows without results.
+'   ExportGoldenCasesFromSheet  writes the CSV from what is on the sheet,
+'                               recomputing nothing.
+'   ReportMikrosimState         says what is actually on the sheet. Start here
+'                               when something looks wrong.
+'
+' The CSV is rewritten after every chunk, not once at the end, so a halt, a
+' crash or a workbook closed without saving still leaves a complete file for
+' every case that finished. An earlier version wrote it only on the way out,
+' and a halted run left two hours of work in an unsaved workbook.
+'
 ' The cases deliberately straddle rule boundaries -- cohorts either side of 1938
 ' and 1954 for ATP, salaries around the garantipension phase-out and the state
 ' tax threshold, every occupational pension agreement -- because coverage is
@@ -17,43 +34,207 @@ Attribute VB_Name = "ExportGoldenCases"
 ' if answered Yes, silently changes the case -- which would put an input in the
 ' file that did not produce the output beside it. It also trips Mcalc's guard at
 ' VBA_go.bas:529, which exits without restoring automatic calculation.
-'
-' ExportGoldenCasesFromSheet writes the CSV from whatever is already on the
-' Mikrosim sheet, without running anything. Use it if a run halts part way: the
-' batch runner writes each row's results as it goes, so a halted run still has
-' every completed case on the sheet.
 '==============================================================================
 Option Explicit
 
-Private Const MIKROSIM_FIRST_DATA_ROW As Long = 8
-Private Const COL_FIRST_INPUT As Long = 2      ' B: Födelseår
-Private Const COL_LAST_INPUT As Long = 11      ' K: Välj tjänstepension
-Private Const COL_FIRST_OUTPUT As Long = 13    ' M: Slutlön
-Private Const COL_LAST_OUTPUT As Long = 24     ' X: Disponibel inkomst
-Private Const CELL_FROM_ROW As String = "P3"
-Private Const CELL_UNTIL_ROW As String = "U3"
-' Rows per call to the batch runner. Small enough that a halt costs little,
-' large enough that the per-call overhead stays out of the way.
+' The sheet's geometry is read from the workbook's own defined names. These are
+' what those names resolve to in the 2025 workbook, used only if a name is
+' missing -- so a renamed range degrades to the layout we know rather than to a
+' silent wrong answer.
+Private Const FALLBACK_HEADER_ROW As Long = 7           ' rngXTopleft is B7
+Private Const FALLBACK_FIRST_INPUT_COL As Long = 2      ' B: Fodelsear
+Private Const FALLBACK_FIRST_OUTPUT_COL As Long = 13    ' M: rngYtopleft is M7
+Private Const FALLBACK_FROM_ROW As String = "P3"        ' rngExecuteFromRow
+Private Const FALLBACK_UNTIL_ROW As String = "U3"       ' rngExecuteUntilRow
+
+Private Const INPUT_COLUMNS As Long = 10                ' B to K
+Private Const OUTPUT_COLUMNS As Long = 12               ' M to X
+
+' Rows per call to the batch runner. Small enough that a halt costs little and
+' the CSV is refreshed often, large enough that the per-call overhead stays out
+' of the way.
 Private Const CHUNK_ROWS As Long = 25
+
+' A bound on every scan down the sheet, so an odd sheet state cannot walk to
+' row a million.
+Private Const MAX_SCAN_ROWS As Long = 100000
+
+' Where the inputs and results sit on the Mikrosim sheet.
+Private Type MikrosimLayout
+    HeaderRow As Long
+    FirstDataRow As Long
+    FirstInputCol As Long
+    LastInputCol As Long
+    FirstOutputCol As Long
+    LastOutputCol As Long
+    ResolvedFromNames As Boolean
+End Type
 
 Private mCases() As Variant
 Private mCaseCount As Long
+Private mCaseSet As String
+
+
+'--- entry points -------------------------------------------------------------
+
+Public Sub ExportGoldenCasesQuick()
+    RunExport "quick"
+End Sub
 
 
 Public Sub ExportGoldenCases()
+    RunExport "full"
+End Sub
+
+
+'==============================================================================
+' Runs the rows that have inputs but no results yet.
+'
+' Nothing is cleared and no cases are generated: whatever is on the sheet stays.
+' Use it after a halt, or to work through the full set in sittings. The workbook
+' has to have been saved for the inputs to still be there in a new session.
+'==============================================================================
+Public Sub ExportGoldenCasesResume()
     Dim ws As Worksheet
+    Dim layout As MikrosimLayout
+    Dim savePath As String
+    Dim withInputs As Long, withOutputs As Long
+
+    Set ws = ThisWorkbook.Worksheets("Mikrosim")
+    layout = ResolveLayout()
+    CountRows ws, layout, withInputs, withOutputs
+
+    If withInputs = 0 Then
+        MsgBox "There are no inputs on the Mikrosim sheet to resume from." & vbCrLf & vbCrLf & _
+               "Run ExportGoldenCasesQuick or ExportGoldenCases to start a run, or " & _
+               "ReportMikrosimState to see what is on the sheet.", vbExclamation
+        Exit Sub
+    End If
+
+    If withOutputs >= withInputs Then
+        MsgBox "All " & withInputs & " rows already have results." & vbCrLf & _
+               "Run ExportGoldenCasesFromSheet to write the CSV.", vbInformation
+        Exit Sub
+    End If
+
+    savePath = AskForPath()
+    If Len(savePath) = 0 Then Exit Sub
+
+    RunChunks ws, layout, savePath, _
+              layout.FirstDataRow + withOutputs, layout.FirstDataRow + withInputs - 1, withInputs
+
+    CountRows ws, layout, withInputs, withOutputs
+    MsgBox withOutputs & " of " & withInputs & " cases now have results." & vbCrLf & _
+           savePath, vbInformation
+End Sub
+
+
+'==============================================================================
+' Writes the CSV from whatever is already on the Mikrosim sheet.
+'
+' Nothing is recomputed. Rows with no result are left out.
+'==============================================================================
+Public Sub ExportGoldenCasesFromSheet()
+    Dim ws As Worksheet
+    Dim layout As MikrosimLayout
+    Dim savePath As String
+    Dim withInputs As Long, withOutputs As Long
+
+    Set ws = ThisWorkbook.Worksheets("Mikrosim")
+    layout = ResolveLayout()
+    CountRows ws, layout, withInputs, withOutputs
+
+    If withOutputs = 0 Then
+        MsgBox EmptySheetMessage(layout, withInputs), vbExclamation
+        Exit Sub
+    End If
+
+    savePath = AskForPath()
+    If Len(savePath) = 0 Then Exit Sub
+
+    WriteCsv savePath, ws, layout, withOutputs
+    MsgBox withOutputs & " completed cases exported to" & vbCrLf & savePath, vbInformation
+End Sub
+
+
+'==============================================================================
+' Says what is actually on the Mikrosim sheet.
+'
+' Run this first when an export reports nothing to write. It resolves the same
+' geometry the export uses and reports what it finds there, so the answer comes
+' from the sheet rather than from guessing at a distance.
+'==============================================================================
+Public Sub ReportMikrosimState()
+    Dim ws As Worksheet
+    Dim layout As MikrosimLayout
+    Dim withInputs As Long, withOutputs As Long
+    Dim msg As String
+    Dim r As Long, c As Long
+    Dim sample As String
+
+    Set ws = ThisWorkbook.Worksheets("Mikrosim")
+    layout = ResolveLayout()
+    CountRows ws, layout, withInputs, withOutputs
+
+    msg = "Mikrosim sheet" & vbCrLf & vbCrLf
+    msg = msg & "Layout " & IIf(layout.ResolvedFromNames, _
+                "(from the workbook's defined names):", _
+                "(FALLBACK -- a defined name is missing):") & vbCrLf
+    msg = msg & "  header row      " & layout.HeaderRow & vbCrLf
+    msg = msg & "  first data row  " & layout.FirstDataRow & vbCrLf
+    msg = msg & "  inputs          " & ColLetter(layout.FirstInputCol) & " to " & _
+                ColLetter(layout.LastInputCol) & vbCrLf
+    msg = msg & "  results         " & ColLetter(layout.FirstOutputCol) & " to " & _
+                ColLetter(layout.LastOutputCol) & vbCrLf & vbCrLf
+
+    msg = msg & "Used range: " & ws.UsedRange.Address & vbCrLf & vbCrLf
+    msg = msg & "Rows with an input:  " & withInputs & vbCrLf
+    msg = msg & "Rows with a result:  " & withOutputs & vbCrLf & vbCrLf
+
+    If withInputs = 0 Then
+        msg = msg & "The sheet is empty. A run writes its results here as it goes, but " & _
+              "they are only kept if the workbook is saved -- closing without saving " & _
+              "loses them. Start a fresh run with ExportGoldenCasesQuick."
+    ElseIf withOutputs = 0 Then
+        msg = msg & "The inputs are there but nothing has been computed yet. " & _
+              "ExportGoldenCasesResume will run them."
+    ElseIf withOutputs < withInputs Then
+        msg = msg & "A run stopped part way. ExportGoldenCasesResume will finish it; " & _
+              "ExportGoldenCasesFromSheet will export the " & withOutputs & " that are done."
+    Else
+        msg = msg & "Every row has a result. ExportGoldenCasesFromSheet will write the CSV."
+    End If
+
+    ' The first two data rows in full, so a shifted column shows up immediately.
+    For r = layout.FirstDataRow To layout.FirstDataRow + 1
+        sample = sample & vbCrLf & "Row " & r & ":"
+        For c = layout.FirstInputCol To layout.LastOutputCol
+            sample = sample & " " & Trim$(CStr(ws.Cells(r, c).Value))
+        Next c
+    Next r
+    Debug.Print msg
+    Debug.Print sample
+
+    MsgBox msg & vbCrLf & vbCrLf & "The first rows are in the Immediate window (Ctrl+G).", _
+           vbInformation
+End Sub
+
+
+'--- the run ------------------------------------------------------------------
+
+Private Sub RunExport(ByVal caseSet As String)
+    Dim ws As Worksheet
+    Dim layout As MikrosimLayout
     Dim savePath As String
     Dim i As Long, c As Long
 
     Set ws = ThisWorkbook.Worksheets("Mikrosim")
+    layout = ResolveLayout()
 
-    savePath = Application.GetSaveAsFilename( _
-        InitialFileName:="golden-cases.csv", _
-        FileFilter:="CSV files (*.csv), *.csv", _
-        Title:="Save reference results as")
-    If VarType(savePath) = vbBoolean Then Exit Sub    ' user cancelled
+    savePath = AskForPath()
+    If Len(savePath) = 0 Then Exit Sub
 
-    BuildCases
+    BuildCases caseSet
     If mCaseCount = 0 Then
         MsgBox "No cases were generated.", vbExclamation
         Exit Sub
@@ -61,36 +242,48 @@ Public Sub ExportGoldenCases()
 
     Application.ScreenUpdating = False
 
-    ' Clear anything already on the sheet, inputs and outputs alike, so a
+    ' Clear anything already on the sheet, inputs and results alike, so a
     ' shorter run cannot leave a previous run's results behind.
     '
     ' Bounded deliberately. Clearing to ws.Rows.Count is about 24 million cells,
     ' which is slow and leaves Excel with a very large dirty range -- and the
     ' model's own calculation watchdog allows only 0.2 seconds for the sheet to
     ' settle before it hits a Stop (mdlIndataInputOutput.bas:33).
-    ClearPreviousRun ws, mCaseCount
+    ClearPreviousRun ws, layout, mCaseCount
 
     For i = 1 To mCaseCount
-        For c = 0 To COL_LAST_INPUT - COL_FIRST_INPUT
-            ws.Cells(MIKROSIM_FIRST_DATA_ROW + i - 1, COL_FIRST_INPUT + c).Value = mCases(c + 1, i)
+        For c = 0 To INPUT_COLUMNS - 1
+            ws.Cells(layout.FirstDataRow + i - 1, layout.FirstInputCol + c).Value = mCases(c + 1, i)
         Next c
     Next i
 
     Application.ScreenUpdating = True
 
-    ' Run in chunks rather than as one 295-row call. The batch runner writes
-    ' results as it goes either way, but chunking means a halt costs one chunk,
-    ' the calculation mode is put back between them, and progress is visible.
-    Dim firstRow As Long, lastRow As Long, chunkEnd As Long
-    firstRow = MIKROSIM_FIRST_DATA_ROW
-    lastRow = MIKROSIM_FIRST_DATA_ROW + mCaseCount - 1
+    RunChunks ws, layout, savePath, _
+              layout.FirstDataRow, layout.FirstDataRow + mCaseCount - 1, mCaseCount
 
-    Do While firstRow <= lastRow
-        chunkEnd = firstRow + CHUNK_ROWS - 1
+    MsgBox mCaseCount & " cases exported to" & vbCrLf & savePath, vbInformation
+End Sub
+
+
+'==============================================================================
+' Runs the batch runner over firstRow..lastRow, a chunk at a time.
+'
+' The CSV is rewritten after every chunk. Rewriting a few hundred rows costs
+' milliseconds, and it is what makes a halt cost one chunk rather than the run.
+'==============================================================================
+Private Sub RunChunks(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                      ByVal savePath As String, ByVal firstRow As Long, _
+                      ByVal lastRow As Long, ByVal totalCases As Long)
+    Dim chunkStart As Long, chunkEnd As Long
+    Dim done As Long
+
+    chunkStart = firstRow
+    Do While chunkStart <= lastRow
+        chunkEnd = chunkStart + CHUNK_ROWS - 1
         If chunkEnd > lastRow Then chunkEnd = lastRow
 
-        ws.Range(CELL_FROM_ROW).Value = firstRow
-        ws.Range(CELL_UNTIL_ROW).Value = chunkEnd
+        SetRunRange chunkStart, chunkEnd
 
         ' Mcalc sets calculation to manual on its third line and only restores
         ' it at its normal end (VBA_go.bas:523 and :2834); the guard at :529
@@ -103,96 +296,165 @@ Public Sub ExportGoldenCases()
         InputXGetY
 
         Application.Calculation = xlCalculationAutomatic
-        Application.StatusBar = "Typfall " & (chunkEnd - MIKROSIM_FIRST_DATA_ROW + 1) & _
-                                " of " & mCaseCount & " done"
-        firstRow = chunkEnd + 1
+
+        ' Save what we have before starting the next chunk, not at the end.
+        done = chunkEnd - layout.FirstDataRow + 1
+        WriteCsv savePath, ws, layout, done
+
+        Application.StatusBar = "Typfall " & done & " of " & totalCases & _
+                                " done -- CSV saved to " & savePath
+        chunkStart = chunkEnd + 1
     Loop
 
-    ws.Range(CELL_FROM_ROW).Value = MIKROSIM_FIRST_DATA_ROW
-    ws.Range(CELL_UNTIL_ROW).Value = lastRow
+    SetRunRange layout.FirstDataRow, lastRow
     Application.StatusBar = False
-
-    WriteCsv savePath, ws, mCaseCount
-    MsgBox mCaseCount & " cases exported to" & vbCrLf & savePath, vbInformation
 End Sub
 
 
+Private Sub SetRunRange(ByVal firstRow As Long, ByVal lastRow As Long)
+    NamedRange("rngExecuteFromRow", FALLBACK_FROM_ROW).Value = firstRow
+    NamedRange("rngExecuteUntilRow", FALLBACK_UNTIL_ROW).Value = lastRow
+End Sub
+
+
+'--- the sheet ----------------------------------------------------------------
+
 '==============================================================================
-' Writes the CSV from whatever is already on the Mikrosim sheet.
+' Where the inputs and results sit, from the workbook's own defined names.
 '
-' Nothing is recomputed. Use this when a run halted part way -- the batch runner
-' writes each row's results beside it as it goes, so every case that finished is
-' still there. Rows with no output are left out.
+' rngXTopleft is the top-left input label and rngYtopleft the first result
+' label; the batch runner itself reads both (mdlIndataInputOutput.bas:97 and
+' :189), so following them means the export cannot drift from the runner. In the
+' 2025 workbook they are B7 and M7.
 '==============================================================================
-Public Sub ExportGoldenCasesFromSheet()
-    Dim ws As Worksheet
-    Dim savePath As String
-    Dim completed As Long
+Private Function ResolveLayout() As MikrosimLayout
+    Dim layout As MikrosimLayout
+    Dim x As Range, y As Range
 
-    Set ws = ThisWorkbook.Worksheets("Mikrosim")
-    completed = CompletedRows(ws)
+    layout.ResolvedFromNames = True
 
-    If completed = 0 Then
-        MsgBox "No completed rows found on the Mikrosim sheet." & vbCrLf & _
-               "Columns M to X are empty from row " & MIKROSIM_FIRST_DATA_ROW & " on.", vbExclamation
-        Exit Sub
+    Set x = NamedRange("rngXTopleft", "")
+    If x Is Nothing Then
+        layout.HeaderRow = FALLBACK_HEADER_ROW
+        layout.FirstInputCol = FALLBACK_FIRST_INPUT_COL
+        layout.ResolvedFromNames = False
+    Else
+        layout.HeaderRow = x.Row
+        layout.FirstInputCol = x.Column
     End If
 
-    savePath = Application.GetSaveAsFilename( _
-        InitialFileName:="golden-cases.csv", _
-        FileFilter:="CSV files (*.csv), *.csv", _
-        Title:="Save reference results as")
-    If VarType(savePath) = vbBoolean Then Exit Sub
-
-    WriteCsv savePath, ws, completed
-    MsgBox completed & " completed cases exported to" & vbCrLf & savePath, vbInformation
-End Sub
-
-
-' Clears the input and output block, bounded to the rows that could hold data:
-' whatever the sheet already used, or this run's case count, whichever is more.
-Private Sub ClearPreviousRun(ByVal ws As Worksheet, ByVal caseCount As Long)
-    Dim lastRow As Long
-    lastRow = ws.UsedRange.Row + ws.UsedRange.Rows.Count - 1
-    If lastRow < MIKROSIM_FIRST_DATA_ROW + caseCount Then
-        lastRow = MIKROSIM_FIRST_DATA_ROW + caseCount
+    Set y = NamedRange("rngYtopleft", "")
+    If y Is Nothing Then
+        layout.FirstOutputCol = FALLBACK_FIRST_OUTPUT_COL
+        layout.ResolvedFromNames = False
+    Else
+        layout.FirstOutputCol = y.Column
     End If
-    lastRow = lastRow + 10      ' a margin, in case the used range under-reports
 
-    ws.Range(ws.Cells(MIKROSIM_FIRST_DATA_ROW, COL_FIRST_INPUT), _
-             ws.Cells(lastRow, COL_LAST_OUTPUT)).ClearContents
-End Sub
+    layout.FirstDataRow = layout.HeaderRow + 1
+    layout.LastInputCol = layout.FirstInputCol + INPUT_COLUMNS - 1
+    layout.LastOutputCol = layout.FirstOutputCol + OUTPUT_COLUMNS - 1
 
-
-' How many consecutive rows from the first data row carry both an input and a
-' result. A row whose output columns are all empty ends the count -- a halted
-' run leaves exactly that.
-Private Function CompletedRows(ByVal ws As Worksheet) As Long
-    Dim r As Long, c As Long
-    Dim hasOutput As Boolean
-
-    r = MIKROSIM_FIRST_DATA_ROW
-    Do
-        ' A bound, so a sheet in an odd state cannot walk to row a million.
-        If r > MIKROSIM_FIRST_DATA_ROW + 100000 Then Exit Do
-        If Len(Trim$(CStr(ws.Cells(r, COL_FIRST_INPUT).Value))) = 0 Then Exit Do
-
-        hasOutput = False
-        For c = COL_FIRST_OUTPUT To COL_LAST_OUTPUT
-            If Len(Trim$(CStr(ws.Cells(r, c).Value))) > 0 Then
-                hasOutput = True
-                Exit For
-            End If
-        Next c
-        If Not hasOutput Then Exit Do
-
-        r = r + 1
-    Loop
-    CompletedRows = r - MIKROSIM_FIRST_DATA_ROW
+    ResolveLayout = layout
 End Function
 
 
-'--- case design -------------------------------------------------------------
+' A defined range, or the fallback address, or Nothing when neither is given.
+Private Function NamedRange(ByVal name As String, ByVal fallback As String) As Range
+    On Error Resume Next
+    Set NamedRange = ThisWorkbook.Names(name).RefersToRange
+    On Error GoTo 0
+    If NamedRange Is Nothing And Len(fallback) > 0 Then
+        Set NamedRange = ThisWorkbook.Worksheets("Mikrosim").Range(fallback)
+    End If
+End Function
+
+
+'==============================================================================
+' How many rows carry an input, and how many of those also carry a result.
+'
+' Counted separately and deliberately: a sheet with no inputs at all and a sheet
+' whose run never finished need different answers, and an earlier version
+' reported both as "columns M to X are empty", which sent the diagnosis in the
+' wrong direction.
+'==============================================================================
+Private Sub CountRows(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                      ByRef withInputs As Long, ByRef withOutputs As Long)
+    Dim r As Long
+    Dim stillComplete As Boolean
+
+    withInputs = 0
+    withOutputs = 0
+    stillComplete = True
+
+    r = layout.FirstDataRow
+    Do While r < layout.FirstDataRow + MAX_SCAN_ROWS
+        If Not HasValue(ws, r, layout.FirstInputCol, layout.LastInputCol) Then Exit Do
+        withInputs = withInputs + 1
+        ' Results are written in row order, so the completed rows are the
+        ' unbroken run from the top; a gap ends the count.
+        If stillComplete Then
+            If HasValue(ws, r, layout.FirstOutputCol, layout.LastOutputCol) Then
+                withOutputs = withOutputs + 1
+            Else
+                stillComplete = False
+            End If
+        End If
+        r = r + 1
+    Loop
+End Sub
+
+
+Private Function HasValue(ByVal ws As Worksheet, ByVal r As Long, _
+                          ByVal firstCol As Long, ByVal lastCol As Long) As Boolean
+    Dim c As Long
+    For c = firstCol To lastCol
+        If Len(Trim$(CStr(ws.Cells(r, c).Value))) > 0 Then
+            HasValue = True
+            Exit Function
+        End If
+    Next c
+End Function
+
+
+Private Function EmptySheetMessage(ByRef layout As MikrosimLayout, _
+                                   ByVal withInputs As Long) As String
+    If withInputs = 0 Then
+        EmptySheetMessage = _
+            "The Mikrosim sheet is empty -- no inputs in columns " & _
+            ColLetter(layout.FirstInputCol) & " to " & ColLetter(layout.LastInputCol) & _
+            " from row " & layout.FirstDataRow & " on." & vbCrLf & vbCrLf & _
+            "A run's results are only kept if the workbook is saved, so closing " & _
+            "without saving loses them." & vbCrLf & vbCrLf & _
+            "Start a fresh run with ExportGoldenCasesQuick, or run " & _
+            "ReportMikrosimState for a fuller picture."
+    Else
+        EmptySheetMessage = _
+            withInputs & " rows have inputs, but none has a result in columns " & _
+            ColLetter(layout.FirstOutputCol) & " to " & ColLetter(layout.LastOutputCol) & _
+            "." & vbCrLf & vbCrLf & _
+            "ExportGoldenCasesResume will compute them."
+    End If
+End Function
+
+
+' Clears the input and result block, bounded to the rows that could hold data:
+' whatever the sheet already used, or this run's case count, whichever is more.
+Private Sub ClearPreviousRun(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                             ByVal caseCount As Long)
+    Dim lastRow As Long
+    lastRow = ws.UsedRange.Row + ws.UsedRange.Rows.Count - 1
+    If lastRow < layout.FirstDataRow + caseCount Then
+        lastRow = layout.FirstDataRow + caseCount
+    End If
+    lastRow = lastRow + 10      ' a margin, in case the used range under-reports
+
+    ws.Range(ws.Cells(layout.FirstDataRow, layout.FirstInputCol), _
+             ws.Cells(lastRow, layout.LastOutputCol)).ClearContents
+End Sub
+
+
+'--- case design --------------------------------------------------------------
 
 Private Sub AddCase(ByVal bornYear As Long, ByVal startWorkAge As Long, ByVal retireAge As Long, _
                     ByVal annualSalary As Double, ByVal inflation As Double, ByVal realGrowth As Double, _
@@ -203,7 +465,7 @@ Private Sub AddCase(ByVal bornYear As Long, ByVal startWorkAge As Long, ByVal re
     If startWorkAge >= retireAge Then Exit Sub
 
     mCaseCount = mCaseCount + 1
-    ReDim Preserve mCases(1 To 10, 1 To mCaseCount)
+    ReDim Preserve mCases(1 To INPUT_COLUMNS, 1 To mCaseCount)
 
     mCases(1, mCaseCount) = bornYear
     mCases(2, mCaseCount) = startWorkAge
@@ -218,13 +480,84 @@ Private Sub AddCase(ByVal bornYear As Long, ByVal startWorkAge As Long, ByVal re
 End Sub
 
 
-Private Sub BuildCases()
-    Dim bornYears As Variant, salaries As Variant, retireAges As Variant, startAges As Variant
-    Dim b As Long, s As Long, r As Long, a As Long, scheme As Long
-
+Private Sub BuildCases(ByVal caseSet As String)
     Erase mCases
     mCaseCount = 0
-    ReDim mCases(1 To 10, 1 To 1)
+    mCaseSet = caseSet
+    ReDim mCases(1 To INPUT_COLUMNS, 1 To 1)
+
+    If caseSet = "quick" Then
+        BuildQuickCases
+    Else
+        BuildFullCases
+    End If
+End Sub
+
+
+'==============================================================================
+' 61 cases: the boundaries that carry the most information, in about half an
+' hour rather than a couple of hours.
+'
+' The blocks are the same shape as the full set's, so the comparison report
+' groups them the same way. Keep them in step with QUICK_BLOCKS in
+' packages/engine/test/golden/harness.ts.
+'==============================================================================
+Private Sub BuildQuickCases()
+    Dim bornYears As Variant, salaries As Variant, retireAges As Variant
+    Dim b As Long, s As Long, r As Long, a As Long, scheme As Long
+
+    ' A (32): the two ATP boundaries, both sides, against every agreement.
+    bornYears = Array(1937, 1938, 1953, 1954)
+    For b = LBound(bornYears) To UBound(bornYears)
+        For scheme = 1 To 8
+            AddCase bornYears(b), 23, 66, 462000, 0, 0, 0.017, scheme
+        Next scheme
+    Next b
+
+    ' B (12): salary against retirement age on the shipped cohort, spanning the
+    ' garantipension phase-out and the state tax threshold.
+    salaries = Array(180000, 462000, 660000, 1080000)
+    retireAges = Array(63, 66, 70)
+    For s = LBound(salaries) To UBound(salaries)
+        For r = LBound(retireAges) To UBound(retireAges)
+            AddCase 1959, 23, retireAges(r), salaries(s), 0, 0, 0.017, 4
+        Next r
+    Next s
+
+    ' C (8): entry age against salary, on cohorts with a full new-rules career.
+    bornYears = Array(1970, 1990)
+    salaries = Array(264000, 840000)
+    For b = LBound(bornYears) To UBound(bornYears)
+        For a = 0 To 1
+            For s = LBound(salaries) To UBound(salaries)
+                AddCase bornYears(b), IIf(a = 0, 20, 30), 67, salaries(s), 0, 0, 0.017, 2
+            Next s
+        Next a
+    Next b
+
+    ' D (4): away from the forecasting standard. Inflation, real growth and
+    ' return each move the answer through a different path.
+    AddCase 1959, 23, 66, 462000, 0.02, 0, 0.017, 4
+    AddCase 1959, 23, 66, 462000, 0, 0.016, 0.017, 4
+    AddCase 1959, 23, 66, 462000, 0, 0, 0.035, 4
+    AddCase 1959, 23, 66, 462000, 0.02, 0.016, 0.035, 4
+
+    ' E (4): low and high earners, where garantipension and the state tax
+    ' thresholds bite.
+    AddCase 1945, 25, 66, 180000, 0, 0, 0.017, 1
+    AddCase 1945, 20, 66, 1080000, 0, 0, 0.017, 3
+    AddCase 1980, 25, 66, 180000, 0, 0, 0.017, 1
+    AddCase 1980, 20, 66, 1080000, 0, 0, 0.017, 3
+
+    ' F (1): the worked example from the user manual -- a care assistant born
+    ' 1960, working from 20 to 67 on 27 000 kr/month under KAP-KL.
+    AddCase 1960, 20, 67, 324000, 0, 0, 0.017, 5
+End Sub
+
+
+Private Sub BuildFullCases()
+    Dim bornYears As Variant, salaries As Variant, retireAges As Variant, startAges As Variant
+    Dim b As Long, s As Long, r As Long, a As Long, scheme As Long
 
     ' Cohorts chosen around the ATP boundaries: 1937/1938 (full ATP), and
     ' 1953/1954 (the last cohorts with any tilläggspension).
@@ -280,7 +613,21 @@ Private Sub BuildCases()
 End Sub
 
 
-'--- helpers -----------------------------------------------------------------
+'--- helpers ------------------------------------------------------------------
+
+Private Function AskForPath() As String
+    Dim savePath As Variant
+    savePath = Application.GetSaveAsFilename( _
+        InitialFileName:="golden-cases.csv", _
+        FileFilter:="CSV files (*.csv), *.csv", _
+        Title:="Save reference results as")
+    If VarType(savePath) = vbBoolean Then
+        AskForPath = ""
+    Else
+        AskForPath = CStr(savePath)
+    End If
+End Function
+
 
 ' Lowest age this cohort may draw public pension at, from Nyckeltal column 121.
 Private Function LowestRetirementAge(ByVal bornYear As Long) As Long
@@ -298,6 +645,16 @@ Private Function LowestRetirementAge(ByVal bornYear As Long) As Long
     End If
 Fallback:
     LowestRetirementAge = 66
+End Function
+
+
+Private Function ColLetter(ByVal col As Long) As String
+    Dim n As Long
+    n = col
+    Do While n > 0
+        ColLetter = Chr$(65 + ((n - 1) Mod 26)) & ColLetter
+        n = (n - 1) \ 26
+    Loop
 End Function
 
 
@@ -345,7 +702,8 @@ Private Sub WriteAdvSettings(ByVal f As Integer, ByVal adv As Worksheet)
 End Sub
 
 
-Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, ByVal caseCount As Long)
+Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, _
+                     ByRef layout As MikrosimLayout, ByVal caseCount As Long)
     Dim f As Integer
     Dim i As Long, c As Long
     Dim line As String
@@ -366,15 +724,10 @@ Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, ByVal caseCoun
     Print #f, "# belopp12: " & CsvNum(Application.Range("Rng_belopp12").Value)
     Print #f, "# compareTo: " & CsvNum(Application.Range("Rng_CompareTo").Value)
     Print #f, "# avkastning_val: " & CsvNum(Application.Range("rng_Avkastning_val").Value)
-    ' Read by row rather than by name: rng_Forenklad_berakning and
-    ' rng_Forsakringstid_vid_65 are spelled with a-ring and o-umlaut in the
-    ' workbook, which a .bas file's encoding can mangle. Column 9 of
-    ' Adv_settings carries the variable name, so the rows are checkable.
-    Print #f, "# forenklad_pp: " & CsvNum(adv.Cells(49, 2).Value) & "   (" & adv.Cells(49, 9).Value & ")"
-    Print #f, "# forsakringstid: " & CsvNum(adv.Cells(21, 2).Value) & "   (" & adv.Cells(21, 9).Value & ")"
     Print #f, "# hyra: " & CsvNum(Application.Range("Hyra").Value)
     Print #f, "# ansokt_bt: " & CsvNum(Application.Range("Rng_Ansokt").Value)
     Print #f, "# cases: " & caseCount
+    If Len(mCaseSet) > 0 Then Print #f, "# caseset: " & mCaseSet
 
     ' Gift lives on the Start sheet, not Adv_settings, and the batch runner never
     ' sets it per row -- so whatever it held applied to all of them. It moves
@@ -389,23 +742,23 @@ Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, ByVal caseCoun
 
     ' Header row, taken from the sheet so it tracks any future column change.
     line = ""
-    For c = COL_FIRST_INPUT To COL_LAST_INPUT
-        line = line & Replace(Trim$(CStr(ws.Cells(7, c).Value)), ",", " ") & ","
+    For c = layout.FirstInputCol To layout.LastInputCol
+        line = line & Replace(Trim$(CStr(ws.Cells(layout.HeaderRow, c).Value)), ",", " ") & ","
     Next c
-    For c = COL_FIRST_OUTPUT To COL_LAST_OUTPUT
-        line = line & Replace(Trim$(CStr(ws.Cells(7, c).Value)), ",", " ")
-        If c < COL_LAST_OUTPUT Then line = line & ","
+    For c = layout.FirstOutputCol To layout.LastOutputCol
+        line = line & Replace(Trim$(CStr(ws.Cells(layout.HeaderRow, c).Value)), ",", " ")
+        If c < layout.LastOutputCol Then line = line & ","
     Next c
     Print #f, line
 
     For i = 0 To caseCount - 1
         line = ""
-        For c = COL_FIRST_INPUT To COL_LAST_INPUT
-            line = line & CsvNum(ws.Cells(MIKROSIM_FIRST_DATA_ROW + i, c).Value) & ","
+        For c = layout.FirstInputCol To layout.LastInputCol
+            line = line & CsvNum(ws.Cells(layout.FirstDataRow + i, c).Value) & ","
         Next c
-        For c = COL_FIRST_OUTPUT To COL_LAST_OUTPUT
-            line = line & CsvNum(ws.Cells(MIKROSIM_FIRST_DATA_ROW + i, c).Value)
-            If c < COL_LAST_OUTPUT Then line = line & ","
+        For c = layout.FirstOutputCol To layout.LastOutputCol
+            line = line & CsvNum(ws.Cells(layout.FirstDataRow + i, c).Value)
+            If c < layout.LastOutputCol Then line = line & ","
         Next c
         Print #f, line
     Next i
