@@ -26,7 +26,9 @@ re-used on every subsequent build.
    anything else, and the engine would be compared against settings it was not asked to reproduce.
 
 3. **Import the macro.** Press `Alt+F11` for the VBA editor, then **File → Import File…** and
-   choose `ExportGoldenCases.bas` from this folder.
+   choose `ExportGoldenCases.bas` from this folder. If an older copy of the module is already there,
+   right-click it → **Remove ExportGoldenCases…** → **No** (do not export it) before importing,
+   or the import lands beside it as `ExportGoldenCases1` and you will run the wrong one.
 
 4. **Run it.** Still in the VBA editor, press `F5` (or **Run → Run Sub/UserForm**) with
    `ExportGoldenCases` selected. Excel asks where to save the CSV.
@@ -58,6 +60,29 @@ cases would prove less than a few hundred that straddle the places where the rul
 Retirement ages are clamped to each cohort's lowest permitted age, read from the `Nyckeltal`
 sheet. Below that the model opens a Yes/No dialog mid-run and, answered Yes, quietly changes the
 case — which would write an input into the file that did not produce the output beside it.
+
+## What the CSV holds
+
+Two blocks, then the data.
+
+**The provenance block**, every line starting with `#`. The model version, the workbook name, the
+export time, and then **every setting on `Adv_settings`** as `# adv.<name>: <value>`, taken from the
+sheet itself — column 9 carries the name the VBA reads the setting by, column 2 its value. Plus
+`# start.Gift`, which lives on the Start sheet rather than `Adv_settings` and which the batch runner
+never sets per case, so whatever it held applied to all of them.
+
+This block is not decoration. The comparison harness checks the engine's own defaults against it
+setting by setting and refuses to report agreement it cannot vouch for: `rng_Bara_fastapriser` alone
+rescales every value in the file, and `Alt_p_age` can silently override the retirement age in the
+input column, which would pair an input with an output that did not come from it.
+
+**The header row**, taken from row 7 of the `Mikrosim` sheet so it tracks any future column change.
+Ten input columns (B–K) then twelve output columns (M–X). The first output column's label is
+written by the model itself and says which of Slutlön, Nettolön or Disp. that column holds,
+following `Rng_CompareTo`.
+
+Every output value is read from **column D of Table 1** on the Start sheet — the adjusted column,
+expressed in the reference year's prices or wage level — and divided by 12 when `Rng_belopp12` is 1.
 
 ## If the run halts in the VBA debugger
 
@@ -106,6 +131,10 @@ most.
 
 ## A note on trust
 
-This macro was written without access to Excel and has not been run. Read it before you run it —
-it is about 250 lines, and it writes to the `Mikrosim` sheet (a scratch sheet the model provides
-for exactly this) and to the CSV you choose. It does not modify the model or save the workbook.
+This macro was written without access to Excel. Read it before you run it — it is about 400 lines,
+and it writes to the `Mikrosim` sheet (a scratch sheet the model provides for exactly this) and to
+the CSV you choose. It does not modify the model or save the workbook.
+
+It has been run once, against the 2025 workbook: 294 of the 295 cases completed before the
+workbook's own watchdog tripped, and the run was recovered with `ExportGoldenCasesFromSheet` as
+described above.

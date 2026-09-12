@@ -312,6 +312,39 @@ Private Function CsvNum(ByVal value As Variant) As String
 End Function
 
 
+' Formats any cell value for the provenance block. Booleans are written as 1/0
+' rather than True/False, which a Swedish Excel spells "Sant" and "Falskt".
+Private Function CsvValue(ByVal value As Variant) As String
+    If VarType(value) = vbBoolean Then
+        If value Then CsvValue = "1" Else CsvValue = "0"
+    ElseIf IsNumeric(value) Then
+        CsvValue = CsvNum(value)
+    Else
+        CsvValue = Replace(Replace(Trim$(CStr(value)), vbCr, " "), vbLf, " ")
+    End If
+End Function
+
+
+' Writes every Adv_settings row that names a variable: column 9 carries the name
+' the VBA reads it by, column 2 the value. The row number goes in beside it, so
+' a name mangled by the .bas encoding can still be identified.
+Private Sub WriteAdvSettings(ByVal f As Integer, ByVal adv As Worksheet)
+    Dim lastRow As Long, r As Long
+    Dim settingName As String
+
+    lastRow = adv.UsedRange.Row + adv.UsedRange.Rows.Count - 1
+    If lastRow > 400 Then lastRow = 400      ' a bound; the sheet ends long before this
+
+    For r = 1 To lastRow
+        settingName = Trim$(CStr(adv.Cells(r, 9).Value))
+        If Len(settingName) > 0 Then
+            Print #f, "# adv." & settingName & ": " & CsvValue(adv.Cells(r, 2).Value) & _
+                      "   (row " & r & ")"
+        End If
+    Next r
+End Sub
+
+
 Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, ByVal caseCount As Long)
     Dim f As Integer
     Dim i As Long, c As Long
@@ -341,6 +374,18 @@ Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, ByVal caseCoun
     Print #f, "# forsakringstid: " & CsvNum(adv.Cells(21, 2).Value) & "   (" & adv.Cells(21, 9).Value & ")"
     Print #f, "# hyra: " & CsvNum(Application.Range("Hyra").Value)
     Print #f, "# ansokt_bt: " & CsvNum(Application.Range("Rng_Ansokt").Value)
+    Print #f, "# cases: " & caseCount
+
+    ' Gift lives on the Start sheet, not Adv_settings, and the batch runner never
+    ' sets it per row -- so whatever it held applied to all of them. It moves
+    ' garantipension, bostadstillagg and every tax row, so it has to be recorded.
+    Print #f, "# start.Gift: " & CsvValue(Application.Range("Gift").Value)
+
+    ' And then every setting on Adv_settings, rather than the hand-picked few
+    ' above. A run compared against the wrong settings produces confident
+    ' nonsense, and which settings matter is not obvious from the outside:
+    ' rng_Bara_fastapriser alone rescales every value in the file.
+    WriteAdvSettings f, adv
 
     ' Header row, taken from the sheet so it tracks any future column change.
     line = ""
