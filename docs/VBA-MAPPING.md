@@ -195,6 +195,56 @@ files will confirm it.
 loop age rather than its own `alder` argument. Every call site passes the same value for both, so
 the port takes `pbb` as a parameter.
 
+## Occupational pension — `src/tjanstepension/`
+
+| VBA | TypeScript |
+|---|---|
+| `tlITP1`, `tlITP2A`, `tlITP2F` | `itp.ts` |
+| `SAF_LO`, `STP_` | `safLo.ts` |
+| `tlkap_kl`, `tlakap_kr` | `kommunal.ts` |
+| `tlPA16`, `Kapan`, `PA_indiv` | `statlig.ts` |
+| `tjpkassa`, `tjp_ddeltal` | `tjpkassa.ts` |
+| the `Select Case avtal` in Mcalc | `premiumFor` in `index.ts` |
+
+**No fixture reaches this layer.** The `Brutto` sheet covers the public pension only, and the
+model's own `deltal_tjp` cell is cleared when the workbook opens. The tests assert structure and
+the transitions the VBA states outright — never that a rate is legally correct, because nothing
+offline can confirm that. The golden files are the judge here, and this is the layer most likely
+to need correcting when they arrive.
+
+### The same guard, written three ways
+
+In the retirement year these functions rescale salary to the months actually worked. The guard on
+that rescale appears in two forms, and which one a function got decides whether it ever fires:
+
+| Form | Where | Fires? |
+|---|---|---|
+| `Int(born + tjp_par - Int(born + tjp_par))` | `tlITP1`, `SAF_LO`, `tlPA16` | **Never** — `Int()` of a fraction below 1 |
+| `Int((born + tjp_par - Int(born + tjp_par)) * 12)` | `tlITP2A`, `Kapan`, `PA_indiv` | Yes |
+
+Both forms are kept as written. The first reads like a dropped `* 12`.
+
+### Other quirks kept
+
+- **The breakpoint is tested and applied with different divisors.** The `Select Case` compares
+  salary against `7.5 * IBB / month`, while the premium formula uses `7.5 * IBB / 12`. They agree
+  for a full year and part company in the entry and retirement years.
+- **ITP 1's 2023 cap at 30 income base amounts is effectively inert**: it compares a *monthly*
+  salary against an *annual* figure, so it only bites above roughly 360 base amounts a year.
+- **KAP-KL's `alder < 21` early exit** makes its later `born > 1985 And alder < 21` branch
+  unreachable; AKAP-KR has no such exit, so the same branch there does fire.
+- **KAP-KL's 2006 rate branch reads `year = 2006 Or born <= 1946`**, and the `or` swallows the
+  branch after it. AKAP-KR writes `and` in the same place, leaving both live.
+- **`STP_` rounds with 0.49** where the rest of the module uses 0.5, and has a dead inner branch
+  testing `par < 65` inside a `par > 65` block.
+
+### A side effect for Mcalc to own
+
+`STP_` assigns `born = Int(born)`, truncating the birth-month fraction on the module-level global
+for everything computed after it in a run — and `born` does carry a month fraction whenever a
+birth month other than January is chosen. It is called only from `FTJP`, so the truncation belongs
+there rather than hidden inside the function. Not yet applied; `FTJP` is still to be ported.
+
 ## A precision trap in the extracted data
 
 The extractor originally rounded every value to twelve significant digits, to keep the generated
@@ -221,7 +271,8 @@ again, this is why not.
 | Settings | ~40 named ranges | ✅ `src/model/context.ts` |
 | Wage vector | `Lön_mm.bas` | ✅ `src/income/wages.ts` |
 | Public pension | `Pensionssystemet.bas` | ✅ `src/pension/incomePension.ts` (ATP `tp_` still to do) |
-| Occupational pension | `Tjänstepensioner.bas`, `TjänstepensionerFörmån.bas` | |
+| Occupational pension, defined contribution | `Tjänstepensioner.bas` | ✅ `src/tjanstepension/` |
+| Occupational pension, defined benefit | `TjänstepensionerFörmån.bas` (`FTJP`), `tlPA03`, `KAPKL_f`, `PA_KL`, `PA_KLBPP` | |
 | Private saving | `PrivatSparande.bas` | |
 | Tax rules | `Skatteregler.bas` | |
 | Benefits | `Bidrag.bas` | |

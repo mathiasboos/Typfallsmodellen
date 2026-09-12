@@ -96,6 +96,12 @@ export interface ModelContext {
   readonly tempTjpUttag: number;
   /** `rng_Temp_IPS_Uttag`: the same for private saving. */
   readonly tempIpsUttag: number;
+  /**
+   * `rng_Ddelat`: 1 corrects the occupational pension divisor for each
+   * agreement's own assumed interest rate and life expectancy. Off by default,
+   * which makes that correction a pass-through.
+   */
+  readonly adjustOccupationalDivisor: boolean;
 }
 
 /**
@@ -134,6 +140,7 @@ export function defaultContext(overrides: Partial<ModelContext> = {}): ModelCont
     riktage: 66,
     tempTjpUttag: workbookDefault("rng_Temp_Tjp_Uttag", 0),
     tempIpsUttag: workbookDefault("rng_Temp_IPS_Uttag", 0),
+    adjustOccupationalDivisor: workbookDefault("Rng_ddelat", 0) === 1,
   };
   return Object.freeze({ ...base, ...overrides });
 }
