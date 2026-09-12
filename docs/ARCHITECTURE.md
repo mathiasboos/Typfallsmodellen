@@ -61,3 +61,39 @@ diffable.
 
 The split matters: data changes every year and should never need a developer to read a
 spreadsheet; rule changes every year and always needs one.
+
+## The result model
+
+`run(input, context, { deaths })` returns a `TypfallResult`. It is the shape the website renders
+and the golden-file harness compares against, and it is the workbook's own output model rather than
+an invention:
+
+| Field | What it is | Where it comes from |
+|---|---|---|
+| `rows` | one row per age, seventeen columns | `mvalues` in Mcalc |
+| `table2` | the cash-flow table, from `rng_tabell2_startAge` | Table 2 on the Start sheet |
+| `table1` | the summary at retirement, four columns per line | Table 1 on the Start sheet |
+| `lifeIncome` | three discounted sums over the retirement | `Life0`, `life1`, `life2` |
+| `qualifyingYears` | years with a pension right, capped at 40 | `rng_wyears` |
+| `warnings` | the corrections the run made to its inputs | the workbook's dialogs |
+
+**Both of the model's figures are Excel charts bound to Table 2's range.** `mdlChartData.bas` only
+shows and hides them, so Table 2 *is* the chart data and there is nothing else to compute for them.
+
+`rows` is the spine — Table 2 is a slice of it with columns paired, and Table 1 reads the state at
+the retirement age. A caller that wants something the tables do not carry can read `rows` directly.
+
+### Two inputs, not one
+
+`TypfallInput` is the Start sheet: the cohort, the salary, the ages, the agreement, marital status
+and the three economic assumptions. `ModelContext` is Adv_settings: everything about how the model
+behaves, all with the workbook's own defaults. A normal-mode run passes only a `TypfallInput`.
+
+That is the workbook's own split, and it is what lets normal mode show eight fields while advanced
+mode reaches the other seventy-six.
+
+### Where the mortality data comes in
+
+The death probabilities are a 240 KB binary rather than JSON, so how they load depends on where the
+engine runs — `src/data/nodeLoader.ts` reads the file, a browser fetches it. `run` takes them as an
+argument rather than choosing, which is what keeps the engine free of a runtime.

@@ -443,6 +443,145 @@ that `Mcalc` passes, but `bistand` at the test is a monthly figure. A household 
 fall below one month's subsistence need in a whole year's income before anything is paid.
 `bist25` writes the same test as `disp < bistand * 12`.
 
+## Main loop and result model — `src/model/`
+
+| VBA | Ported to |
+|---|---|
+| `startsetup` | `setup.ts` |
+| `Mcalc`, lines 520–838 (the preamble) | `mcalc.ts` — `prepareRun` |
+| `Mcalc`, 899–1289 (the earning phase) | `mcalc.ts` |
+| `Mcalc`, 1290–1744 (the drawdown) | `drawdown.ts` |
+| `Mcalc`, 1745–2117 (tax, benefits, `mvalues`) | `taxAndBenefits.ts` |
+| `Mcalc`, 2119–2844 (Table 1, Table 2, life income) | `result.ts` |
+| — | `run.ts`, `input.ts`, `state.ts` |
+
+`Mcalc` is a pure function wearing an Excel costume: about sixty `Application.Range` reads and
+eighty `wsStart.Cells(...) =` writes around arithmetic on age-indexed arrays. The reads become
+`TypfallInput` (the Start sheet — the person) and `ModelContext` (Adv_settings — the model's
+behaviour); the writes become `TypfallResult`. `run(input, context, { deaths })` is the whole thing.
+
+The loop body is split at the VBA's own section comments and called in the VBA's order. A single
+1 200-line function would be unreviewable, and splitting anywhere else would break the
+line-comparability the yearly update depends on.
+
+### Validation: correct and warn
+
+The workbook validates by dialog — a Yes/No box when the retirement age is below the riktålder,
+which **aborts the run** if declined, and message boxes elsewhere — and writes its corrections back
+into the sheet. The port takes the "Yes" branch in every case and records what it did in
+`TypfallResult.warnings`, with the field, the value given, the value used and the workbook's own
+wording. A run therefore always produces a result.
+
+### The Nyckeltal columns `startsetup` reads
+
+`startsetup` addresses Nyckeltal and 'Några tal' by fixed column number. The extractor reads the
+same quantities from 'Några tal' (see `tools/extract/extract_series.py`), so if a future release
+inserts a column the extractor breaks rather than the engine — but the mapping is worth having
+written down:
+
+| VBA | Column | Series |
+|---|---|---|
+| `KPI_j(age)` | Nyckeltal 83 | `kpiJune` |
+| `KPI(age)` | 84 | `kpiAnnual` |
+| `pbb(age)` | 86 | `prisbasbelopp` |
+| `MPGI(age)` | 87 | `medelPgi` |
+| `IBB(age)` | 88 | `inkomstbasbelopp` |
+| `FPB(age)` | 89 | `forhojtPrisbasbelopp` |
+| `Iindex(age)` | 90 | `inkomstindex` |
+| `Pindex(age)` | 93 | `gallandeIndex` |
+| `yield(age)` | 'Några tal' 17 / 18 | `avkastningPpm` / `avkastningAp7` |
+| `RGK(age)` | 19 | `rantaRiksgalden` |
+| `IP_avg(age)` | 14 | `kvarEfterAdminIp` |
+| `PP_avg(age)` | 15 | `kvarEfterAvgiftPp` |
+| `Tax_limit1/2(age)` | 29 / 30 | `skiktgrans1` / `skiktgrans2` |
+
+### Settings whose shipped value is a formula's result
+
+Five Adv_settings cells hold formulas, so the extracted value is what the formula produced for the
+shipped typfall rather than the setting itself. Storing those results would pin a normal-mode run
+to the shipped retirement age, so `defaultContext` leaves them at 0 and `setup.ts` derives them:
+
+| Setting | Sheet formula | Derived as |
+|---|---|---|
+| `TJP_PAR` | `=IF(ISBLANK(…), …, …)` | the public pension age |
+| `rng_tabell2_startAge` | `=INT(x - 10)` | `Int(par - 10)` |
+| `w_time` | a subtraction of two names | `w_ref - born`, which is the shipped 66 |
+| `rng_Make_Bald` | a single name | the typfall's own birth year |
+| `Modell_year` | — | `w_ref + 1`, since `w_ref` is `=YEAR(NOW()) - 1` |
+
+LibreOffice cannot resolve defined names inside formulas, so the operands of `w_time` are pinned by
+its arithmetic — 66 is exactly 2025 − 1959 — rather than read directly.
+
+### What is verified, and what is not
+
+The earning phase is checked end to end against the `Brutto` sheet: driving the loop with its
+income vector reproduces its PGI, its (empty) PGB and all three contributions at every age. That
+checks the wiring the per-function tests cannot — which year's income each contribution is taken
+on, and where the ceiling is applied.
+
+**The balance roll-forward is not checked against that sheet, and cannot be.** Brutto exercises
+`IP_` for a typfall that never retires, and pairs each year's pension right with the *following*
+year's indexation; Mcalc credits the right at the current age and indexes with this year's level
+over last year's. The two are a year apart by construction. `incomePension.test.ts` still checks
+`IP_` itself against the sheet term by term; what the loop does with it waits on the golden files.
+
+Everything past the retirement age — the drawdown, the tax, the benefits, both tables — has no
+offline fixture at all. `reference/fixtures/default-run.json` is the engine's own output for the
+shipped typfall, committed so an unintended change shows up as a diff; it is a regression snapshot,
+not a check against the workbook.
+
+### Quirks kept on purpose
+
+**`kvoten` opens at 1 always.** Its first guard reads `If Iyear < slutage`, comparing a calendar
+year against the constant 105, which no real year satisfies. The housing-supplement block later in
+the loop reassigns it on a guard that *can* hold, which is why it is run state and not a constant.
+
+**`pgbyears` counts every year with a pension base**, not years with a pensionsgrundande belopp:
+its test is `(PGB_ + pgi_) > 0`. It decides which of the three contribution branches a run takes,
+and a normal working life puts it well past the five-year threshold.
+
+**The first child's PGB offset has no `- 1`** where the other three do, and its income base is
+uprated by a year of CPI where theirs are not.
+
+**`If year_(age) > 1976` around the ITP 2 premium is dead** — `tlITP2A` already returns 0 below 1997.
+
+**The pre-1994 ATP points are summed unsorted while the ATP points are sorted first**, so the
+garantibelopp averages the last fifteen *ages* and the ATP the fifteen *best*. The comment above
+the first loop claims a sort that does not happen. The sort is in place on `TP_points`, and `FTJP`
+reads `STP_points` afterwards — the earning phase's copy is what makes that work, and the order of
+the two is load-bearing.
+
+**An opening balance sets the garantipension base to `rng_PBH_IP / IP_pbh(age)`** — a division
+where the commented-out alternative multiplies by 185/160, leaving a ratio near one where a balance
+of millions stood. It only fires when a balance is typed in.
+
+**The 1 320-krona reduction of 2000 and 2001 is written out twice in a row**, so it is applied
+twice in both years; `millenniumReduction` is split out so the doubling can be asserted. Inside it
+sits an `If Skyear = 2004`, in a branch reached only when Skyear is 2000 or 2001.
+
+**Social assistance is scaled by `(12 - pmonth) / 12` for a household with no children**, so a
+typfall born on 1 January — every cohort the workbook offers — gets none of it.
+
+**`BTP` is passed the försäkringstid setting while `SBTP` is passed the value Mcalc corrected**;
+the two differ whenever the correction fired.
+
+**The retirement year's salary is zeroed before Table 1 is drawn**, so the table reports a full
+year of pension against no salary. Every offered cohort is born on 1 January, so it changes nothing
+today — but the per-age matrix keeps the income either way.
+
+**`growth` is reused as a scratch variable in the summary**, overwriting the real growth assumption
+read in `startsetup`.
+
+**The part-year at the end of the life-income sums adds the *disposable* figure to all three**,
+including the gross and net ones.
+
+Smaller ones, each marked at its site: `If Int(PAR + 1) = age` inside a branch reached only when
+`age = Int(PAR)`; `pandred` computed and never used; the yield tax rounded after its last use; the
+a-kassa and union fees indexed with `KPI(2019 - born)` on the unrounded birth year; the 8.44%
+municipal rate for years up to 1930, unreachable because the oldest cohort offered starts in 1931;
+the arv IP sheet having no rows above age 61, which is what the `If IP_arv1 = 0 Then 1` fallback
+covers.
+
 ## A precision trap in the extracted data
 
 The extractor originally rounded every value to twelve significant digits, to keep the generated
@@ -474,4 +613,4 @@ again, this is why not.
 | Private saving | `PrivatSparande.bas` | ✅ `src/saving/privateSaving.ts` |
 | Tax rules | `Skatteregler.bas` | ✅ `src/skatt/` |
 | Benefits | `Bidrag.bas` | ✅ `src/bidrag/` |
-| Main loop | `Mcalc` | |
+| Main loop and result model | `Mcalc`, `startsetup` | ✅ `src/model/` |
