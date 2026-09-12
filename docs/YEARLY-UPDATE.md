@@ -45,6 +45,11 @@ Check `git diff packages/data/`:
 - **`mortality-risks.bin`** — SCB revises its forecast periodically; a changed file is normal.
 - **`options.json`** — new advanced settings, or changed defaults, appear here. Anything new
   needs UI work in `apps/web`.
+- **`riksnorm.json`** — Socialstyrelsen's social assistance norm, parsed out of `Bidrag.bas`
+  rather than the workbook. Expect one new row in each of the three table families (`xn`, `vuxna`,
+  `Gn`) for both `bistOld` and `bist25`, and the previous `else` row to become an `eq` row for
+  the year it covered. Anything else — a changed historical row, a row of a different width — means
+  the VBA changed shape and wants reading. Never edit this file by hand.
 
 `lastActualYear` is detected exactly rather than guessed: a series' decided values are typed into
 the sheet as literals and its projection starts at the first formula cell. If a future release
@@ -78,8 +83,14 @@ Mirror each new VBA function in `packages/engine/src/`, keeping the 1:1 structur
 
 ```bash
 npm test              # unit tests, including the cached-table fixtures
+npm run check:transpile   # the 32 tax functions still match Skatteregler.bas
+npm run check:riksnorm    # riksnorm.json still matches Bidrag.bas
 npm run compare       # engine vs. the Excel golden files in reference/
 ```
+
+The two `check:` scripts re-derive generated code and data from the VBA dump and fail if the
+committed version has drifted. They are the safety net for step 5: if a rule function was
+mechanically translated and you changed it by hand, or a riksnorm row moved, they say so.
 
 The fixtures in `reference/fixtures/` are regenerated from the new workbook, so they check the
 new data. The golden files in `reference/golden/` are **not** — they came from a previous Excel

@@ -19,6 +19,7 @@ computes entirely in the browser, and can absorb the yearly data release through
 ```
 source/            the published .xlsb this build is derived from
 tools/extract/     Python: .xlsb -> packages/data (run once a year)
+tools/transpile/   Python: the 32 tax-year functions, mechanically translated
 packages/data/     generated data: economic series, mortality, tax, i18n, content
 packages/engine/   TypeScript port of the VBA calculation engine; no UI dependencies
 apps/web/          the website
@@ -31,7 +32,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | Phase | | |
 |---|---|---|
 | 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
-| 1. Engine core | in progress | arithmetic shim ✅ · economic projection ✅ · annuity factors ✅ · settings ✅ · delningstal ✅ · wages ✅ · contributions ✅ · income & premium pension ✅ · tilläggspension ✅ · occupational pension ✅ · private saving ✅ · tax rules ✅ · benefits, main loop — to do |
+| 1. Engine core | in progress | arithmetic shim ✅ · economic projection ✅ · annuity factors ✅ · settings ✅ · delningstal ✅ · wages ✅ · contributions ✅ · income & premium pension ✅ · tilläggspension ✅ · occupational pension ✅ · private saving ✅ · tax rules ✅ · benefits ✅ · main loop — to do |
 | 2. Golden-file harness vs. Excel | awaiting an Excel run | export kit ready in `reference/golden/` |
 | 3. Normal-mode website | | |
 | 4. Advanced mode | | |
@@ -45,8 +46,10 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | Annuity factors (delningstal, arvsvinstfaktorer) | the 114 345 values the workbook computed into `mortality!P:Z` | exact |
 | Pension-qualifying income and contributions | the `Brutto` sheet, which calls those VBA functions as worksheet UDFs | exact |
 | Income pension accumulation | the same sheet, term by term — gains, indexation, cost, balance | exact |
-| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules | 298 unit and property tests | — |
+| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits | 383 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
+| The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
+| The social assistance norm for one 2025 household | the workbook author's own `verb()` comment | 46 240 kr/month, exact |
 
 The `Brutto` fixture covers the earning phase only — that sheet never draws a pension — so no
 **drawdown** figure and no end-to-end result is verified yet. That is Phase 2, and it needs a run

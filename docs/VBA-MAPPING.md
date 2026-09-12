@@ -46,6 +46,12 @@ freely. `AgeArray` keeps that indexing so the ported code stays line-comparable;
 would mean adjusting an offset at several hundred call sites. Out-of-bounds access throws rather
 than yielding `undefined`, except `getOrZero` for the `x(age - 1)` idiom at the lower edge.
 
+`vbaArray` in the same file is VBA's `Array(...)` **under `Option Base 1`**, which `Bidrag.bas`
+declares. That is read off the code, not the documentation: `bist25` builds seven-element cost
+tables and reads `Gn(7)`, and its adult tables hold two values read as `vuxna(1)` and `vuxna(2)`.
+Both would be subscript errors on a zero-based array and the model would fail on every run. It
+matters — see the `bobid` entry below, where the same rule shifts a lookup table by one place.
+
 ## Data and projection — `src/data/`
 
 | VBA | TypeScript | Note |
@@ -347,6 +353,96 @@ wrong code. Two things it has to get right:
   amount is a hundred times too large. It is only ever written to the output sheet "för studier av
   arbetsgivarna" and never feeds a pension or a tax, so nothing downstream depends on it.
 
+## Benefits — `src/bidrag/`
+
+| VBA | Ported to |
+|---|---|
+| `gp`, `tillagg` | `garantipension.ts` |
+| `BTP`, `SBTP`, `btp_sbtp` | `bostadstillagg.ts` |
+| `CalcAntalBarn`, `CalcBarnPerAlder`, `barnbidraget`, `ustod` | `barn.ts` |
+| `bobid` | `bostadsbidrag.ts` |
+| `bistOld`, `bist25` | `riksnorm.ts` |
+
+`dagis`, `kollbist` and `forbehall` are unreachable from `Mcalc` — nothing calls them — and are not
+ported. `respekt` is called from `Mcalc` but lives in `Övrigt_.bas`, so it belongs to the main loop.
+
+`Bidrag.bas` does declare `Option Explicit`, unlike `Skatteregler.bas`. The bare `marginal` and
+`born` inside `tillagg`, and `Iyear` / `age` / `slutage` / `year_()` inside `SBTP`, are therefore
+not accidental empty Variants but the `Public` globals from `VBA_go.bas`. They become explicit
+arguments here, gathered into `BtpContext`, `SbtpContext` and `RiksnormContext`.
+
+### The riksnorm tables are extracted, not typed
+
+`bistOld` and `bist25` hold Socialstyrelsen's social assistance norm as 113 `Array(...)` literals —
+three table families × one row per income year, roughly nine hundred numbers. That is the same
+transcription risk as `Skatteregler.bas`, so `tools/extract/extract_riksnorm.py` parses them into
+`packages/data/riksnorm.json` and `npm run check:riksnorm` verifies the committed file still
+matches. **Do not edit that JSON by hand.**
+
+The entries are not all plain integers: several blend two levels over the months they applied
+(`1666 * 9 / 12 + 1320 * 3 / 12`), a few subtract a care charge inline (`3451 - 57`), one is wrapped
+in `CDbl`. The extractor evaluates each element through a whitelist of arithmetic AST nodes rather
+than `eval`. Branches are stored in source order with the comparison that guards them, so the engine
+walks the same `If`/`ElseIf` chain the VBA does.
+
+### The one offline check this module has
+
+A commented-out `verb()` in `Bidrag.bas` records **46 240 kr a month** for a named 2025 household —
+two adults, 20 600 kr rent, children in the 4–6, 7–10 and 11–14 bands. The port reproduces it
+exactly. It is the only figure the workbook's author left behind for any of these functions;
+everything else here waits on the golden files.
+
+### Quirks kept on purpose
+
+**`gp`** requires four years of residence (`ftid < 4`) though its own comment says three, while the
+pre-1938 branch has no residence floor at all. For cohorts born 1937 and earlier the 2020
+supplement is added to *income* before the brackets for a single person but not for a cohabitant,
+though both add it to the benefit afterwards. Its indexation guard is `year > wyear`, where `BTP`
+and `SBTP` use `>=`.
+
+**`tillagg`** returns `As Single`, so every assignment to the result narrows to a 32-bit float. Its
+600-krona rounding adds 300 afterwards, which can put the rounded amount *above* the exact one,
+while the flat middle bracket is not rounded at all.
+
+**`BTP`** sets `PAR = 0.95` for non-pensioners after 2017 and then overwrites it unconditionally
+with `PAR = 0.96` two lines later, so that branch is dead. It scales only the wealth *above* the
+threshold and adds anything below it to income in full rather than disregarding it — the opposite of
+`SBTP`. Its age guard on the extra consumption support applies only to 2012–2021; from 2022 it is
+paid at any age. `BTPm` is assigned the finished amount, so `dela = 1` doubles a cohabiting
+pensioner's supplement. `marginal`, `mgarp`, `month`, `ftid`, `index`, `uttag` and `ansokt` are
+never read.
+
+**`SBTP`** is the riskiest function in the module: 330 lines, two benefits in one body, and a
+`GoTo A_F_S` that jumps over `Xage = riktage(year, 1) + 1`. The äldreförsörjningsstöd branch
+therefore calls `avdragxx` with **`Xage = 0`** whenever `ftid < 1` — at 2025 rules a 110 100 kr
+grundavdrag where an unskipped `Xage` gives 43 600. `Lev` is never assigned for a non-pensioner in
+2012–2017 and stays 0, so both benefits come out at nothing for those years. A rent below 10 000 is
+read as monthly and multiplied by twelve, a cliff at exactly 10 000 — and `Mcalc` does pass annual
+rent to `BTP` and monthly to `SBTP` at one call site. `Besk` subtracts a grundavdrag computed on
+the *unrounded* income from the rounded-down income. Wealth is weighted 0.7 alongside capital income
+when rounding is on but counted in full when it is off. `Beskm` is computed even for a single
+household, and then `rulesfromUtg` (0 by default) is passed as the income *year*.
+
+**`CalcAntalBarn`** bounds the fourth child's window by the *third* child's birth year
+(`ar < barn3 + 20`). A fourth child born more than twenty years after the third never counts, and
+one born earlier drops out on the third child's schedule.
+
+**`bobid`** builds its lookup tables as `Array(0, xn1, xn2, xn3)` — a leading zero-index pad that
+`Option Base 1` puts at index 1. Every lookup is shifted one place: **a one-child family reads 0 for
+all three housing cost limits and for the särskilda bidrag, and gets nothing at all**; a two-child
+family is calculated on the one-child figures; and `xn3`, `xm3`, `xo3`, `xg4` and `xg5` are never
+reached. It also reads `xo1 = xm2` three lines before `xm2` is assigned, so the upper limit for one
+child is 0 in the pre-1996 rules too, and it compares four and five children against the three-child
+dwelling size, leaving the 140 and 160 m² limits dead. Its `ungdom` argument is never read.
+
+This one is almost certainly not what the author meant, and it has a large, visible effect. It is
+kept because parity with the workbook is the goal, and recorded here so it can be raised upstream.
+
+**`bistOld`** compares an annual income against a monthly need: `disp` is the annual `IndDisp(age)`
+that `Mcalc` passes, but `bistand` at the test is a monthly figure. A household therefore has to
+fall below one month's subsistence need in a whole year's income before anything is paid.
+`bist25` writes the same test as `disp < bistand * 12`.
+
 ## A precision trap in the extracted data
 
 The extractor originally rounded every value to twelve significant digits, to keep the generated
@@ -377,5 +473,5 @@ again, this is why not.
 | Occupational pension, defined benefit | `TjänstepensionerFörmån.bas` (`FTJP`), `tlPA03`, `KAPKL_f`, `PA_KL`, `PA_KLBPP` | ✅ `src/tjanstepension/formansbestamd.ts` |
 | Private saving | `PrivatSparande.bas` | ✅ `src/saving/privateSaving.ts` |
 | Tax rules | `Skatteregler.bas` | ✅ `src/skatt/` |
-| Benefits | `Bidrag.bas` | |
+| Benefits | `Bidrag.bas` | ✅ `src/bidrag/` |
 | Main loop | `Mcalc` | |
