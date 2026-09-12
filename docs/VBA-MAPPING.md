@@ -283,6 +283,28 @@ birth month other than January is chosen. It is called only from `FTJP`, so the 
 there rather than hidden inside the function. **Still to apply**: `FTJP` is ported, but the port
 takes `born` as a value, so the truncation will be wired in when `Mcalc` lands and owns that state.
 
+## Private saving — `src/saving/privateSaving.ts`
+
+| VBA | TypeScript |
+|---|---|
+| `PrivatSpar`, `AvkastningsskattKFISK`, `Schablonintakt` | same names |
+
+### The one module that is not pure
+
+`PrivatSparande.bas` declares no `Option Explicit`, so its undeclared variables — `avkskatten`,
+`Slr` — are implicit **module-level** Variants that persist between calls. Two branches do not
+cover every input, and there the previous call's value stands:
+
+- `AvkastningsskattKFISK` tests `> 150000` and `< 150000` (and the same at 300 000 from 2026).
+  At exactly the allowance neither fires.
+- `Schablonintakt` has no `Case` for a year before 1986.
+
+Both are reproduced with module-level variables, because a golden-file case could land on a round
+150 000. The cost is that these functions are **not pure**: the same arguments can give different
+answers depending on what ran before. `resetPrivateSavingState()` clears them between independent
+runs; the VBA has no equivalent, so a run following another in the same Excel session inherits the
+earlier one's leftovers, which the port does not try to reproduce.
+
 ## A precision trap in the extracted data
 
 The extractor originally rounded every value to twelve significant digits, to keep the generated
@@ -311,7 +333,7 @@ again, this is why not.
 | Public pension | `Pensionssystemet.bas` | ✅ `src/pension/incomePension.ts` (ATP `tp_` still to do) |
 | Occupational pension, defined contribution | `Tjänstepensioner.bas` | ✅ `src/tjanstepension/` |
 | Occupational pension, defined benefit | `TjänstepensionerFörmån.bas` (`FTJP`), `tlPA03`, `KAPKL_f`, `PA_KL`, `PA_KLBPP` | ✅ `src/tjanstepension/formansbestamd.ts` |
-| Private saving | `PrivatSparande.bas` | |
+| Private saving | `PrivatSparande.bas` | ✅ `src/saving/privateSaving.ts` |
 | Tax rules | `Skatteregler.bas` | |
 | Benefits | `Bidrag.bas` | |
 | Main loop | `Mcalc` | |
