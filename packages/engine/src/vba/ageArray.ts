@@ -10,6 +10,9 @@
  * Reads and writes outside the declared bounds throw, rather than silently
  * yielding `undefined` as a plain array would.
  */
+
+import { vbaCLng } from "./math.js";
+
 export class AgeArray {
   readonly firstAge: number;
   readonly lastAge: number;
@@ -63,4 +66,28 @@ export class AgeArray {
       yield [age, this.get(age)];
     }
   }
+}
+
+/**
+ * VBA's `Array(...)` function under `Option Base 1`.
+ *
+ * `Option Base` sets the lower bound of the array the `Array` function returns,
+ * and Bidrag.bas declares `Option Base 1` -- so `Array(a, b, c)` there is
+ * indexed 1 to 3, not 0 to 2.
+ *
+ * That is not a reading of the documentation but of the code: `bist25` builds
+ * seven-element cost tables and reads `Gn(7)`, and its adult tables hold two
+ * values read as `vuxna(1)` and `vuxna(2)`. Both would be subscript errors on a
+ * zero-based array, and the model would fail on every run.
+ *
+ * Reads outside the bounds throw, as VBA's "subscript out of range" does.
+ */
+export function vbaArray(...values: readonly number[]): (index: number) => number {
+  return (index: number): number => {
+    const value = values[vbaCLng(index) - 1];
+    if (value === undefined) {
+      throw new RangeError(`Array: subscript ${index} outside 1..${values.length}`);
+    }
+    return value;
+  };
 }
