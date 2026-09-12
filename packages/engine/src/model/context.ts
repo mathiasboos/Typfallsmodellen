@@ -141,12 +141,12 @@ export interface ModelContext {
   /**
    * `w_time`: the age the entered salary refers to. 0 derives it.
    *
-   * The Adv_settings cell is a subtraction of two named ranges, which the label
-   * ("Inkomståret 2025") and the shipped value put at `Modell_year - born`,
-   * i.e. the typfall's age today. ASSUMPTION: the operands are inferred from
-   * the label and value, because the LibreOffice conversion the extractor uses
-   * cannot resolve defined names inside formulas. Worth confirming against the
-   * golden files.
+   * The Adv_settings cell is a subtraction of two named ranges. Its hint reads
+   * "Inkomståret 2025" and its shipped value is 66, which is exactly
+   * `w_ref (2025) - born (1959)` -- so it is the typfall's age in the reference
+   * year. The operands are pinned by that arithmetic rather than read directly,
+   * because the LibreOffice conversion the extractor uses cannot resolve
+   * defined names inside formulas.
    */
   readonly wTime: number;
   /** `Nominal`: the salary is given in nominal money rather than fixed prices. */
