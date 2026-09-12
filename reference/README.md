@@ -20,6 +20,12 @@ Regression data extracted from the workbook itself, regenerated with the rest of
 - **`economic-series-cached.json`** — every value the workbook had cached for the economic
   series, projections included, computed with the shipped assumptions (0% inflation, 0% growth,
   1.7% real return). Validates the projection rules in `docs/PROJECTION-RULES.md`.
+- **`brutto-cached.json`** — the `Brutto` sheet, which unlike the result sheets keeps its computed
+  values and whose formulas call `PGI`, `IPavgift`, `ppavgift` and `GPAVGIFT` as worksheet UDFs.
+  Validates the contribution layer across ~80 years.
+  **Know its limits**: it is one typfall, earning above the ceiling in every year from 2016. It
+  pins down the ceiling, the contribution and the rounding — removing the final 7.5 IBB clamp
+  breaks it at once — but never exercises an income below the ceiling or any year before 2016.
 
 ## `golden/`
 

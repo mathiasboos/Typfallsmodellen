@@ -88,6 +88,35 @@ a different project.
   workbook's last row has no next row and holds 0. The engine computes a year beyond the
   requested range and returns the real value.
 
+## Settings — `src/model/context.ts`
+
+The rule modules read about forty Excel named ranges. `ModelContext` replaces them with one
+frozen object threaded through the engine, so the functions stay pure and testable.
+
+Defaults come from the workbook itself: `Adv_settings` carries its own variable name in column 9
+and its "normal" value in column 8, both extracted into `packages/data/options.json`. Two
+exceptions, `Soc_tak` and `Social_avg`, are policy-experiment switches with no row on that sheet;
+both are guarded by `> 1999` in the VBA, so they default to 0 and stay inert.
+
+## Contributions — `src/pension/contributions.ts`
+
+| VBA | TypeScript |
+|---|---|
+| `riktage`, `andel` | same names |
+| `pgi` | `pgi`, with the `Typ` argument as the `PgiResult` enum |
+| `ipavgift`, `ppavgift`, `gpavgift`, `PPMavg` | same names, `ppmavg` |
+
+### A quirk kept on purpose
+
+`pgi` declares the tax-reduction phase-in share `Dim andel As Long`, so assigning 0.25 and 0.5
+rounds them to **0** (0.5 by banker's rounding) and 0.75 and 0.875 to **1**. The reduction is
+therefore all-or-nothing, arriving in 2002 rather than phasing in from 2000 as the surrounding
+code reads as intending. Kept, and marked at the site.
+
+**Unverified.** The Brutto fixture's typfall starts in 2016, so the 2000-2005 years where this
+bites are never exercised — reverting the quirk does not break any test. The golden files will
+settle it.
+
 ## Status
 
 | Area | VBA source | Ported |
@@ -96,6 +125,8 @@ a different project.
 | Economic series + projection | `startsetup`, `Balansindex` | ✅ `src/data/` |
 | Mortality, delningstal, arvsvinster | `Mortality.bas` | ✅ `src/pension/mortality.ts` |
 | Delningstal lookup | `aaDeltal.bas` | |
+| Contributions (PGI, avgifter) | `Pensionssystemet.bas` (first part) | ✅ `src/pension/contributions.ts` |
+| Settings | ~40 named ranges | ✅ `src/model/context.ts` |
 | Wage vector | `Lön_mm.bas` | |
 | Public pension | `Pensionssystemet.bas` | |
 | Occupational pension | `Tjänstepensioner.bas`, `TjänstepensionerFörmån.bas` | |

@@ -21,7 +21,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import extract_arv
+import extract_brutto
 import extract_content
+import extract_deltal
 import extract_i18n
 import extract_mortality
 import extract_options
@@ -121,6 +123,20 @@ def main() -> int:
         "lastYear": mortality_meta["lastYear"],
         "values": mortality_meta["count"],
     }
+
+    print("Published delningstal...")
+    write_json(
+        DATA_DIR / "annuity-tables.json",
+        extract_deltal.extract(wb),
+        description="published delningstal from Nyckeltal",
+    )
+
+    print("Contribution-phase fixture...")
+    write_json(
+        FIXTURE_DIR / "brutto-cached.json",
+        extract_brutto.extract(wb),
+        description="pgi/avgifter regression fixture",
+    )
 
     print("Inheritance gains...")
     arv = extract_arv.extract(wb)
