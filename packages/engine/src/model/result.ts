@@ -308,6 +308,22 @@ export function buildTable1(run: Run): Table1Row[] {
   const publicTotal =
     s.ip.get(par) + s.tp.get(par) + s.pp.get(par) + s.garp.get(par) + s.ptillagg.get(par);
 
+  /**
+   * What the share column divides by.
+   *
+   * NOTE: the original reassigns `Income_(PAR - 1)` for this (VBA_go.bas 2568),
+   * and the reassignment does not match the value rows it is compared against.
+   * With `Average_Earning > 1` it takes `ys(1)`, which is `finalSalaryAdjusted`
+   * exactly; with a single year it takes `Income_(PAR - 1 - korr2)` where the
+   * value row reads `Income_(PAR - 1 + korr)`, and it drops the `growth`
+   * factor the value row applies.
+   *
+   * Both differences are unreachable from the Start sheet: `korr2` is
+   * `rng_alt_last_pratt`, which is 0, and `korr` and `growth` only move when the
+   * birth year carries a fraction, which the workbook's dropdown does not offer.
+   * So this uses `finalSalaryAdjusted` for both branches -- but a later feature
+   * that allows a birth month would have to come back to this line.
+   */
   const base = finalSalaryAdjusted;
   const pensionRow = (key: Table1Key, amount: number): Table1Row => ({
     key,
