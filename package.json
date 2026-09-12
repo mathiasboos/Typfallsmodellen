@@ -10,7 +10,8 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "check:transpile": "python3 tools/transpile/skatteregler.py --check"
+    "check:transpile": "python3 tools/transpile/skatteregler.py --check",
+    "check:riksnorm": "python3 tools/extract/extract_riksnorm.py --check"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",

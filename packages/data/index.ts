@@ -13,6 +13,7 @@ import manifest from "./manifest.json" with { type: "json" };
 import mortality from "./mortality.json" with { type: "json" };
 import municipalTax from "./municipal-tax.json" with { type: "json" };
 import options from "./options.json" with { type: "json" };
+import riksnorm from "./riksnorm.json" with { type: "json" };
 
 export {
   content,
@@ -23,6 +24,7 @@ export {
   mortality,
   municipalTax,
   options,
+  riksnorm,
 };
 
 /** Path of the packed death-probability grid, for loaders that read it as bytes. */

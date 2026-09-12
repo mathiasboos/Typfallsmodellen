@@ -27,6 +27,7 @@ import extract_deltal
 import extract_i18n
 import extract_mortality
 import extract_options
+import extract_riksnorm
 import extract_series
 import extract_tax
 from common import DATA_DIR, REPO_ROOT, Workbook, write_bytes, write_json
@@ -153,6 +154,12 @@ def main() -> int:
     print("Translations...")
     i18n = extract_i18n.extract(wb)
     write_json(DATA_DIR / "i18n.json", i18n, description="sv/en strings")
+
+    print("Riksnorm...")
+    # Parsed from reference/vba/Bidrag.bas, so it runs after the VBA dump below
+    # on a first pass and picks up the previous dump otherwise. Verified
+    # independently by `npm run check:riksnorm`.
+    extract_riksnorm.extract()
 
     print("Content...")
     content = extract_content.extract(wb)

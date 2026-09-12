@@ -33,3 +33,15 @@ export interface SbtpContext extends BtpContext {
   /** `year_()` and the other age-indexed vectors. */
   readonly vectors: RunVectors;
 }
+
+/** What the social assistance norm needs beyond its own arguments. */
+export interface RiksnormContext {
+  /** `marginal`: 0 applies the rounding, 1 removes it. */
+  readonly marginal: number;
+  /** `born`: year of birth. Read by `bist25` only. */
+  readonly born: number;
+  /** `age`: the age Mcalc is currently at. Read by `bist25` only. */
+  readonly age: number;
+  /** `KPI()` and the other age-indexed vectors. Read by `bist25` only. */
+  readonly vectors: RunVectors;
+}

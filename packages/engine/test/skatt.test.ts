@@ -37,6 +37,7 @@ const vectors: RunVectors = {
   pbb: () => PBB,
   fpb: () => 60_000,
   kpiJune: () => 400,
+  kpi: () => 400,
   year: (age) => 1959 + age,
 };
 

@@ -40,6 +40,7 @@ const vectors = (salary = 462_000, wStart = 23): RunVectors => ({
   pbb: () => PBB,
   fpb: () => FPB,
   kpiJune: () => 400,
+  kpi: () => 400,
   year: (age) => BORN + age,
 });
 

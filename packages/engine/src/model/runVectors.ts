@@ -16,6 +16,8 @@ export interface RunVectors {
   fpb(age: number): number;
   /** `KPI_j(age)` -- KPI, June figure. */
   kpiJune(age: number): number;
+  /** `KPI(age)` -- KPI, annual average. */
+  kpi(age: number): number;
   /** `year_(age)` -- the income year at each age. */
   year(age: number): number;
 }
