@@ -11,7 +11,7 @@ i.e. row = age - 14 / age + 21 / age - 12, and column = year - 1996 throughout.
 
 from __future__ import annotations
 
-from common import round_sig
+from common import exact
 
 FIRST_YEAR = 1999
 COLUMN_BASE = 1996  # column = year - 1996
@@ -21,7 +21,7 @@ def _read_block(sheet, row_for_age, ages: range, years: range) -> dict:
     values = []
     for age in ages:
         row = row_for_age(age)
-        values.append([round_sig(sheet.num(row, y - COLUMN_BASE)) for y in years])
+        values.append([exact(sheet.num(row, y - COLUMN_BASE)) for y in years])
     return {
         "firstAge": ages.start,
         "lastAge": ages.stop - 1,

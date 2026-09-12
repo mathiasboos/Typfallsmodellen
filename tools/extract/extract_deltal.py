@@ -14,7 +14,7 @@ so a release that adds ages or cohorts is picked up automatically.
 
 from __future__ import annotations
 
-from common import round_sig
+from common import exact
 
 SHEET = "Nyckeltal"
 
@@ -57,7 +57,7 @@ def _read_table(sheet, age_row: int, age_first_col: int, cohort_col: int, cohort
     values = []
     for row in range(cohort_first_row, last_row + 1):
         values.append(
-            [round_sig(sheet.num(row, col)) for col in range(age_first_col, last_col + 1)]
+            [exact(sheet.num(row, col)) for col in range(age_first_col, last_col + 1)]
         )
 
     return {
@@ -83,10 +83,10 @@ def extract(wb) -> dict:
         "firstCohort": int(sheet.num(OLD_FIRST_ROW, OLD_COHORT_COL)),
         "lastCohort": int(sheet.num(last_old_row, OLD_COHORT_COL)),
         "incomePension": [
-            round_sig(sheet.num(r, OLD_IP_COL)) for r in range(OLD_FIRST_ROW, last_old_row + 1)
+            exact(sheet.num(r, OLD_IP_COL)) for r in range(OLD_FIRST_ROW, last_old_row + 1)
         ],
         "premiumPension": [
-            round_sig(sheet.num(r, OLD_PP_COL)) for r in range(OLD_FIRST_ROW, last_old_row + 1)
+            exact(sheet.num(r, OLD_PP_COL)) for r in range(OLD_FIRST_ROW, last_old_row + 1)
         ],
     }
 

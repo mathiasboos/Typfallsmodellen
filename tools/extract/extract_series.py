@@ -20,7 +20,7 @@ computes them from other columns for every year, and so does the engine.
 
 from __future__ import annotations
 
-from common import Series, round_sig
+from common import Series, exact
 from formulas import FormulaMap
 
 SHEET = "Några tal"
@@ -83,7 +83,7 @@ def extract(wb, formula_map: FormulaMap, last_year: int):
     cached: dict[str, list] = {}
 
     for name, (col, projection, derived, description) in COLUMNS.items():
-        all_values = [round_sig(sheet.num(y - ROW_BASE, col)) for y in range(FIRST_YEAR, last_year + 1)]
+        all_values = [exact(sheet.num(y - ROW_BASE, col)) for y in range(FIRST_YEAR, last_year + 1)]
         cached[name] = all_values
 
         if derived:
@@ -102,5 +102,5 @@ def extract(wb, formula_map: FormulaMap, last_year: int):
             note=f"projection: {projection}" + (" (derived every year)" if derived else ""),
         )
 
-    anchors = {key: round_sig(sheet.num(r, c)) for key, (r, c) in ANCHOR_CELLS.items()}
+    anchors = {key: exact(sheet.num(r, c)) for key, (r, c) in ANCHOR_CELLS.items()}
     return series, anchors, cached

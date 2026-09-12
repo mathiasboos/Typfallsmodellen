@@ -150,6 +150,43 @@ previous year's value. It changes no result: the months worked that year are com
 whose withdrawal term is multiplied by `defAr - par`, i.e. zero. Kept and marked, because a reader
 would otherwise "fix" it.
 
+## Income and premium pension — `src/pension/incomePension.ts`
+
+| VBA | TypeScript |
+|---|---|
+| `IP_` | `incomePensionYear`, returning all five quantities at once; `ipResult` picks one by `Typ` |
+| `ppkassa`, `deltal`, `P_uttag`, `pgb_barn` | `ppkassa`, `deltal`, `pUttag`, `pgbBarn` |
+
+Note there are **two** functions called `deltal` in the model, and they are not the same: the one
+here indexes the published tables directly by column arithmetic and is what `ppkassa` calls, while
+`fnDeltal_IP` in `deltal.ts` is the newer lookup with the mortality override.
+
+### A quirk kept on purpose
+
+For a retirement age below 61, `deltal` extrapolates from the **premium pension** table's first two
+ages — whichever pension is being asked about — because the VBA reads fixed columns 28 and 29 there.
+
+### What the fixture reaches
+
+The Brutto sheet's inline formulas reproduce `IP_`'s earning-phase branch term by term, so
+inheritance gains, indexation, management cost and the closing balance are each checked against the
+original across ~50 years. That sheet never draws a pension, so **none of the drawdown branches are
+verified** — those wait on the golden files.
+
+## A precision trap in the extracted data
+
+The extractor originally rounded every value to twelve significant digits, to keep the generated
+JSON tidy. That was wrong, and it took the Brutto comparison to reveal it.
+
+Several series are factors just above or below 1 — inheritance gains at 1.0003, management-cost
+factors at 0.9997 — and the engine uses them as `x - 1`. That subtraction cancels the leading
+digits, so a twelve-digit value carries a **~1e-8 relative error** into the result: small enough to
+look like noise, large enough to miss the workbook's figures.
+
+The extractor now stores the exact double. Python writes floats at shortest round-trip precision,
+so the output is both exact and byte-stable between runs. If you are tempted to tidy those numbers
+again, this is why not.
+
 ## Status
 
 | Area | VBA source | Ported |
@@ -161,7 +198,7 @@ would otherwise "fix" it.
 | Contributions (PGI, avgifter) | `Pensionssystemet.bas` (first part) | ✅ `src/pension/contributions.ts` |
 | Settings | ~40 named ranges | ✅ `src/model/context.ts` |
 | Wage vector | `Lön_mm.bas` | ✅ `src/income/wages.ts` |
-| Public pension | `Pensionssystemet.bas` | |
+| Public pension | `Pensionssystemet.bas` | ✅ `src/pension/incomePension.ts` (ATP `tp_` still to do) |
 | Occupational pension | `Tjänstepensioner.bas`, `TjänstepensionerFörmån.bas` | |
 | Private saving | `PrivatSparande.bas` | |
 | Tax rules | `Skatteregler.bas` | |

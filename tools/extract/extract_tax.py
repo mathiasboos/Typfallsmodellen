@@ -6,7 +6,7 @@ and column 8 for the burial fee, both as percentages -- so row = year - 1928.
 
 from __future__ import annotations
 
-from common import round_sig
+from common import exact
 
 SHEET = "K_skatt"
 ROW_BASE = 1928
@@ -35,7 +35,7 @@ def extract(wb, formula_map) -> dict:
         "series": {},
     }
     for name, (col, description) in COLUMNS.items():
-        values = [round_sig(sheet.num(y - ROW_BASE, col)) for y in range(FIRST_YEAR, last_year + 1)]
+        values = [exact(sheet.num(y - ROW_BASE, col)) for y in range(FIRST_YEAR, last_year + 1)]
         literal_row = formula_map.last_literal_row(
             SHEET, col, FIRST_YEAR - ROW_BASE, last_year - ROW_BASE
         )

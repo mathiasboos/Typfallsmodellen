@@ -104,19 +104,27 @@ def clean(value: Any) -> Any:
     return value
 
 
-def round_sig(value: float | None, digits: int = 12) -> float | None:
-    """Round away float noise from Excel's stored doubles without losing precision.
+def exact(value: float | None) -> float | None:
+    """Pass a cell value through at full double precision.
 
-    Excel stores e.g. 0.010000000000000009 for a hand-typed 0.01.  Twelve
-    significant digits keeps every meaningful figure in this dataset while making
-    the generated JSON stable and diffable year over year.
+    Deliberately does NOT round to a "tidy" number of significant digits. Several
+    of these series are factors just above 1 -- inheritance gains at 1.0003,
+    management-cost factors at 0.9997 -- and the engine uses them as ``x - 1``.
+    That subtraction cancels the leading digits, so trimming the stored value to
+    twelve significant figures puts a ~1e-8 relative error into the result, which
+    is enough to miss the workbook's own figures.
+
+    Python writes floats at shortest round-trip precision, so the JSON holds the
+    exact double and is still byte-stable from one run to the next.
     """
     if value is None:
         return None
-    if value == 0:
-        return 0.0
-    rounded = round(value, digits - 1 - int(math.floor(math.log10(abs(value)))))
-    return int(rounded) if rounded == int(rounded) and abs(rounded) < 2**53 else rounded
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        if value == int(value) and abs(value) < 2**53:
+            return int(value)
+    return value
 
 
 def write_json(path: Path, payload: Any, *, description: str = "") -> Path:
