@@ -382,9 +382,23 @@ What has been ruled out offline:
   workbook's own.
 - `RulesfromSkatt` is 0, so nothing freezes the rule year; `Last_pratt` is 0, so the netto comes
   from the age loop with `Skyear = year_(age)`, which is the path the engine takes too.
-- `born` has one declaration project-wide (`VBA_go.bas:12`), and **no** value of `born` or `year`
-  makes `f(year) × IBB(year − Int(born))` reach 150 722 — the most the formula can produce for that
-  cohort is 139 746, at `year = 2020`.
+- `born` has one declaration project-wide (`VBA_go.bas:12`).
+
+The contradiction is sharper than "the numbers are unreachable", because they are reachable.
+Enumerating every factor against every `IBB` the cohort's vector holds, exactly one pair lands in
+each measured bracket:
+
+| case | born | par | retirement year | ceiling | the only pair that fits |
+|---|---|---|---|---|---|
+| 37 | 1959 | 66 | 2025 | 150 650 – 150 750 | 1.87 × 80 600 (the IBB of 2025) = 150 722 |
+| 38 | 1959 | 70 | 2029 | 155 950 – 156 050 | 1.87 × 83 400 (the IBB of 2026+) = 155 958 |
+
+Both cases are the same cohort, so they share one `born` and one `IBB` vector; only `par` differs.
+The factor has to come from `year = 2022` in both, while the index has to move with `par` — 66 in
+one and ≥ 67 in the other. Both readings come from the same `year` in the same expression, so no
+assignment of `born` and `year` satisfies them together. A shifted `IBB` vector does not rescue it
+either: a constant `year = 2022` would index the same element in both runs, and the two runs need
+different values out of it.
 
 The quick case set has no retirement year 2023 or 2024, which is why a single `1.87` explains every
 diverging case: those are the two years that would tell a frozen factor apart from one that simply

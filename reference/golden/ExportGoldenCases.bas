@@ -626,9 +626,12 @@ End Function
 ' Reading the exported nets backwards says the workbook caps the 1% fee at
 ' 1.87 * IBB for every retirement year from 2022 on -- 150 722 in 2025 and
 ' 155 958 from 2026 -- where the source says 1.55 and 1.42. The source and the
-' compiled p-code agree with each other, the IBB vector is right, and no value
-' of born or year can make the formula produce 150 722. So the arithmetic and
-' the code disagree, and only the workbook can say which is doing what.
+' compiled p-code agree with each other, and the IBB vector is right. Two cases
+' of the same cohort retiring at different ages settle the rest: both need the
+' 1.87 factor, which only year = 2022 selects, while the IBB index has to move
+' with the retirement age -- and both come from the same year in the same
+' expression. So the arithmetic and the code disagree, and only the workbook
+' can say which is doing what.
 '
 ' This runs one typfall to fill born and IBB(), then asks PublicAvg itself. The
 ' ceiling is measured, not assumed: calling it with an income far above any

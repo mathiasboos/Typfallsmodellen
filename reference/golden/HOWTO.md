@@ -75,9 +75,11 @@ in `PublicAvg` (`Skatteregler.bas:1356`): the exported nets say the workbook cap
 `1.87 × IBB` for every retirement year from 2022 on, where the function's own source says 1.55 for
 2025 and 1.42 from 2026.
 
-The source and the compiled p-code agree with each other, the `IBB` vector is right, and no value of
-`born` or `year` makes the formula reach the observed ceiling — so the arithmetic and the code
-disagree, and only the workbook can settle it. `ReportPublicAvg` runs one typfall to fill `born` and
+The source and the compiled p-code agree with each other, and the `IBB` vector is right. Two cases
+of the same cohort retiring at different ages pin it down: both need the 1.87 factor, which only
+`year = 2022` selects, while the `IBB` index has to move with the retirement age — and both come
+from the same `year` in the same expression. So the arithmetic and the code disagree, and only the
+workbook can settle it. `ReportPublicAvg` runs one typfall to fill `born` and
 `IBB()`, then calls `PublicAvg` with an income far above any possible cap, which returns the ceiling
 divided by a hundred. That measures the factor rather than assuming it. Run it and send the
 Immediate window (**Ctrl+G**) output.
