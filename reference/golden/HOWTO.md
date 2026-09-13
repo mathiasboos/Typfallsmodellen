@@ -29,6 +29,12 @@ re-used on every subsequent build.
    **Använd normala inställningar**. The reference run should exercise the model as it ships;
    anything else, and the engine would be compared against settings it was not asked to reproduce.
 
+   This matters most for the **pensionsbehållning** fields (`rng_PBH_IP`, `rng_PBH_PP`,
+   `rng_PBH_tjp`). Give the model an opening balance and it starts from that instead of computing
+   a working life: every `Slutlön` comes out 0 and every pension comes from the balance rather
+   than the salary. A whole 65-case export has already been lost that way. Both the macro and the
+   comparison harness now refuse a run with any of them set, but clearing them here costs nothing.
+
 3. **Import the macro.** Press `Alt+F11` for the VBA editor, then **File → Import File…** and
    choose `ExportGoldenCases.bas` from this folder. If an older copy of the module is already there,
    right-click it → **Remove ExportGoldenCases…** → **No** (do not export it) before importing,

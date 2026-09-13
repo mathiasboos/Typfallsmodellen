@@ -140,12 +140,42 @@ function advancedSettings(file: GoldenFile): Map<string, number> {
   for (const [key, raw] of file.settings) {
     if (!key.startsWith("adv.")) continue;
     const name = key.slice("adv.".length);
-    if (NO_VALUE_CELL.has(name)) continue;
     const value = Number(raw);
-    if (Number.isFinite(value)) values.set(name, value);
+    if (!Number.isFinite(value)) continue;
+    // A row with no value cell reads as blank, and VBA writes a blank as 0 --
+    // so 0 from one of those rows is "no reading" and has to be ignored. A
+    // non-zero one cannot come from a blank cell, so it is a real value that
+    // somebody typed into the row, and ignoring it is how 2 800 000 kr of
+    // hand-entered pension balance passed for an ordinary run.
+    if (NO_VALUE_CELL.has(name) && value === 0) continue;
+    values.set(name, value);
+  }
+  // `# live.<name>` is the same setting read through its defined name rather
+  // than off its Adv_settings row, which is the only way to see the eight whose
+  // row holds no value. It is a real reading where `adv.` was a blank cell, so
+  // it wins -- including for the settings skipped just above.
+  for (const [key, raw] of file.settings) {
+    if (!key.startsWith("live.")) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) values.set(key.slice("live.".length), value);
   }
   return values;
 }
+
+/**
+ * Opening balances that replace the earning phase.
+ *
+ * Set any of these and the model starts from a hand-entered pension behallning
+ * instead of computing a working life: every final salary comes out 0 and every
+ * pension comes from the balance rather than the salary. That is a legitimate
+ * thing to ask the model and useless as reference data, so a file that records
+ * one cannot be compared against.
+ *
+ * They are checked separately from the settings below because they are exactly
+ * the ones the old export could not see: their Adv_settings rows hold no value,
+ * so the dump wrote 0 and half an hour of exporting read as a normal run.
+ */
+const OPENING_BALANCES = ["rng_PBHYear", "rng_PBH_IP", "rng_PBH_PP", "rng_PBH_tjp", "rng_PBH_IPS"];
 
 /**
  * Notes where the run's settings are not the model's normal ones.
@@ -161,6 +191,22 @@ function advancedSettings(file: GoldenFile): Map<string, number> {
  */
 function checkAdvancedSettings(file: GoldenFile, used: ReadonlyMap<string, number>): SettingIssue[] {
   const issues: SettingIssue[] = [];
+
+  for (const name of OPENING_BALANCES) {
+    const actual = used.get(name.toLowerCase());
+    if (actual === undefined || actual === 0) continue;
+    issues.push({
+      setting: name,
+      exported: String(actual),
+      expected: "0",
+      fatal: true,
+      message:
+        `${name} was ${actual} during the export. The model starts from that balance ` +
+        `instead of computing a working life, so every Slutlon in the file is 0 and every ` +
+        `pension comes from the balance rather than the salary. Click "Anvand normala ` +
+        `installningar" on Adv_settings and re-run the export.`,
+    });
+  }
 
   for (const [name, actual] of used) {
     const normal = normalValue(name);

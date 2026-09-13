@@ -746,12 +746,51 @@ Private Function CheckPublicAvg() As Boolean
 End Function
 
 
+' Refuses to export from a workbook configured to skip the earning phase.
+'
+' rng_PBH_* are hand-entered opening balances: give the model a pension
+' behallning and it starts from that instead of computing a working life. Every
+' Slutlon comes out 0 and every pension comes from the balance rather than the
+' salary, which is a perfectly good thing to ask the model and useless as
+' reference data for a port that has to reproduce the whole life.
+'
+' It is worth refusing rather than warning because these five are invisible in
+' the exported file. Their Adv_settings rows name the setting in column 9 but
+' hold no value in column 2 -- the live cell is elsewhere, reached through the
+' defined name -- so the dump wrote 0 and the run read as a normal one. It cost
+' half an hour of exporting. WriteLiveSettings now reports them too.
+'
+' Clicking "Anvand normala installningar" on Adv_settings clears them, which is
+' step 2 of HOWTO.md.
+Private Sub RequireNormalSettings()
+    Dim names As Variant
+    Dim i As Long
+    Dim value As Double
+    Dim bad As String
+
+    names = Array("rng_PBHYear", "rng_PBH_IP", "rng_PBH_PP", "rng_PBH_tjp", "rng_PBH_IPS")
+    For i = LBound(names) To UBound(names)
+        value = NamedValue(CStr(names(i)), 0)
+        If value <> 0 Then bad = bad & vbCrLf & "    " & names(i) & " = " & Format$(value, "#,##0")
+    Next i
+
+    If Len(bad) > 0 Then
+        Err.Raise 5, , "This workbook has hand-entered pension balances set:" & bad & _
+                  vbCrLf & vbCrLf & "The model would start from those instead of computing " & _
+                  "a working life, so every Slutlon would be 0 and every pension would come " & _
+                  "from the balance rather than the salary." & vbCrLf & vbCrLf & _
+                  "Go to Adv_settings and click 'Anvand normala installningar', then run again."
+    End If
+End Sub
+
+
 ' Refuses to export from a workbook whose rules are not the port's.
 '
 ' Costs one typfall, half a minute on a job of half an hour or more. A guard
 ' that can be skipped is a guard that will be skipped, so every entry point that
 ' computes or writes results calls this first.
 Private Sub RequireMatchingBuild()
+    RequireNormalSettings
     If Not CheckPublicAvg() Then
         Err.Raise 5, , "This workbook is a different build of the model from the one " & _
                   "the web port was written against -- see the Immediate window " & _
@@ -1221,6 +1260,34 @@ End Function
 ' Writes every Adv_settings row that names a variable: column 9 carries the name
 ' the VBA reads it by, column 2 the value. The row number goes in beside it, so
 ' a name mangled by the .bas encoding can still be identified.
+' The settings whose Adv_settings row carries no value of its own.
+'
+' Eight rows name a setting in column 9 and document a normal value in column 8
+' but hold nothing in column 2: the live cell is elsewhere on the sheet, reached
+' through the defined name. WriteAdvSettings reads the row, finds a blank, and
+' VBA's IsNumeric(Empty) writes it out as 0 -- so a run with 2 800 000 kr of
+' hand-entered income pension balance reported "rng_PBH_IP: 0" and read as an
+' ordinary run. Reading the defined name instead says what the run really used.
+Private Sub WriteLiveSettings(ByVal f As Integer, ByVal adv As Worksheet)
+    Dim lastRow As Long, r As Long
+    Dim settingName As String
+    Dim target As Range
+
+    lastRow = adv.UsedRange.Row + adv.UsedRange.Rows.Count - 1
+    If lastRow > 400 Then lastRow = 400
+
+    For r = 1 To lastRow
+        settingName = Trim$(CStr(adv.Cells(r, 9).Value))
+        If Len(settingName) > 0 And Len(Trim$(CStr(adv.Cells(r, 2).Value))) = 0 Then
+            Set target = NamedRange(settingName, "")
+            If Not target Is Nothing Then
+                Print #f, "# live." & settingName & ": " & CsvValue(target.Value)
+            End If
+        End If
+    Next r
+End Sub
+
+
 Private Sub WriteAdvSettings(ByVal f As Integer, ByVal adv As Worksheet)
     Dim lastRow As Long, r As Long
     Dim settingName As String
@@ -1276,6 +1343,10 @@ Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, _
     ' nonsense, and which settings matter is not obvious from the outside:
     ' rng_Bara_fastapriser alone rescales every value in the file.
     WriteAdvSettings f, adv
+
+    ' And the eight whose row holds no value of its own, read through the
+    ' defined name instead -- see WriteLiveSettings.
+    WriteLiveSettings f, adv
 
     ' Header row, taken from the sheet so it tracks any future column change.
     line = ""
