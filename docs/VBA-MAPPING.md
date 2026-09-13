@@ -394,6 +394,42 @@ Three things came out of it, and they are the reason this section exists:
   2025, so all four wrong factors looked like one constant. Block G exists for that, and
   `golden.test.ts` asserts those years stay covered.
 
+### An open divergence: the premium pension away from the forecasting standard
+
+Nine of the 299 golden cases disagree, in the premium pension alone. They are block D — the block
+that moves the economic assumptions off the forecasting standard — for cohorts 1965, 1980 and 1995,
+all retiring at 66 on 462 000 kr a year. The engine is always **lower**, by 0.5% to 2.7%, and the
+gap grows with the cohort.
+
+The shape is sharp. Each cohort has four variants, and **the one that matches is always the
+return-only variant**: change `rng_FondAvkastning` alone and the engine agrees to the last decimal.
+Every diverging case has non-zero inflation or non-zero real growth, and the two contribute roughly
+independently — for cohort 1995, inflation alone costs 1.56%, growth alone 1.32%, and both together
+2.78%.
+
+What is ruled out:
+
+- **The return series is not the cause.** `TJP` accumulates with the same `yield(age)` vector and is
+  non-zero (4 900 – 9 900 kr a month) and exact in all 299 cases. Changing the projection of
+  `avkastningPpm` to carry wage growth breaks tjänstepension in six cases and does not fix the
+  premium pension in any.
+- **The contribution base is not obviously the cause.** The income pension is exact in all 299
+  cases, and both contributions are shares of the same PGI.
+- **Nothing year-structural.** The matching control has the same cohort and the same years; only the
+  assumptions differ. That excludes the `arv PP` grid running out of rows, the delningstal, and the
+  Riksgälden rate, none of which depend on inflation or growth.
+
+So it is something in the premium pension path that moves with `(1 + growth)(1 + inflation)` and is
+not shared with the occupational pension. `PPMavg` is not it — `rng_Avkastning_fondavgifter` is 1 in
+this export, and the function exits at its first line.
+
+The next step is instrumentation rather than more reading: dump `ppRatt`, `ppArv`, `rgk` and
+`ppPbh` per age for case 274 (growth only) against case 275 (return only, matching), and hand-check
+one projected year against `VBA_go.bas:1662-1666`.
+
+Normal-mode runs use the forecasting standard, where all four variants agree, so this does not
+affect the shipped typfall. It matters for advanced mode, where the assumptions are the point.
+
 ### Things kept as written
 
 - **`sared` reads `alder` and `binkomst` that are not its parameters** and are never assigned
@@ -593,35 +629,39 @@ occupational pension, private saving, and the tax, benefits and disposable incom
 Everything downstream of the earning phase depends on it; if the file is absent the gate skips and
 what is written above still stands.
 
-What is committed today is the **quick set: 65 cases**, exported with `ExportGoldenCasesQuick`.
-**All twelve columns match, on every case, to the last decimal the CSV carries** — 780 of 780
-comparable cells. That is the acceptance gate met: the final salary, all five public pensions and
-the gross, the occupational pension, private saving, the housing supplement, and the tax and
-disposable income at retirement.
+What is committed today is the **full set: 299 cases**, exported with `ExportGoldenCases`.
+**3 579 of 3 588 comparable cells match**, twelve of twelve columns, 290 of 299 cases exact. The
+nine that do not are the premium pension away from the forecasting standard — see *An open
+divergence* under **Tax rules**, above. The 65-case quick set passes completely.
 
 The file certifies its own provenance. `# publicavg:` records the export macro's check that the
 workbook's public service fee ceilings are the ones this port mirrors, and `# live.<name>:` records
 the eight settings whose `Adv_settings` row holds no value of its own, read through the defined name
-instead of off the row. Both exist because the first two attempts at this file were wrong in ways
-nothing could see — one exported from a different build of the model, one from a workbook carrying
-hand-entered pension balances — and in both cases the engine was blamed for a week. `map.ts` reads
-them back and `golden.test.ts` refuses a file that fails either.
+instead of off the row. Both exist because earlier attempts at this file were wrong in ways nothing
+could see — one exported from a different build of the model, one from a workbook carrying
+hand-entered pension balances. `map.ts` reads them back and `golden.test.ts` refuses a file that
+fails either.
 
-Two settings the `live.` block newly confirms, having previously been unverifiable: `rng_Sista_PensRatt`
-is 1, so `recomputeAtRetirement` really is the path the last three Table 1 rows take, and
-`rng_Bara_fastapriser` is 1, so the amounts are in fixed prices. Both match the engine's own
-defaults.
+Two settings the `live.` block newly confirms, having previously been unverifiable:
+`rng_Sista_PensRatt` is 1, so `recomputeAtRetirement` really is the path the last three Table 1 rows
+take, and `rng_Bara_fastapriser` is 1, so the amounts are in fixed prices. Both match the engine's
+own defaults.
 
 The run was made with `w_time` at 67 rather than its normal 66, and `rng_Make_Bald` at 1958 rather
 than 1959. The harness configures the engine from the file, so the comparison is sound — but it is
 a check under those settings, not under the ones a website would use. The report says so at the top.
 
-The full 299-case set can follow at any time with `ExportGoldenCases`.
+**What the full set found that the quick set could not.** Two real port bugs, in code the 65 cases
+never reached: the guarantee underlag's delningstal (fixed, above) and the premium pension under
+non-standard assumptions (open). Both live in blocks the quick set samples thinly — retirement ages
+past the riktålder, and economic assumptions away from the standard. That is the argument for
+running the full set at each model version, not just the quick one.
 
 What the quick set does *not* reach, so those paths stay on unit tests:
 
 - **Table 2, the life-income sums and the pension-wealth box.** The batch runner writes Table 1
-  only.
+  only, so every figure past the retirement year — including the corrected guarantee underlag — is
+  checked by the VBA reading rather than by the file.
 - **Part-year retirement, a hand-entered wage list, private saving, children and a spouse.** The
   generated cases use none of them.
 

@@ -34,7 +34,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 |---|---|---|
 | 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
-| 2. Golden-file harness vs. Excel | done | 65 typfall out of the real model, all twelve output columns exact — `npm run compare`. The full 299-case set can follow at any time |
+| 2. Golden-file harness vs. Excel | done | 299 typfall out of the real model, twelve output columns, 3 579 of 3 588 cells exact — `npm run compare` |
 | 3. Normal-mode website | next | `apps/web` |
 | 4. Advanced mode | | |
 | 5. Polish, CI, deploy | | |
@@ -48,7 +48,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | Pension-qualifying income and contributions | the `Brutto` sheet, which calls those VBA functions as worksheet UDFs | exact |
 | Income pension accumulation | the same sheet, term by term — gains, indexation, cost, balance | exact |
 | The earning phase of the main loop, end to end | the `Brutto` sheet's per-age trace — PGI, PGB and all three contributions | exact |
-| **Every Table 1 figure, end to end** | **65 typfall the real model computed, all twelve output columns** | **780 of 780 cells exact** |
+| **Every Table 1 figure, end to end** | **299 typfall the real model computed, all twelve output columns** | **3 579 of 3 588 cells exact** |
 | VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
@@ -59,11 +59,11 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 The `Brutto` fixture covers the earning phase only — that sheet never draws a pension, and it
 pairs each year's pension right with the following year's indexation where the loop pairs it with
 this year's. **The golden file is what closes the rest**, and it is the only check that compares
-the engine against the real model end to end: `reference/golden/golden-cases.csv` holds 65 typfall
+the engine against the real model end to end: `reference/golden/golden-cases.csv` holds 299 typfall
 the workbook itself computed, and `npm run compare` runs the engine over the same inputs and diffs
 all twelve output columns — the final salary, the five public pensions and their total, the
 occupational pension, private saving, and the tax, benefits and disposable income at retirement.
-Every one of the 780 comparable cells matches, to the last decimal the CSV carries.
+3 579 of the 3 588 comparable cells match, to the last decimal the CSV carries. The nine that do not are the premium pension under economic assumptions away from the forecasting standard, written up in [docs/VBA-MAPPING.md](docs/VBA-MAPPING.md).
 
 The file certifies the workbook that made it: `# publicavg:` records a check that its tax ceilings
 are the ones this port mirrors, and `# live.<name>:` records the settings whose `Adv_settings` row
