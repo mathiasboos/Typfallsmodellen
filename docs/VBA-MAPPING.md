@@ -340,11 +340,10 @@ wrong code. Two things it has to get right:
 - VBA reads and assigns the function's own name as a variable (`If Jobb14 < 0 Then Jobb14 = 0`), on
   both sides of a condition.
 
-### An open divergence: the public service fee ceiling
+### The public service fee ceiling: the workbook runs older code
 
-`PublicAvg` is the one place where the port and the workbook have been seen to disagree, and the
-disagreement is not yet explained. The function caps the 1% fee at a multiple of the
-inkomstbasbelopp that has been lowered each year (`Skatteregler.bas:1362-1369`):
+`PublicAvg` caps the 1% fee at a multiple of the inkomstbasbelopp that has been lowered each year.
+`Skatteregler.bas:1362-1369` in `source/Typfallsmodellen.xlsb` reads:
 
 ```vba
 lim2 = (2.092 * IBB(year - Int(born)))
@@ -356,55 +355,49 @@ If year = 2025 Then lim2 = 1.55 * IBB(year - Int(born))
 If year >= 2026 Then lim2 = 1.42 * IBB(year - Int(born))
 ```
 
-`reduktioner.ts` ports that line for line. But across the 61-case golden file the workbook behaves
-as if the factor were **1.87 for every retirement year from 2022 on**:
+`reduktioner.ts` ports that line for line, and it is the whole of the remaining golden-file gap:
+20 of the 61 quick cases, net and disposable only, 258 kr/year for a 2025 retirement and 376 for
+2026 and later.
 
-| retirement year | `IBB(par)` | the port's ceiling | fee | the workbook's ceiling | fee |
-|---|---|---|---|---|---|
-| 2019–2020 | 64 400 | 2.092 × IBB | 1 347 | the same | 1 347 |
-| 2022 | 71 000 | 1.87 × IBB | 1 328 | the same | 1 328 |
-| 2025 | 80 600 | 1.55 × IBB = 124 930 | 1 249 | 1.87 × IBB = 150 722 | 1 507 |
-| 2026+ | 83 400 | 1.42 × IBB = 118 428 | 1 184 | 1.87 × IBB = 155 958 | 1 560 |
+`ReportPublicAvg` (in `reference/golden/ExportGoldenCases.bas`) measures the ceiling the workbook
+actually applies, by calling `PublicAvg` with an income far above any possible cap so that it
+returns the ceiling over a hundred. Run against the workbook that produced `golden-cases.csv`:
 
-That is the whole of the remaining golden-file gap: 20 cases, net and disposable only, 258 kr/year
-for a 2025 retirement and 376 for 2026 and later. Three of the cases sit below the workbook's
-ceiling and above the port's, and there the workbook's fee is *exactly* `cbefvi / 100`
-(139 800 → 1 398, 130 700 → 1 307, 131 600 → 1 316), which pins the taxable income to the krona and
-leaves the ceiling as the only moving part. The two ceilings are in the ratio 1.03474, exactly
-`83 400 / 80 600`, so it is `k × IBB(par)` with one constant — not a fixed amount, and not `pbb` or
-`fpb`, whose ratios across the two groups disagree.
+| year | measured ceiling | the source above | `1.87 × IBB(year)` |
+|---|---|---|---|
+| 2019 | 134 700 | 2.092 × 64 400 = 134 724 ✓ | — |
+| 2020 | 139 700 | 2.092 × 66 800 = 139 746 ✓ | — |
+| 2021 | 133 000 | 1.95 × 68 200 = 132 990 ✓ | — |
+| 2022 | 132 800 | 1.87 × 71 000 = 132 770 ✓ | — |
+| 2023 | 138 900 | 1.75 × 74 300 = 130 025 ✗ | **138 941** ✓ |
+| 2024 | 142 500 | 1.60 × 76 200 = 121 920 ✗ | **142 494** ✓ |
+| 2025 | 150 700 | 1.55 × 80 600 = 124 930 ✗ | **150 722** ✓ |
+| 2026+ | 156 000 | 1.42 × 83 400 = 118 428 ✗ | **155 958** ✓ |
 
-What has been ruled out offline:
+So `IBB(year - Int(born))` is indexed correctly for every year — 2023 really does read 2023's
+inkomstbasbelopp — and the 2021 and 2022 branches fire correctly. What does not happen is the 2023,
+2024, 2025 and 2026 branches firing at all: 2022's wins for every later year. Exactly one code
+shape produces that table:
 
-- `reference/vba/` is byte-identical to the VBA inside `source/Typfallsmodellen.xlsb`, and the
-  **compiled p-code** carries the same six branches, so this is not a stale-p-code case.
-- Nyckeltal column 88 holds 80 600 for 2025 and 83 400 flat from 2026, so the `IBB` vector is the
-  workbook's own.
-- `RulesfromSkatt` is 0, so nothing freezes the rule year; `Last_pratt` is 0, so the netto comes
-  from the age loop with `Skyear = year_(age)`, which is the path the engine takes too.
-- `born` has one declaration project-wide (`VBA_go.bas:12`).
+```vba
+lim2 = (2.092 * IBB(year - Int(born)))
+If year = 2021 Then lim2 = 1.95 * IBB(year - Int(born))
+If year >= 2022 Then lim2 = 1.87 * IBB(year - Int(born))   ' >=, and nothing after it
+```
 
-The contradiction is sharper than "the numbers are unreachable", because they are reachable.
-Enumerating every factor against every `IBB` the cohort's vector holds, exactly one pair lands in
-each measured bracket:
+The `>=` is forced: with `= 2022` and no later branches, 2023 would fall through to the 2.092
+default and give 155 436, not 138 941.
 
-| case | born | par | retirement year | ceiling | the only pair that fits |
-|---|---|---|---|---|---|
-| 37 | 1959 | 66 | 2025 | 150 650 – 150 750 | 1.87 × 80 600 (the IBB of 2025) = 150 722 |
-| 38 | 1959 | 70 | 2029 | 155 950 – 156 050 | 1.87 × 83 400 (the IBB of 2026+) = 155 958 |
+That is an older `PublicAvg`, written when 2022 was the last legislated year. The workbook in
+`source/` is not that build — its VBA source and its compiled p-code both carry all six branches,
+and `reference/vba/` is byte-identical to it. **The golden file was therefore produced by a
+different build of the model than the one every extracted table in `packages/data` comes from.**
 
-Both cases are the same cohort, so they share one `born` and one `IBB` vector; only `par` differs.
-The factor has to come from `year = 2022` in both, while the index has to move with `par` — 66 in
-one and ≥ 67 in the other. Both readings come from the same `year` in the same expression, so no
-assignment of `born` and `year` satisfies them together. A shifted `IBB` vector does not rescue it
-either: a constant `year = 2022` would index the same element in both runs, and the two runs need
-different values out of it.
-
-The quick case set has no retirement year 2023 or 2024, which is why a single `1.87` explains every
-diverging case: those are the two years that would tell a frozen factor apart from one that simply
-stopped being updated. Settling it needs a measurement from inside Excel —
-`?PublicAvg(282300, 0.01, 66, 0, 2025)` in the Immediate window after a run of the case-37 typfall
-returns 1249 if the workbook's own function follows its source, and 1507 if it does not.
+That is the thing to fix, not `reduktioner.ts`. A port checked against one build and fed data from
+another is only accidentally right: ten columns agreeing says the two builds share their Nyckeltal,
+mortality and delningstal tables, not that they share their rules. Until `source/` and the workbook
+that produced `golden-cases.csv` are the same file, this ceiling is the one known difference and
+there may be others the quick set does not reach.
 
 ### Things kept as written
 

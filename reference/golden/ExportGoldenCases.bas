@@ -623,19 +623,17 @@ End Function
 ' not are net and disposable income, in 20 of the 61 quick cases, and the whole
 ' gap is the ceiling in PublicAvg (Skatteregler.bas:1356).
 '
-' Reading the exported nets backwards says the workbook caps the 1% fee at
-' 1.87 * IBB for every retirement year from 2022 on -- 150 722 in 2025 and
-' 155 958 from 2026 -- where the source says 1.55 and 1.42. The source and the
-' compiled p-code agree with each other, and the IBB vector is right. Two cases
-' of the same cohort retiring at different ages settle the rest: both need the
-' 1.87 factor, which only year = 2022 selects, while the IBB index has to move
-' with the retirement age -- and both come from the same year in the same
-' expression. So the arithmetic and the code disagree, and only the workbook
-' can say which is doing what.
-'
 ' This runs one typfall to fill born and IBB(), then asks PublicAvg itself. The
 ' ceiling is measured, not assumed: calling it with an income far above any
 ' possible cap returns cap/100 rounded, so cap/IBB is the factor it really used.
+'
+' Run against the workbook that produced the committed golden-cases.csv, it
+' followed the source exactly for 2019-2022 and then stayed at the 2022 factor
+' of 1.87 for 2023, 2024, 2025 and 2026, where Skatteregler.bas says 1.75, 1.60,
+' 1.55 and 1.42. So that CSV came from an older build than the workbook in
+' source/. Re-run this whenever the workbook is replaced -- it is a one-second
+' check that the file being exported from is the file the port was built
+' against.
 '
 ' Run it, then send the Immediate window (Ctrl+G) output.
 '==============================================================================

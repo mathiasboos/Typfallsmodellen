@@ -36,23 +36,31 @@ re-used on every subsequent build.
    couple of minutes and is worth doing once per model version — see "Why there are two runners"
    below.
 
-5. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
+5. **Check it is the right build.** Put the cursor in **`ReportPublicAvg`** and press `F5`. It takes
+   about a second and prints the public service fee ceiling the workbook actually applies, year by
+   year, to the Immediate window (`Ctrl+G`). Every `cap/IBB` should read 2.0920 for 2019–2020,
+   1.9500 for 2021, 1.8700 for 2022, 1.7500 for 2023, 1.6000 for 2024, 1.5500 for 2025 and 1.4200
+   from 2026 — the factors in `Skatteregler.bas`. **If they do not, stop**: this workbook is a
+   different build from the one in `source/`, and a CSV exported from it would check the engine
+   against rules it was never given. See below.
+
+6. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
    `F5` (or **Run → Run Sub/UserForm**). Excel asks where to save the CSV.
 
-6. **Wait.** It runs **61** typfall through the model — about half an hour. Excel will look
+7. **Wait.** It runs **61** typfall through the model — about half an hour. Excel will look
    unresponsive while it works, and the status bar shows how far it has got. A dialog reporting the
    number of cases means it finished.
 
    **The CSV is rewritten after every case**, so the file on disk is always complete for everything
    that has finished. A halt costs the case in progress, nothing else.
 
-7. **Save the workbook** if you might want to add the rest later. The results live on the `Mikrosim`
+8. **Save the workbook** if you might want to add the rest later. The results live on the `Mikrosim`
    sheet, and closing without saving loses them — which is what makes `ExportGoldenCasesResume`
    possible or impossible.
 
-8. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
+9. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
 
-9. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
+10. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
    you.
 
 ### The other entry points
@@ -71,18 +79,20 @@ re-used on every subsequent build.
 
 The engine matches ten of the twelve columns exactly on all 61 quick cases. The two that do not are
 net and disposable income, in 20 of them, and the whole gap is the ceiling on the public service fee
-in `PublicAvg` (`Skatteregler.bas:1356`): the exported nets say the workbook caps the 1% fee at
-`1.87 × IBB` for every retirement year from 2022 on, where the function's own source says 1.55 for
-2025 and 1.42 from 2026.
+in `PublicAvg` (`Skatteregler.bas:1356`).
 
-The source and the compiled p-code agree with each other, and the `IBB` vector is right. Two cases
-of the same cohort retiring at different ages pin it down: both need the 1.87 factor, which only
-`year = 2022` selects, while the `IBB` index has to move with the retirement age — and both come
-from the same `year` in the same expression. So the arithmetic and the code disagree, and only the
-workbook can settle it. `ReportPublicAvg` runs one typfall to fill `born` and
-`IBB()`, then calls `PublicAvg` with an income far above any possible cap, which returns the ceiling
-divided by a hundred. That measures the factor rather than assuming it. Run it and send the
-Immediate window (**Ctrl+G**) output.
+`ReportPublicAvg` measures that ceiling: it runs one typfall to fill `born` and `IBB()`, then calls
+`PublicAvg` with an income far above any possible cap, which returns the ceiling divided by a
+hundred. The factor is measured rather than assumed.
+
+Run against the workbook that produced the committed `golden-cases.csv`, it showed the ceiling
+following the source exactly for 2019, 2020, 2021 and 2022, and then **staying at the 2022 factor
+of 1.87 for 2023, 2024, 2025 and 2026** — where the `Skatteregler.bas` in `source/` says 1.75, 1.60,
+1.55 and 1.42. That is an older `PublicAvg`, so the CSV was exported from a different build of the
+model than the one `packages/data` is extracted from.
+
+**Re-run it whenever the workbook is replaced**, including at the yearly update: it is a one-second
+check that the file you are exporting from is the file the port was built against.
 
 To go from the quick set to the full one: run `ExportGoldenCases` and let it re-run everything, or
 run the quick set, save, and add cases by hand — there is no merge step, because the CSV is always
