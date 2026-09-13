@@ -98,6 +98,19 @@ npm run check:names   # the sheet addresses the golden-file export depends on
 npm run compare       # engine vs. the Excel golden files in reference/
 ```
 
+Then the website, which carries the new data to the reader:
+
+```bash
+npm run build -w @typfallsmodellen/web   # rebuilds the single HTML file
+npm run verify:offline                   # opens it over file:// with the network cut
+```
+
+`verify:offline` needs a browser: `npm i -D playwright` and `npx playwright install chromium`. It
+is not a dependency of this repo — it runs before shipping, not on every install — so it is the
+one step here that asks you to install something. It opens the built file from disk with every
+request that is not the file itself aborted, and fails if the page asked for anything, logged an
+error, or shows a Table 1 that disagrees with the engine.
+
 The two `check:` scripts re-derive generated code and data from the VBA dump and fail if the
 committed version has drifted. They are the safety net for step 5: if a rule function was
 mechanically translated and you changed it by hand, or a riksnorm row moved, they say so.
@@ -115,7 +128,23 @@ historical behaviour.
 
 ### 7. Ship
 
-Update the version banner (it reads `packages/data/manifest.json`), commit, deploy.
+The artefact is `apps/web/dist/typfallsmodellen.html` — one file, no installation, no network.
+Commit, then hand out that file (and deploy it, once Phase 5 adds hosting).
+
+Three things that would otherwise be hand-copying are not:
+
+- **The version banner** reads `content.modelVersion`, which the extractor rewrites from the
+  workbook's `Versionsinformation` sheet. `packages/data/manifest.json` records which `.xlsb` it
+  came from, by sha256.
+- **The mortality grid** is re-embedded into the bundle from `packages/data/mortality-risks.bin`
+  by `tools/build/embed-mortality.mjs` on every build. There is no generated file to refresh by
+  hand; `apps/web/src/generated/` is git-ignored for that reason.
+- **The labels and the dropdowns** come from `packages/data/i18n.json` and `options.json`, so new
+  wording and new occupational agreements arrive with the data. If a year renumbers the SysLang
+  rows, `apps/web/test/labels.test.ts` fails rather than the page quietly showing the wrong text.
+
+So a year that brings **only new data** is: extract, run the checks in step 6, build, verify, ship
+— with no code change at all.
 
 ## What needs a human, and what does not
 

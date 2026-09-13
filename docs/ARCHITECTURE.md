@@ -77,8 +77,14 @@ an invention:
 | `qualifyingYears` | years with a pension right, capped at 40 | `rng_wyears` |
 | `warnings` | the corrections the run made to its inputs | the workbook's dialogs |
 
-**Both of the model's figures are Excel charts bound to Table 2's range.** `mdlChartData.bas` only
-shows and hides them, so Table 2 *is* the chart data and there is nothing else to compute for them.
+**The two figures plot `rows`, not `table2`.** An earlier draft of this document said they were
+Excel charts bound to Table 2's range; the file says otherwise. The Start sheet's two chart objects
+are line charts of **sixteen series each**, and in the distributed workbook every series reference
+reads `#REFERENS!` — the result sheets are cleared when it opens, which breaks them — so the
+series list cannot be recovered from the file at all. Sixteen series against `MvaluesRow`'s
+seventeen columns says plainly what they plot: the per-age matrix, one line per column, age along
+the bottom. `mdlChartData.bas` only shows and hides them, so there is no VBA to port either.
+`apps/web` draws `rows` accordingly.
 
 `rows` is the spine — Table 2 is a slice of it with columns paired, and Table 1 reads the state at
 the retirement age. A caller that wants something the tables do not carry can read `rows` directly.
@@ -95,5 +101,26 @@ mode reaches the other seventy-six.
 ### Where the mortality data comes in
 
 The death probabilities are a 240 KB binary rather than JSON, so how they load depends on where the
-engine runs — `src/data/nodeLoader.ts` reads the file, a browser fetches it. `run` takes them as an
-argument rather than choosing, which is what keeps the engine free of a runtime.
+engine runs — `src/data/nodeLoader.ts` reads the file, and the web build embeds it in the bundle as
+base64 (`apps/web/src/deaths.ts`). Neither is in the engine's public barrel, so the core carries
+neither a filesystem nor a fetch: `run` takes the probabilities as an argument rather than choosing
+where they come from, which is what keeps it free of a runtime.
+
+## The website
+
+`apps/web` is plain TypeScript and Vite — no UI framework, no chart library, no network at runtime.
+The figures are inline SVG.
+
+**Its build output is one self-contained HTML file**, `dist/typfallsmodellen.html`. That is forced
+by the delivery promise rather than chosen for elegance: a browser refuses ES module imports and
+`fetch` over `file://`, so the conventional `index.html` + `.js` + `.css` would load and instantly
+fail on a double-click. `tools/build/inline-single-file.mjs` folds every asset in and throws if the
+page still requests anything; with the mortality grid already embedded there is nothing left to
+ask for. `npm run verify:offline` then opens the result in Chromium with every non-file request
+aborted and checks Table 1 against the engine, so the promise is tested rather than asserted.
+
+The app holds no model state of its own. Every change re-runs `run()` and rebuilds the results,
+because one run is sub-millisecond; what is on screen is exactly what the engine returned for what
+the form says. The month/year switch is `rng_Chart_Earning_factor` on the `ModelContext` rather
+than a division in the view, since `buildTable2` already divides by it — the same rule as
+everywhere else here: where the workbook has an opinion, the port does not add a second one.

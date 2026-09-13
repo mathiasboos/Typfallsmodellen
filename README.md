@@ -20,6 +20,7 @@ computes entirely in the browser, and can absorb the yearly data release through
 source/            the published .xlsb this build is derived from
 tools/extract/     Python: .xlsb -> packages/data (run once a year)
 tools/transpile/   Python: the 32 tax-year functions, mechanically translated
+tools/build/       embeds the mortality grid, folds the build into one HTML file, verifies it
 packages/data/     generated data: economic series, mortality, tax, i18n, content
 packages/engine/   TypeScript port of the VBA calculation engine; no UI dependencies
                    run(input, context, { deaths }) -> TypfallResult
@@ -28,6 +29,22 @@ reference/         VBA source dump and regression fixtures; never shipped
 docs/              architecture, projection rules, yearly-update runbook, VBA mapping
 ```
 
+## Run it
+
+```bash
+npm install
+npm run build -w @typfallsmodellen/web
+```
+
+That writes **`apps/web/dist/typfallsmodellen.html`** — one self-contained file, about 800 kB.
+Open it in any browser: double-click it, email it, put it on a stick. No installation, no server,
+no network. Everything is computed in the browser and nothing is sent anywhere, which is not a
+privacy claim to take on trust — `npm run verify:offline` opens the built file in Chromium with
+every request that is not the file itself blocked, and fails if the page asks for anything or
+disagrees with the engine. (That check needs `npm i -D playwright`; nothing else here does.)
+
+`npm run dev -w @typfallsmodellen/web` serves it with hot reload while working on it.
+
 ## Status
 
 | Phase | | |
@@ -35,8 +52,8 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
 | 2. Golden-file harness vs. Excel | done | 299 typfall out of the real model, twelve output columns, every cell exact — `npm run compare` |
-| 3. Normal-mode website | next | `apps/web` |
-| 4. Advanced mode | | |
+| 3. Normal-mode website | done | the eight inputs, both tables, both figures, Swedish and English — one offline HTML file |
+| 4. Advanced mode | next | the other seventy-six `Adv_settings` |
 | 5. Polish, CI, deploy | | |
 
 ### Verified so far
@@ -49,6 +66,7 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | Income pension accumulation | the same sheet, term by term — gains, indexation, cost, balance | exact |
 | The earning phase of the main loop, end to end | the `Brutto` sheet's per-age trace — PGI, PGB and all three contributions | exact |
 | **Every Table 1 figure, end to end** | **299 typfall the real model computed, all twelve output columns** | **3 588 of 3 588 cells exact** |
+| The built HTML file, opened from disk with the network cut | Table 1 read back out of Chromium, against the engine's own snapshot | no outbound requests, no page errors, values exact — `npm run verify:offline` |
 | VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
