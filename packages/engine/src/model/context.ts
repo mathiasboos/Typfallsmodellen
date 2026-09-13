@@ -283,6 +283,35 @@ export interface ModelContext {
  * varies by cohort, and Mcalc will set it from `riktage(year)` once the main
  * loop lands.
  */
+/**
+ * The Riksgalden rate before the assumptions are carried into it.
+ *
+ * `Adv_settings` row 16 ("RGK rantan") is a **formula**, not a typed setting:
+ * it holds 0.010000000000000009, which is `1.01 - 1` in IEEE 754 rather than
+ * anything anyone typed. Its stored value is what the formula produced for the
+ * last case the workbook ran, exactly like the five formula cells in
+ * docs/VBA-MAPPING.md's table -- of which this is the sixth.
+ */
+export const RGK_BASE = 0.01;
+
+/**
+ * `Rgk` as the sheet recomputes it for a run's own assumptions.
+ *
+ * The rate compounds the price and wage assumptions onto the base, which is
+ * why it reproduces the stored value exactly when both are zero. It reaches
+ * two places: the projected `rantaRiksgalden`, where it credits each year's
+ * premium pension contribution (`VBA_go.bas:1662`, the one term the
+ * occupational pension does not share), and `tjpkassa`'s divisor adjustment.
+ * Both read the same cell in the workbook, so both get the same value here.
+ *
+ * Found by the full golden set: nine block D cases, every one with non-zero
+ * inflation or growth, had the premium pension low by 0.5% to 2.7% because the
+ * port took the rate for a constant 1%.
+ */
+export function rgkFor(rgk: number, yearlyInflation: number, realGrowth: number): number {
+  return (1 + rgk) * (1 + yearlyInflation) * (1 + realGrowth) - 1;
+}
+
 export function defaultContext(overrides: Partial<ModelContext> = {}): ModelContext {
   return buildContext(workbookDefault, overrides);
 }
@@ -330,7 +359,7 @@ function buildContext(
     finalSalaryYears: workbookDefault("Average_Earning", 5),
     referenceYear: workbookDefault("w_ref", 2025),
     latestIndexBasis: workbookDefault("rng_Senaste_Index_Framskrivning", 1),
-    rgk: workbookDefault("Rgk", 0.01),
+    rgk: workbookDefault("Rgk", RGK_BASE),
     occupationalInheritanceGains: workbookDefault("rng_Arvsvinster_TJP", 1),
     flexPension: workbookDefault("rng_FlexPens", 0),
     riktage: 66,

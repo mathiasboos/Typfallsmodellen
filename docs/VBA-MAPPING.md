@@ -394,41 +394,56 @@ Three things came out of it, and they are the reason this section exists:
   2025, so all four wrong factors looked like one constant. Block G exists for that, and
   `golden.test.ts` asserts those years stay covered.
 
-### An open divergence: the premium pension away from the forecasting standard
+### The premium pension away from the forecasting standard
 
-Nine of the 299 golden cases disagree, in the premium pension alone. They are block D — the block
-that moves the economic assumptions off the forecasting standard — for cohorts 1965, 1980 and 1995,
-all retiring at 66 on 462 000 kr a year. The engine is always **lower**, by 0.5% to 2.7%, and the
-gap grows with the cohort.
+Nine of the 299 golden cases used to disagree, in the premium pension alone: block D — the block
+that moves the economic assumptions off the forecasting standard — for cohorts 1965, 1980 and 1995.
+The engine was always lower, by 0.5% to 2.7%, and the gap grew with the cohort.
 
-The shape is sharp. Each cohort has four variants, and **the one that matches is always the
-return-only variant**: change `rng_FondAvkastning` alone and the engine agrees to the last decimal.
-Every diverging case has non-zero inflation or non-zero real growth, and the two contribute roughly
-independently — for cohort 1995, inflation alone costs 1.56%, growth alone 1.32%, and both together
-2.78%.
+The shape did the work. Each cohort has four variants, and **the one that matched was always the
+return-only variant**: change `rng_FondAvkastning` alone and the engine agreed exactly. Every
+diverging case had non-zero inflation or growth, and the two contributed independently — for 1995,
+inflation alone cost 1.56%, growth alone 1.32%, both together 2.78%.
 
-What is ruled out:
+That excluded almost everything by itself. Within a cohort all four variants share one delningstal,
+one set of arvsvinstfaktorer and one förskottsränta, so none of them can distinguish the three that
+diverge from the one that does not. The manual says the same from the other side: *"Samma delningstal
+används inom både premiepensionen och tjänstepensionen"*, and tjänstepension is 4 900 – 9 900 kr a
+month in these very cases and exact in all 299. `PPMavg` exits at its first line when
+`rng_Avkastning_fondavgifter` is 1, as it is here, so the administration fee contributes 0.
 
-- **The return series is not the cause.** `TJP` accumulates with the same `yield(age)` vector and is
-  non-zero (4 900 – 9 900 kr a month) and exact in all 299 cases. Changing the projection of
-  `avkastningPpm` to carry wage growth breaks tjänstepension in six cases and does not fix the
-  premium pension in any.
-- **The contribution base is not obviously the cause.** The income pension is exact in all 299
-  cases, and both contributions are shares of the same PGI.
-- **Nothing year-structural.** The matching control has the same cohort and the same years; only the
-  assumptions differ. That excludes the `arv PP` grid running out of rows, the delningstal, and the
-  Riksgälden rate, none of which depend on inflation or growth.
+What was left is the one term in the balance roll-forward that the occupational pension does not
+share (`VBA_go.bas:1662-1666`):
 
-So it is something in the premium pension path that moves with `(1 + growth)(1 + inflation)` and is
-not shared with the occupational pension. `PPMavg` is not it — `rng_Avkastning_fondavgifter` is 1 in
-this export, and the function exits at its first line.
+```vba
+PP_pbh(age) = PP_pbh(age-1) * yield(age)
+            + PP_pbh(age-1) * (PP_arv(age) - 1) / yield(age)^0.5
+            + RGK(age) * PP_ratt(age)          ' <- premium pension only
+            + PPMavg(...)                      ' <- 0 here
+```
 
-The next step is instrumentation rather than more reading: dump `ppRatt`, `ppArv`, `rgk` and
-`ppPbh` per age for case 274 (growth only) against case 275 (return only, matching), and hand-check
-one projected year against `VBA_go.bas:1662-1666`.
+Tjänstepension credits its own contribution with `yield(age)^0.5`; only the premium pension routes
+it through `RGK`, the Riksgälden rate for the year the contribution is held temporarily. And `Rgk`
+is a formula cell the port read as a constant 1%, so the rate never moved with the assumptions.
 
-Normal-mode runs use the forecasting standard, where all four variants agree, so this does not
-affect the shipped typfall. It matters for advanced mode, where the assumptions are the point.
+Solving for it confirmed the formula rather than assuming it. Bisecting `context.rgk` for the value
+that reproduces the workbook's premium pension, over all twelve block D cases:
+
+| cohort | inflation only | growth only | both | predicted by `(1.01)(1+i)(1+g) - 1` |
+|---|---|---|---|---|
+| 1995 | 0.030141 | 0.026120 | 0.046696 | 0.030200 / 0.026160 / 0.046683 |
+| 1980 | 0.029757 | 0.025847 | 0.047050 | the same |
+| 1965 | 0.029197 | 0.023418 | 0.045645 | the same |
+
+The premium pension is rounded to whole kronor, so each case admits an *interval* of `rgk` rather
+than a point, and the bisection returns its lower edge — which is why every solved value sits just
+under the prediction and why they converge as the cohort gains projected years and with them
+sensitivity. Cohort 1995, with the most, lands within 0.06 percentage points on all three variants.
+
+Only projected years take the setting; historical ones read the sheet (`setup.ts:335`), which is
+why the error grew with the cohort. `rgkFor` now derives the rate in both places the workbook's
+single cell reaches — the projected `rantaRiksgalden` and `tjpkassa`'s divisor adjustment — and all
+3 588 cells match.
 
 ### Things kept as written
 
@@ -588,7 +603,7 @@ written down:
 
 ### Settings whose shipped value is a formula's result
 
-Five Adv_settings cells hold formulas, so the extracted value is what the formula produced for the
+Six Adv_settings cells hold formulas, so the extracted value is what the formula produced for the
 shipped typfall rather than the setting itself. Storing those results would pin a normal-mode run
 to the shipped retirement age, so `defaultContext` leaves them at 0 and `setup.ts` derives them:
 
@@ -599,6 +614,12 @@ to the shipped retirement age, so `defaultContext` leaves them at 0 and `setup.t
 | `w_time` | a subtraction of two names | `w_ref - born`, which is the shipped 66 |
 | `rng_Make_Bald` | a single name | the typfall's own birth year |
 | `Modell_year` | — | `w_ref + 1`, since `w_ref` is `=YEAR(NOW()) - 1` |
+| `Rgk` | carries the assumptions onto a 1% base | `rgkFor` — `(1 + 0.01)(1 + inflation)(1 + growth) - 1` |
+
+`Rgk` is the one the extraction missed, because unlike the others its stored value looks like a
+plain setting. It is not: the cell holds **0.010000000000000009**, and `1.01 - 1` is exactly that in
+IEEE 754 while a typed `0.01` is exactly `0.01`. A seventeen-digit tail is the tell that a cell was
+computed. See *The premium pension away from the forecasting standard*, above.
 
 LibreOffice cannot resolve defined names inside formulas, so the operands of `w_time` are pinned by
 its arithmetic — 66 is exactly 2025 − 1959 — rather than read directly.
@@ -630,9 +651,7 @@ Everything downstream of the earning phase depends on it; if the file is absent 
 what is written above still stands.
 
 What is committed today is the **full set: 299 cases**, exported with `ExportGoldenCases`.
-**3 579 of 3 588 comparable cells match**, twelve of twelve columns, 290 of 299 cases exact. The
-nine that do not are the premium pension away from the forecasting standard — see *An open
-divergence* under **Tax rules**, above. The 65-case quick set passes completely.
+**All 3 588 comparable cells match**, twelve of twelve columns, 299 of 299 cases exact.
 
 The file certifies its own provenance. `# publicavg:` records the export macro's check that the
 workbook's public service fee ceilings are the ones this port mirrors, and `# live.<name>:` records

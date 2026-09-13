@@ -23,6 +23,7 @@ import rawSeriesJson from "../../../data/economic-series.json" with { type: "jso
 import { projectEconomicData } from "../data/projection.js";
 import type { EconomicData } from "../data/projection.js";
 import type { RawEconomicSeries } from "../data/types.js";
+import { rgkFor } from "./context.js";
 import { wages, withdrawalShare } from "../income/wages.js";
 import type { WageProfile } from "../income/wages.js";
 import { andel, riktage } from "../pension/contributions.js";
@@ -232,7 +233,7 @@ export function startsetup(input: TypfallInput, context: ModelContext): SetupRes
       marginal: context.marginal,
       returnsNetOfFees: context.returnsNetOfFees,
       latestIndexBasis: context.latestIndexBasis,
-      rgk: context.rgk,
+      rgk: rgkFor(context.rgk, input.yearlyInflation, input.realGrowth),
     },
     { firstYear: 1957, lastYear: vbaInt(born) + slutage + 1 },
   );

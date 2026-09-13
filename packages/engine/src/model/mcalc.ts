@@ -22,6 +22,7 @@ import { premiumFor } from "../tjanstepension/index.js";
 import type { SchemeContext } from "../tjanstepension/types.js";
 import type { SchemeId } from "../tjanstepension/types.js";
 import { vbaInt, vbaRound, wsMax } from "../vba/math.js";
+import { rgkFor } from "./context.js";
 import type { ModelContext } from "./context.js";
 import type { PgbManualYear, TypfallInput } from "./input.js";
 import type { RunProfile, SetupResult, Warning } from "./setup.js";
@@ -383,6 +384,10 @@ export function prepareRun(
   const context: ModelContext = Object.freeze({
     ...contextIn,
     riktage: profile.riktalder,
+    // The same sheet cell the projection reads, so `tjpkassa`'s divisor
+    // adjustment sees the rate this run's assumptions produce rather than the
+    // base. See `rgkFor`.
+    rgk: rgkFor(contextIn.rgk, input.yearlyInflation, input.realGrowth),
   });
 
   // Pension starts on the first of the month the typfall turns PAR.
