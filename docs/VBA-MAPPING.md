@@ -383,9 +383,13 @@ Three things came out of it, and they are the reason this section exists:
 
 - **Ten columns agreeing is not evidence of the same build.** Two builds can share every Nyckeltal,
   mortality and delningstal table and still differ in a rule. Only the rule that differs shows.
-- **`ReportPublicAvg` is now step 5 of the export procedure** (`reference/golden/HOWTO.md`) and part
-  of the yearly update. A second of checking against half an hour of exporting and a week of
-  chasing 258 kronor.
+- **The check now judges itself, and every export runs it.** `ReportPublicAvg` compares each rule
+  year's ceiling against the factors this port mirrors and prints `OK` or `MISMATCH`; the export
+  entry points refuse to start on a mismatch, and the verdict goes into the CSV as `# publicavg:`,
+  so a committed golden file carries proof of which build produced it. Its first version printed a
+  ratio for a human to read and got even that wrong — it divided every year's ceiling by the
+  *retirement* year's inkomstbasbelopp instead of that year's own, so the documented expectations
+  could never match. A check a person has to interpret is not a check.
 - **The case set covers 2023 and 2024 now.** It used to jump from retirement in 2022 straight to
   2025, so all four wrong factors looked like one constant. Block G exists for that, and
   `golden.test.ts` asserts those years stay covered.

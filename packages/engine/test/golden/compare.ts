@@ -151,6 +151,26 @@ export function checkLabels(labels: readonly string[], compareTo: 0 | 1 | 2): st
   return complaints;
 }
 
+/**
+ * What the exporting workbook said about its own build.
+ *
+ * The macro writes `# publicavg:` after checking the public service fee ceiling
+ * against the factors this port mirrors. It exists because the first golden
+ * file was exported from a different build of the model -- one whose PublicAvg
+ * stopped at 2022 -- while the engine's data came from the corrected one. Ten
+ * of the twelve columns matched anyway, so nothing flagged it for a week.
+ *
+ * "not-recorded" is not a failure: files exported before the check existed
+ * carry no such line, and they are still perfectly good reference data. It is
+ * reported rather than asserted.
+ */
+export type BuildCheck = "ok" | "mismatch" | "not-recorded";
+
+export function buildCheck(recorded: string | undefined): BuildCheck {
+  if (recorded === undefined || recorded.trim() === "") return "not-recorded";
+  return /^ok\b/i.test(recorded.trim()) ? "ok" : "mismatch";
+}
+
 export type CellStatus = "exact" | "close" | "off" | "bad" | "missing" | "not-ported";
 
 export interface CellComparison {

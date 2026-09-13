@@ -46,6 +46,16 @@ export interface GoldenSettings {
   readonly advanced: ReadonlyMap<string, number>;
   /** The model version string, for the report. */
   readonly modelVersion: string;
+  /**
+   * `# publicavg`: the macro's own verdict on whether the exporting workbook is
+   * the build this port was written against.
+   *
+   * Undefined for a file exported before the check existed, which is not the
+   * same as a failure -- see `buildCheck` in compare.ts. It is recorded because
+   * the first golden file came from a different build of the model, and a
+   * version number did not distinguish them: both said "Version 4.8".
+   */
+  readonly buildCheck: string | undefined;
   readonly exportedAt: string;
   /** Settings that were absent from the file, so the engine's default was assumed. */
   readonly assumed: readonly string[];
@@ -208,6 +218,7 @@ export function readSettings(file: GoldenFile): GoldenSettings {
     caseSet: lookup(file, "caseset"),
     advanced,
     modelVersion: lookup(file, "model") ?? "unknown",
+    buildCheck: lookup(file, "publicavg"),
     exportedAt: lookup(file, "exported") ?? "unknown",
     assumed,
     issues,

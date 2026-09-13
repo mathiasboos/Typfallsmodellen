@@ -9,9 +9,9 @@ Attribute VB_Name = "ExportGoldenCases"
 '
 ' Entry points:
 '
-'   ExportGoldenCasesQuick      61 cases, about half an hour. The rule
+'   ExportGoldenCasesQuick      65 cases, a bit over half an hour. The rule
 '                               boundaries that carry the most information.
-'   ExportGoldenCases           all 295 cases. A couple of hours.
+'   ExportGoldenCases           all 299 cases. A couple of hours.
 '   ExportGoldenCasesResume     keeps the inputs already on the sheet and runs
 '                               only the rows without results.
 '   ExportGoldenCasesFromSheet  writes the CSV from what is on the sheet,
@@ -20,8 +20,9 @@ Attribute VB_Name = "ExportGoldenCases"
 '                               when something looks wrong.
 '   CompareRunners              runs a few cases both ways and checks they agree.
 '                               Run it once after importing.
-'   ReportPublicAvg             measures the public service fee ceiling the model
-'                               actually applies. See the comment above it.
+'   ReportPublicAvg             says whether this workbook is the build the port
+'                               was written against. Every export runs the same
+'                               check first and refuses on a mismatch.
 '
 ' The CSV is rewritten after every case, not once at the end, so a halt, a crash
 ' or a workbook closed without saving still leaves a complete file for every case
@@ -123,6 +124,8 @@ Public Sub ExportGoldenCasesResume()
     Dim savePath As String
     Dim withInputs As Long, withOutputs As Long
 
+    RequireMatchingBuild
+
     Set ws = ThisWorkbook.Worksheets("Mikrosim")
     layout = ResolveLayout()
     CountRows ws, layout, withInputs, withOutputs
@@ -162,6 +165,10 @@ Public Sub ExportGoldenCasesFromSheet()
     Dim layout As MikrosimLayout
     Dim savePath As String
     Dim withInputs As Long, withOutputs As Long
+
+    ' Recomputes nothing, but the rows it writes were computed by this workbook,
+    ' so the same question applies to them.
+    RequireMatchingBuild
 
     Set ws = ThisWorkbook.Worksheets("Mikrosim")
     layout = ResolveLayout()
@@ -347,6 +354,8 @@ Private Sub RunExport(ByVal caseSet As String)
     Dim ws As Worksheet
     Dim layout As MikrosimLayout
     Dim savePath As String
+
+    RequireMatchingBuild
 
     Set ws = ThisWorkbook.Worksheets("Mikrosim")
     layout = ResolveLayout()
@@ -617,79 +626,161 @@ End Function
 ' would put an input in the file that did not produce the output beside it. The
 ' direct driver reads column D, so the setting has to be off either way.
 '==============================================================================
-' Measures the public service fee ceiling the model actually applies.
+' Checks this workbook is the build the web port was written against.
 '
-' Ten of the twelve exported columns match the web port exactly. The two that do
-' not are net and disposable income, in 20 of the 61 quick cases, and the whole
-' gap is the ceiling in PublicAvg (Skatteregler.bas:1356).
+' The port mirrors PublicAvg's ceiling chain (Skatteregler.bas:1362-1369). This
+' asks the workbook's own PublicAvg what ceiling it applies in each rule year
+' and compares. Calling it with an income far above any conceivable ceiling
+' returns the ceiling over a hundred, so the ceiling is measured, not assumed.
 '
-' This runs one typfall to fill born and IBB(), then asks PublicAvg itself. The
-' ceiling is measured, not assumed: calling it with an income far above any
-' possible cap returns cap/100 rounded, so cap/IBB is the factor it really used.
+' It exists because the first golden file was exported from a different build,
+' whose PublicAvg stopped at 2022 and used the 2022 factor of 1.87 for every
+' later year. Ten of the twelve exported columns still matched, which is what
+' makes that failure mode dangerous: two builds can share every Nyckeltal,
+' mortality and delningstal table and differ in one rule. Only the rule that
+' differs shows, and it showed as 258 kronor a year that looked for a week like
+' a bug in the port.
 '
-' Run against the workbook that produced the committed golden-cases.csv, it
-' followed the source exactly for 2019-2022 and then stayed at the 2022 factor
-' of 1.87 for 2023, 2024, 2025 and 2026, where Skatteregler.bas says 1.75, 1.60,
-' 1.55 and 1.42. So that CSV came from an older build than the workbook in
-' source/. Re-run this whenever the workbook is replaced -- it is a one-second
-' check that the file being exported from is the file the port was built
-' against.
+' Both builds called themselves "Version 4.8". A version number is not a build
+' identity.
 '
-' Run it, then send the Immediate window (Ctrl+G) output.
+' The comparison is on the fee -- the whole krona both sides round to -- not on
+' a ceiling reconstructed from it, so it is exact rather than +/- 50. It cannot
+' see a factor difference below about 0.0012, which is one krona of fee. That is
+' far finer than any real rule change.
+'
+' RequireMatchingBuild runs it before every export and refuses to continue on a
+' mismatch. ReportPublicAvg runs it on demand.
 '==============================================================================
 Public Sub ReportPublicAvg()
+    If CheckPublicAvg() Then
+        MsgBox "This workbook matches the ceilings the port was written against." & _
+               vbCrLf & vbCrLf & "The year-by-year table is in the Immediate window (Ctrl+G).", _
+               vbInformation
+    Else
+        MsgBox "This workbook does NOT match the ceilings the port was written " & _
+               "against -- see the Immediate window (Ctrl+G)." & vbCrLf & vbCrLf & _
+               "It is a different build of the model. Exporting from it would check " & _
+               "the engine against rules it was never given.", vbExclamation
+    End If
+End Sub
+
+
+' The ceiling factor Skatteregler.bas applies in a given rule year, as
+' packages/engine/src/skatt/reduktioner.ts has it.
+'
+' When a new rule year is legislated, this and reduktioner.ts change together --
+' and if only one of them does, this check is what says so.
+Private Function ExpectedCeilingFactor(ByVal y As Long) As Double
+    ExpectedCeilingFactor = 2.092
+    If y = 2021 Then ExpectedCeilingFactor = 1.95
+    If y = 2022 Then ExpectedCeilingFactor = 1.87
+    If y = 2023 Then ExpectedCeilingFactor = 1.75
+    If y = 2024 Then ExpectedCeilingFactor = 1.6
+    If y = 2025 Then ExpectedCeilingFactor = 1.55
+    If y >= 2026 Then ExpectedCeilingFactor = 1.42
+End Function
+
+
+' True when every rule year's ceiling is the one the port expects. Prints the
+' whole table either way; a run that agrees is worth seeing too.
+Private Function CheckPublicAvg() As Boolean
     Dim years As Variant
-    Dim i As Long
-    Dim y As Long
+    Dim i As Long, y As Long
     Dim par As Long
-    Dim ibbAtPar As Double
-    Dim capFee As Double
-    Dim msg As String
+    Dim ibbY As Double, factor As Double
+    Dim expectFee As Double, gotFee As Double
+    Dim bad As Long
 
     RequireDirectRetirementAge
 
-    ' Case 37 of the quick set: the cohort and retirement age with the largest
-    ' measured gap, 258 kr/year.
+    ' Any typfall would do -- this one only has to leave born and IBB() filled.
+    ' Born 1959 retiring at 66 puts a rule year at each end of the chain.
     RunOneTypfall 1959, 23, 66, 462000, 0, 0, 0.017, 0, 4
-
     par = 66
-    ibbAtPar = IBB(par)
 
-    Debug.Print String(70, "=")
-    Debug.Print "ReportPublicAvg -- born 1959, retires at 66, salary 462 000/year"
-    Debug.Print String(70, "=")
-    Debug.Print "born      " & born
-    Debug.Print "PAR       " & PAR
-    Debug.Print "year_(66) " & year_(par)
-    Debug.Print "IBB(66)   " & ibbAtPar & "      (the port has 80600)"
-    Debug.Print "IBB(67)   " & IBB(67) & "      (the port has 83400)"
+    Debug.Print String(78, "=")
+    Debug.Print "Public service fee ceiling, this workbook against the port"
+    Debug.Print String(78, "=")
+    Debug.Print "born " & born & "   PAR " & PAR & "   year_(" & par & ") " & year_(par)
     Debug.Print ""
-    Debug.Print "PublicAvg(Besk, 0.01, 66, 0, year), by year:"
-    Debug.Print "  year   fee at 282300   fee at the cap   cap = fee*100   cap/IBB(66)"
+    Debug.Print "  year  factor   IBB(year)   ceiling   fee: want  got"
 
     years = Array(2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2029)
     For i = LBound(years) To UBound(years)
         y = years(i)
+        ' The same index PublicAvg itself uses -- that year's inkomstbasbelopp,
+        ' not the retirement year's. Dividing every ceiling by IBB(PAR) was the
+        ' bug in the first version of this report.
+        ibbY = IBB(y - Int(born))
+        factor = ExpectedCeilingFactor(y)
+        expectFee = Int(factor * ibbY / 100 + 0.5)
         ' 99 000 000 is far above any conceivable ceiling, so this returns the
-        ' capped fee whatever the factor is -- the ceiling, measured.
-        capFee = PublicAvg(99000000#, 0.01, par, 0, y)
+        ' capped fee whatever the factor is.
+        gotFee = PublicAvg(99000000#, 0.01, par, 0, y)
+
+        If gotFee <> expectFee Then bad = bad + 1
         Debug.Print "  " & y & _
-                    Space$(6) & Format$(PublicAvg(282300#, 0.01, par, 0, y), "0") & _
-                    Space$(12) & Format$(capFee, "0") & _
-                    Space$(12) & Format$(capFee * 100, "0") & _
-                    Space$(8) & Format$(capFee * 100 / ibbAtPar, "0.0000")
+                    Space$(3) & Format$(factor, "0.000") & _
+                    Space$(4) & Format$(ibbY, "#,##0") & _
+                    Space$(4) & Format$(factor * ibbY, "#,##0") & _
+                    Space$(7) & Format$(expectFee, "0") & _
+                    Space$(4) & Format$(gotFee, "0") & _
+                    Space$(3) & IIf(gotFee = expectFee, "OK", "MISMATCH")
     Next i
 
     Debug.Print ""
-    Debug.Print "The port expects cap/IBB(66) to read 2.0920 for 2019-2020, 1.9500 for"
-    Debug.Print "2021, 1.8700 for 2022, 1.7500 for 2023, 1.6000 for 2024, 1.5500 for"
-    Debug.Print "2025 and 1.4200 from 2026. The exported nets say it reads 1.8700 from"
-    Debug.Print "2022 on. Whichever this prints is the answer."
+    If bad = 0 Then
+        Debug.Print "OK -- this workbook is the build the port was written against."
+    Else
+        Debug.Print "MISMATCH in " & bad & " of " & (UBound(years) - LBound(years) + 1) & _
+                    " rule years. This is a different build of the model."
+        Debug.Print "Exporting from it would check the engine against rules it was never"
+        Debug.Print "given. Two downloads have already been seen calling themselves"
+        Debug.Print "'Version 4.8' with different code in Skatteregler.bas; the one this"
+        Debug.Print "port is built from carries 'Mindre buggfixar, t.ex. loepande priser,"
+        Debug.Print "fasta loener och foer laang kod i huvudmodulen.' in its version history."
+    End If
 
-    msg = "The measurement is in the Immediate window (Ctrl+G)." & vbCrLf & vbCrLf & _
-          "Copy the whole block and send it back."
-    MsgBox msg, vbInformation
+    CheckPublicAvg = (bad = 0)
+End Function
+
+
+' Refuses to export from a workbook whose rules are not the port's.
+'
+' Costs one typfall, half a minute on a job of half an hour or more. A guard
+' that can be skipped is a guard that will be skipped, so every entry point that
+' computes or writes results calls this first.
+Private Sub RequireMatchingBuild()
+    If Not CheckPublicAvg() Then
+        Err.Raise 5, , "This workbook is a different build of the model from the one " & _
+                  "the web port was written against -- see the Immediate window " & _
+                  "(Ctrl+G) for which rule years differ. Exporting from it would " & _
+                  "check the engine against rules it was never given."
+    End If
 End Sub
+
+
+' What the CSV records about the check, so a committed golden file carries proof
+' of which build produced it.
+Private Function PublicAvgProvenance() As String
+    Dim years As Variant
+    Dim i As Long, y As Long
+    Dim bad As Long
+
+    years = Array(2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2029)
+    For i = LBound(years) To UBound(years)
+        y = years(i)
+        If PublicAvg(99000000#, 0.01, 66, 0, y) <> _
+           Int(ExpectedCeilingFactor(y) * IBB(y - Int(born)) / 100 + 0.5) Then bad = bad + 1
+    Next i
+
+    If bad = 0 Then
+        PublicAvgProvenance = "ok, all rule years 2019-2026 match the port"
+    Else
+        PublicAvgProvenance = "MISMATCH in " & bad & " rule years -- wrong build"
+    End If
+End Function
 
 
 ' One typfall through the model, by the same route RunCaseDirect takes, but
@@ -1163,6 +1254,7 @@ Private Sub WriteCsv(ByVal path As String, ByVal ws As Worksheet, _
     Print #f, "# Typfallsmodellen reference results"
     Print #f, "# model: " & ThisWorkbook.Worksheets("Versionsinformation").Range("A2").Value
     Print #f, "# workbook: " & ThisWorkbook.Name
+    Print #f, "# publicavg: " & PublicAvgProvenance()
     Print #f, "# exported: " & Format$(Now, "yyyy-mm-dd hh:nn:ss")
     Print #f, "# referensar: " & CsvNum(Application.Range("w_ref").Value)
     Print #f, "# marginal: " & CsvNum(Application.Range("marginal").Value)

@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { compareCase, checkLabels } from "./compare.js";
+import { buildCheck, compareCase, checkLabels } from "./compare.js";
 import { blocksOf, caseSet, resolveCaseSet } from "./caseSets.js";
 import { GOLDEN_PATH, compareGoldenFile, blockOf, goldenFileExists } from "./harness.js";
 import type { ComparisonRun } from "./harness.js";
@@ -208,6 +208,21 @@ describe.skipIf(!goldenFileExists())("the engine against the real model", () => 
       failed.map((c) => `case ${c.index} (line ${c.line}): ${c.failed}`),
       `${failed.length} of ${comparison.cases.length} cases could not be run`,
     ).toEqual([]);
+  });
+
+  it("was exported from the build the port was written against", () => {
+    // Not an assertion that the line is present: a file exported before the
+    // macro carried this check has nothing to say, and is still good reference
+    // data. It is a mismatch that is fatal -- the first golden file came from a
+    // build whose PublicAvg stopped at 2022, and ten of the twelve columns
+    // matched anyway, which is why nothing caught it for a week.
+    const recorded = comparison.settings.buildCheck;
+    expect(
+      buildCheck(recorded),
+      `the golden file records "${recorded}" -- it was exported from a different ` +
+        `build of the model than packages/data comes from, so every comparison ` +
+        `below is against rules the engine was never given`,
+    ).not.toBe("mismatch");
   });
 
   it("used inputs the workbook did not have to correct", () => {

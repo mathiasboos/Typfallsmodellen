@@ -7,6 +7,7 @@
  * lets the shape of the failure point at the module that caused it.
  */
 
+import { buildCheck } from "./compare.js";
 import type { CaseComparison, CellStatus } from "./compare.js";
 import { blockOf } from "./harness.js";
 import type { ComparisonRun } from "./harness.js";
@@ -14,6 +15,18 @@ import type { ComparisonRun } from "./harness.js";
 const DIVERGENT: readonly CellStatus[] = ["off", "bad", "missing"];
 
 const isDivergent = (status: CellStatus): boolean => DIVERGENT.includes(status);
+
+/** What the file says about the build that exported it, in a report line. */
+function describeBuildCheck(recorded: string | undefined): string {
+  switch (buildCheck(recorded)) {
+    case "ok":
+      return `${recorded} -- the exporting workbook is this port's build`;
+    case "mismatch":
+      return `${recorded} -- EXPORTED FROM THE WRONG BUILD, every number below is suspect`;
+    default:
+      return "not recorded (exported before the check existed)";
+  }
+}
 
 export interface ColumnSummary {
   readonly column: number;
@@ -131,6 +144,7 @@ export function formatReport(comparison: ComparisonRun, worstLimit = 20): string
   out.push("# Golden-file comparison");
   out.push("");
   out.push(`- model: ${settings.modelVersion}`);
+  out.push(`- build check: ${describeBuildCheck(settings.buildCheck)}`);
   out.push(`- exported: ${settings.exportedAt}`);
   const blocks = comparison.blocks;
   out.push(

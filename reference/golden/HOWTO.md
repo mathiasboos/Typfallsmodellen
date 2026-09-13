@@ -40,13 +40,11 @@ re-used on every subsequent build.
    couple of minutes and is worth doing once per model version — see "Why there are two runners"
    below.
 
-5. **Check it is the right build.** Put the cursor in **`ReportPublicAvg`** and press `F5`. It takes
-   about a second and prints the public service fee ceiling the workbook actually applies, year by
-   year, to the Immediate window (`Ctrl+G`). Every `cap/IBB` should read 2.0920 for 2019–2020,
-   1.9500 for 2021, 1.8700 for 2022, 1.7500 for 2023, 1.6000 for 2024, 1.5500 for 2025 and 1.4200
-   from 2026 — the factors in `Skatteregler.bas`. **If they do not, stop**: this workbook is a
-   different build from the one in `source/`, and a CSV exported from it would check the engine
-   against rules it was never given. See below.
+5. **Check it is the right build.** Put the cursor in **`ReportPublicAvg`** and press `F5`. It runs
+   one typfall and prints one line per rule year, each ending `OK` or `MISMATCH`, then a verdict.
+   There is nothing to interpret. You do not have to remember to run it — every export runs the
+   same check first and refuses to start on a mismatch — but running it now costs half a minute
+   instead of finding out later. See below for why it exists.
 
 6. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
    `F5` (or **Run → Run Sub/UserForm**). Excel asks where to save the CSV.
@@ -77,25 +75,32 @@ re-used on every subsequent build.
 | `ExportGoldenCasesFromSheet` | writes the CSV from what is on the sheet, recomputing nothing. |
 | `ReportMikrosimState` | says what is actually on the sheet. **Start here when something looks wrong.** |
 | `CompareRunners` | runs a few cases both ways and checks they agree. |
-| `ReportPublicAvg` | measures the public service fee ceiling the model applies, one typfall and about a second. See below. |
+| `ReportPublicAvg` | says whether this workbook is the build the port was written against. Every export runs the same check first. See below. |
 
 ### `ReportPublicAvg`
 
-A one-second check that the workbook in front of you is the build the port was written against.
+Says whether the workbook in front of you is the build this port was written against.
 
-It runs one typfall to fill `born` and `IBB()`, then calls `PublicAvg` with an income far above any
-possible cap, which returns the ceiling over a hundred — so the factor is measured rather than
-assumed. Read the last column, `cap/IBB`, against `Skatteregler.bas`: 2.0920 for 2019–2020, 1.9500
-for 2021, 1.8700 for 2022, 1.7500 for 2023, 1.6000 for 2024, 1.5500 for 2025, 1.4200 from 2026.
+It runs one typfall to fill `born` and `IBB()`, then asks the workbook's own `PublicAvg` what
+ceiling it applies in each rule year — calling it with an income far above any conceivable ceiling,
+which returns the ceiling over a hundred — and compares that against the factors the engine mirrors
+from `Skatteregler.bas`. Each row ends `OK` or `MISMATCH`. The comparison is on the whole-krona fee
+both sides round to, so it is exact; it cannot see a factor difference below about 0.0012, which is
+one krona, and no real rule change is that small.
 
-This exists because it has already happened. The first golden file was exported from a build whose
-`PublicAvg` stopped at 2022 — every year from 2023 on used the 2022 factor of 1.87 — while
-`packages/data` was extracted from the corrected build. Ten of the twelve columns still matched,
-which is exactly what makes the failure mode dangerous: two builds can share every data table and
-differ in a rule. It cost a week, and 258 kronor a year of pension looked for all that time like a
-bug in the port.
+`ExportGoldenCasesQuick`, `ExportGoldenCases`, `ExportGoldenCasesResume` and
+`ExportGoldenCasesFromSheet` all run the same check first and refuse to continue on a mismatch, and
+the verdict is written into the CSV as `# publicavg:` so a committed golden file carries proof of
+which build produced it.
 
-**Re-run it whenever the workbook is replaced**, including at the yearly update.
+**Why it exists.** The first golden file was exported from a build whose `PublicAvg` stopped at
+2022 — every year from 2023 on used the 2022 factor of 1.87 — while `packages/data` was extracted
+from the corrected build. Ten of the twelve columns matched anyway, which is exactly what makes
+that failure mode dangerous: two builds can share every Nyckeltal, mortality and delningstal table
+and differ in one rule, and only the rule that differs shows. It cost a week, and 258 kronor a year
+of pension looked for all that time like a bug in the port. Both files called themselves
+"Version 4.8"; the corrected one is distinguished only by an extra line in its `Versionsinformation`
+sheet.
 
 To go from the quick set to the full one: run `ExportGoldenCases` and let it re-run everything, or
 run the quick set, save, and add cases by hand — there is no merge step, because the CSV is always
