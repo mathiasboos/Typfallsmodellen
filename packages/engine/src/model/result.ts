@@ -12,8 +12,7 @@
 
 import { gp, tillagg } from "../bidrag/garantipension.js";
 import { recomputeAtRetirement } from "./atRetirement.js";
-import { incomePensionYear } from "../pension/incomePension.js";
-import { fnDeltalIp, fnDeltalPp } from "../pension/deltal.js";
+import { deltal, incomePensionYear } from "../pension/incomePension.js";
 import { tpFaktor } from "../pension/atp.js";
 import { vbaInt, wsMax, wsMin } from "../vba/math.js";
 import type { Run } from "./mcalc.js";
@@ -118,10 +117,12 @@ function creditLastPensionRight(run: Run): void {
   const born = vbaInt(p.born);
   const marginal = context.marginal;
 
-  // `deltal(...)` in the VBA, which gives cohorts born 1937 or earlier a single
-  // divisor rather than an age table; the age table has no rows for them.
-  const dtalIp = fnDeltalIp(born, par, deltalTables);
-  const dtalPp = fnDeltalPp(born, par, deltalTables);
+  // `deltal(PAR, Int(born), PAR, def_ar, 4)` and `..., 19` (VBA_go.bas 2408 and
+  // 2411, then again at 2434 and 2436) -- the Nyckeltal sheet, not the spliced
+  // arrays `fnDeltal_*` read. It also gives cohorts born 1937 or earlier a
+  // single divisor rather than an age table, which has no rows for them.
+  const dtalIp = deltal(p.par, born, par, deltalTables, "income", p.defAr);
+  const dtalPp = deltal(p.par, born, par, deltalTables, "premium", p.defAr);
 
   // Undo the annuitisation, add the final right, and divide again.
   s.ipPbh.set(par, (12 / run.pmonth) * s.ip.get(par) * dtalIp + s.ipPbh.get(par));
@@ -138,8 +139,9 @@ function creditLastPensionRight(run: Run): void {
   // value; see `RunState.leftovers`.
   s.leftovers.age = par;
 
-  // Garantipension is measured on its own divisor, at the riktålder.
-  const gpDtal = fnDeltalIp(born, p.riktalder, deltalTables);
+  // Garantipension is measured on its own divisor, at the riktålder:
+  // `deltal(riktalder, Int(born), riktalder, riktalder, 4)` (VBA_go.bas:2441).
+  const gpDtal = deltal(p.riktalder, born, p.riktalder, deltalTables, "income", p.riktalder);
 
   if (gpDtal > 0 && p.par >= p.riktalder) {
     let gpUnd = incomePensionYear(

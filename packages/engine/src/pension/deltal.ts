@@ -1,15 +1,24 @@
 /**
  * Delningstal lookup -- the divisor that turns pension capital into an annuity.
  *
- * Port of aaDeltal.bas. Two sources feed one table, exactly as
- * `subLoadDeltal_IP_PPifneeded` assembles it:
+ * Port of aaDeltal.bas. **There are two tables, not one**, and which one a rule
+ * reads decides its answer for every cohort from 1958 on:
  *
- *   - published values from the Nyckeltal sheet, for every cohort;
- *   - overwritten, for cohorts from `deltalFromMortalityIp` / `...Pp` (1958 by
- *     default), with the model's own unisex figures from `Calculate_Deltal`.
+ *   - the **Nyckeltal sheet** as published. `deltal()` in Pensionssystemet.bas
+ *     reads these cells directly, and that is what `ppkassa` uses for the
+ *     premium pension and what the final pension right is settled on.
+ *   - `aDeltal_IP` / `aDeltal_PP`, the same values **overwritten** for cohorts
+ *     from `rngDelnIPMort` / `rngDelnPPMort` (1958) with the model's own unisex
+ *     figures. Only `fnDeltal_IP` / `fnDeltal_PP` read these, and the age loop
+ *     takes its `dtal_ip` from them.
  *
- * The VBA reads those second values from the mortality sheet's cached output.
- * The port computes them instead, which is equivalent -- `calculateDeltal`
+ * So the income pension is annuitised on the spliced figure and the premium
+ * pension on the published one. They differ by up to 3.5% -- for cohort 1970 at
+ * 67 the sheet says 18.67 and the mortality table 18.04 -- and the golden file
+ * shows the workbook using each where the source says it does.
+ *
+ * The VBA reads the second set from the mortality sheet's cached output. The
+ * port computes them instead, which is equivalent -- `calculateDeltal`
  * reproduces that cached table exactly -- and means only the cohort actually
  * being modelled is ever computed, rather than all 121.
  */
@@ -75,13 +84,36 @@ export class DeltalTables {
   }
 
   /**
-   * Income pension delningstal for a cohort at a whole age.
+   * Income pension delningstal as the **Nyckeltal sheet** has it.
    *
-   * The mortality figures override the published ones only inside the published
-   * table's own bounds, matching the VBA's guards -- a cohort past the table's
-   * last row, or an age past its last column, keeps the published value.
+   * This is what `deltal()` in Pensionssystemet.bas reads -- it addresses
+   * `wsNyckelTal.Cells(rad, Kol)` directly and never touches the spliced
+   * arrays. Most of the model goes through that function, so this is the
+   * lookup most callers want.
    */
   incomePension(cohort: number, age: number): number {
+    return lookupPublished(this.published.incomePension, cohort, age);
+  }
+
+  /** Premium pension delningstal from the Nyckeltal sheet. See above. */
+  premiumPension(cohort: number, age: number): number {
+    return lookupPublished(this.published.premiumPension, cohort, age);
+  }
+
+  /**
+   * Income pension delningstal as `aDeltal_IP` holds it.
+   *
+   * `subLoadDeltal_IP_PPifneeded` (aaDeltal.bas 161-280) loads the published
+   * grid and then overwrites it, for cohorts from `rngDelnIPMort` on, with the
+   * model's own figures off the mortality sheet. Only `fnDeltal_IP` and its
+   * `2` variant read the result.
+   *
+   * The mortality figures override the published ones only inside the
+   * published table's own bounds, matching the VBA's guards -- a cohort past
+   * the table's last row, or an age past its last column, keeps the published
+   * value.
+   */
+  splicedIncomePension(cohort: number, age: number): number {
     const table = this.published.incomePension;
     const from = this.context.deltalFromMortalityIp;
     if (from !== 0 && cohort >= from && cohort <= table.lastCohort && age <= table.lastAge) {
@@ -92,8 +124,8 @@ export class DeltalTables {
     return lookupPublished(table, cohort, age);
   }
 
-  /** Premium pension delningstal for a cohort at a whole age. */
-  premiumPension(cohort: number, age: number): number {
+  /** Premium pension delningstal as `aDeltal_PP` holds it. See above. */
+  splicedPremiumPension(cohort: number, age: number): number {
     const table = this.published.premiumPension;
     const from = this.context.deltalFromMortalityPp;
     if (from !== 0 && cohort >= from && cohort <= table.lastCohort && age <= table.lastAge) {
@@ -174,8 +206,12 @@ function deltalFor(
     ageFraction = 0.5;
   }
 
+  // `fnDeltal_IP` / `fnDeltal_PP` read `aDeltal_IP` / `aDeltal_PP`, which are
+  // the spliced arrays.
   const at = (a: number) =>
-    kind === "income" ? tables.incomePension(born, a) : tables.premiumPension(born, a);
+    kind === "income"
+      ? tables.splicedIncomePension(born, a)
+      : tables.splicedPremiumPension(born, a);
 
   const value =
     ageFraction > 0 ? blend(at(vbaInt(age)), at(vbaInt(age) + 1), age) : at(age);

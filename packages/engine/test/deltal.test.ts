@@ -18,25 +18,42 @@ const deaths = loadDeathProbabilities();
 const context = defaultContext();
 const tables = new DeltalTables(published, deaths, context);
 
+const publishedIp = (cohort: number, age: number) =>
+  published.incomePension.values[cohort - published.incomePension.firstCohort]![
+    age - published.incomePension.firstAge
+  ]!;
+
 describe("DeltalTables sources", () => {
-  it("takes cohorts before the override year from the published table", () => {
-    // 1950 is below the 1958 default, so Nyckeltal governs.
-    const row = published.incomePension.values[1950 - published.incomePension.firstCohort]!;
-    const at65 = row[65 - published.incomePension.firstAge]!;
-    expect(tables.incomePension(1950, 65)).toBe(at65);
+  /**
+   * There are two tables, and which one a rule reads changes its answer.
+   * `incomePension` / `premiumPension` are the Nyckeltal sheet, which
+   * `deltal()` in Pensionssystemet.bas addresses directly; the `spliced*` pair
+   * is `aDeltal_IP` / `aDeltal_PP`, which only `fnDeltal_*` read. The golden
+   * file settled which rule uses which -- see docs/VBA-MAPPING.md.
+   */
+  it("reads the published sheet, whatever the override year says", () => {
+    expect(tables.incomePension(1950, 65)).toBe(publishedIp(1950, 65));
+    // 1960 is past the 1958 override year, and it still reads the sheet.
+    expect(tables.incomePension(1960, 66)).toBe(publishedIp(1960, 66));
   });
 
-  it("takes cohorts from the override year from the model's own figures", () => {
+  it("splices the model's own figures in only for the spliced lookups", () => {
     const own = calculateDeltal(1960, deaths);
-    expect(tables.incomePension(1960, 66)).toBe(own.dtalip[0]![66]);
-    expect(tables.premiumPension(1960, 66)).toBe(own.dtalpp[0]![66]);
+    expect(tables.splicedIncomePension(1960, 66)).toBe(own.dtalip[0]![66]);
+    expect(tables.splicedPremiumPension(1960, 66)).toBe(own.dtalpp[0]![66]);
+    // And the two really do differ, which is what makes the distinction matter.
+    expect(tables.splicedIncomePension(1960, 66)).not.toBe(tables.incomePension(1960, 66));
+  });
+
+  it("takes cohorts before the override year from the published table either way", () => {
+    // 1950 is below the 1958 default, so Nyckeltal governs both lookups.
+    expect(tables.splicedIncomePension(1950, 65)).toBe(publishedIp(1950, 65));
   });
 
   it("keeps the published value past the mortality table's ages", () => {
     // The income-pension table stops at 82; ages beyond it are not overridden.
     expect(published.incomePension.lastAge).toBe(82);
-    const row = published.incomePension.values[1960 - published.incomePension.firstCohort]!;
-    expect(tables.incomePension(1960, 82)).not.toBe(row[82 - published.incomePension.firstAge]);
+    expect(tables.splicedIncomePension(1960, 82)).not.toBe(publishedIp(1960, 82));
   });
 
   it("honours an override year of zero by using the published table throughout", () => {
@@ -45,8 +62,7 @@ describe("DeltalTables sources", () => {
       deaths,
       defaultContext({ deltalFromMortalityIp: 0 }),
     );
-    const row = published.incomePension.values[1960 - published.incomePension.firstCohort]!;
-    expect(noOverride.incomePension(1960, 66)).toBe(row[66 - published.incomePension.firstAge]);
+    expect(noOverride.splicedIncomePension(1960, 66)).toBe(publishedIp(1960, 66));
   });
 });
 
@@ -67,12 +83,12 @@ describe("fnDeltalIp", () => {
   });
 
   it("returns the table value at a whole age", () => {
-    expect(fnDeltalIp(1960, 66, tables)).toBeCloseTo(tables.incomePension(1960, 66), 2);
+    expect(fnDeltalIp(1960, 66, tables)).toBeCloseTo(tables.splicedIncomePension(1960, 66), 2);
   });
 
   it("blends the neighbouring divisors at a part-year age", () => {
-    const at66 = tables.incomePension(1960, 66);
-    const at67 = tables.incomePension(1960, 67);
+    const at66 = tables.splicedIncomePension(1960, 66);
+    const at67 = tables.splicedIncomePension(1960, 67);
     const blended = fnDeltalIp(1960, 66.5, tables);
     expect(blended).toBeLessThan(at66);
     expect(blended).toBeGreaterThan(at67);
@@ -80,8 +96,8 @@ describe("fnDeltalIp", () => {
   });
 
   it("weights by whole months, not the raw fraction", () => {
-    const at66 = tables.incomePension(1960, 66);
-    const at67 = tables.incomePension(1960, 67);
+    const at66 = tables.splicedIncomePension(1960, 66);
+    const at67 = tables.splicedIncomePension(1960, 67);
     // Three months in: a quarter of the way from one divisor to the next.
     expect(fnDeltalIp(1960, 66.25, tables)).toBeCloseTo(0.75 * at66 + 0.25 * at67, 2);
   });
