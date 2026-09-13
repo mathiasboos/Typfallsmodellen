@@ -593,25 +593,40 @@ occupational pension, private saving, and the tax, benefits and disposable incom
 Everything downstream of the earning phase depends on it; if the file is absent the gate skips and
 what is written above still stands.
 
-What is committed today is the **quick set: 61 cases**, exported with `ExportGoldenCasesQuick`.
-Ten of the twelve columns match it exactly, to the last decimal the CSV carries, on every case:
-the final salary, all five public pensions, the occupational pension, private saving, the gross,
-and the housing supplement. The two that do not are net and disposable income, in 20 of the 61
-cases, and the cause is localised — see *An open divergence: the public service fee ceiling* under
-**Tax rules**. Disposable inherits the gap rather than adding to it: the benefits column matches
-and `IndDisp = Netto + Bidrag`.
+What is committed today is the **quick set: 65 cases**, exported with `ExportGoldenCasesQuick`.
+**All twelve columns match, on every case, to the last decimal the CSV carries** — 780 of 780
+comparable cells. That is the acceptance gate met: the final salary, all five public pensions and
+the gross, the occupational pension, private saving, the housing supplement, and the tax and
+disposable income at retirement.
 
-The full 295-case set can follow at any time with `ExportGoldenCasesResume`, which picks up after
-the 61 without recomputing them.
+The file certifies its own provenance. `# publicavg:` records the export macro's check that the
+workbook's public service fee ceilings are the ones this port mirrors, and `# live.<name>:` records
+the eight settings whose `Adv_settings` row holds no value of its own, read through the defined name
+instead of off the row. Both exist because the first two attempts at this file were wrong in ways
+nothing could see — one exported from a different build of the model, one from a workbook carrying
+hand-entered pension balances — and in both cases the engine was blamed for a week. `map.ts` reads
+them back and `golden.test.ts` refuses a file that fails either.
+
+Two settings the `live.` block newly confirms, having previously been unverifiable: `rng_Sista_PensRatt`
+is 1, so `recomputeAtRetirement` really is the path the last three Table 1 rows take, and
+`rng_Bara_fastapriser` is 1, so the amounts are in fixed prices. Both match the engine's own
+defaults.
+
+The run was made with `w_time` at 67 rather than its normal 66, and `rng_Make_Bald` at 1958 rather
+than 1959. The harness configures the engine from the file, so the comparison is sound — but it is
+a check under those settings, not under the ones a website would use. The report says so at the top.
+
+The full 299-case set can follow at any time with `ExportGoldenCases`.
 
 What the quick set does *not* reach, so those paths stay on unit tests:
 
-- **Retirement years 2023 and 2024.** It jumps from 2022 to 2025, which is exactly why one constant
-  explains every diverging case above and why it took a workbook measurement to say which.
 - **Table 2, the life-income sums and the pension-wealth box.** The batch runner writes Table 1
   only.
 - **Part-year retirement, a hand-entered wage list, private saving, children and a spouse.** The
   generated cases use none of them.
+
+Retirement years 2023 and 2024 *are* covered now, by block G. They were not, and that gap is what
+let a golden file exported from the wrong build look like a single wrong constant instead of four.
 
 ### Where the workbook's addresses are
 

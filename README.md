@@ -34,8 +34,8 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 |---|---|---|
 | 0. Extraction pipeline | done | `.xlsb` → committed, diffable data |
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
-| 2. Golden-file harness vs. Excel | awaiting the CSV | harness written and `npm run compare` wired up; needs `reference/golden/golden-cases.csv` out of Excel — `ExportGoldenCasesQuick`, about half an hour |
-| 3. Normal-mode website | | |
+| 2. Golden-file harness vs. Excel | done | 65 typfall out of the real model, all twelve output columns exact — `npm run compare`. The full 299-case set can follow at any time |
+| 3. Normal-mode website | next | `apps/web` |
 | 4. Advanced mode | | |
 | 5. Polish, CI, deploy | | |
 
@@ -48,7 +48,8 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 | Pension-qualifying income and contributions | the `Brutto` sheet, which calls those VBA functions as worksheet UDFs | exact |
 | Income pension accumulation | the same sheet, term by term — gains, indexation, cost, balance | exact |
 | The earning phase of the main loop, end to end | the `Brutto` sheet's per-age trace — PGI, PGB and all three contributions | exact |
-| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 542 unit and property tests | — |
+| **Every Table 1 figure, end to end** | **65 typfall the real model computed, all twelve output columns** | **780 of 780 cells exact** |
+| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
 | The lowest pension age and riktålder, per cohort | re-read from the workbook by `npm run check:ages` | 128 cohorts match |
@@ -57,14 +58,19 @@ docs/              architecture, projection rules, yearly-update runbook, VBA ma
 
 The `Brutto` fixture covers the earning phase only — that sheet never draws a pension, and it
 pairs each year's pension right with the following year's indexation where the loop pairs it with
-this year's — so no **drawdown** figure and no end-to-end result is verified against the workbook
-yet.
+this year's. **The golden file is what closes the rest**, and it is the only check that compares
+the engine against the real model end to end: `reference/golden/golden-cases.csv` holds 65 typfall
+the workbook itself computed, and `npm run compare` runs the engine over the same inputs and diffs
+all twelve output columns — the final salary, the five public pensions and their total, the
+occupational pension, private saving, and the tax, benefits and disposable income at retirement.
+Every one of the 780 comparable cells matches, to the last decimal the CSV carries.
 
-That is what Phase 2 closes. The comparison harness is written and `npm run compare` is wired up;
-what it still needs is `reference/golden/golden-cases.csv`, which only a run of the real model on
-Windows can produce. Until that file lands the comparison skips rather than fails. See
-[`reference/golden/HOWTO.md`](reference/golden/HOWTO.md) for how to produce it and how to read the
-report.
+The file certifies the workbook that made it: `# publicavg:` records a check that its tax ceilings
+are the ones this port mirrors, and `# live.<name>:` records the settings whose `Adv_settings` row
+holds no value of its own. Both are read back by the harness, which refuses a file that fails
+either. They exist because two earlier attempts at this file were wrong in ways nothing could see.
+See [`reference/golden/HOWTO.md`](reference/golden/HOWTO.md) for how to produce it and how to read
+the report.
 
 `reference/fixtures/default-run.json` holds the engine's own output for the shipped typfall. It is
 a regression snapshot, not a check against the workbook: it makes an unintended change to any rule

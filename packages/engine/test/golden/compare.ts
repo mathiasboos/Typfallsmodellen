@@ -228,7 +228,13 @@ function isRoundingStep(absolute: number, monthly: boolean): boolean {
   const step = monthly ? 1 : 12;
   const magnitude = Math.abs(absolute);
   if (magnitude === 0 || magnitude > step * 5) return false;
-  return Math.abs(magnitude / step - Math.round(magnitude / step)) < 1e-6;
+  const steps = Math.round(magnitude / step);
+  // At least one whole step. Without this, a difference of 1e-13 rounds to
+  // *zero* steps and satisfies the test below, so a run where every cell agreed
+  // to the last decimal reported "360 divergent cells are a whole number of
+  // rounding steps" -- 360 cells that did not diverge at all.
+  if (steps < 1) return false;
+  return Math.abs(magnitude / step - steps) < 1e-6;
 }
 
 const amount = (row: Table1Row | undefined, monthly: boolean): number =>
