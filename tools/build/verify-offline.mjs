@@ -79,18 +79,27 @@ function browserPath() {
  * What Table 1 must say.
  *
  * From the engine's own regression snapshot, so this checks the page against
- * the model rather than against numbers typed into this file. The view starts
- * monthly and the cells carry no decimals, so the comparison is against the
- * rounded monthly amount.
+ * the model rather than against numbers typed into this file. Table 1 shows the
+ * Start sheet's four columns at once, and each is asserted by name -- the cells
+ * carry `data-col`, so this cannot silently start reading a different one.
  */
 const fixture = JSON.parse(readFileSync(join(repo, "reference/fixtures/default-run.json"), "utf8"));
-const expected = new Map(
-  ["slutlon", "totBrutto", "efterSkatt"].map((key) => {
-    const row = fixture.table1.find((r) => r.key === key);
-    if (row === undefined) throw new Error(`default-run.json has no ${key} row`);
-    return [key, Math.round(row.monthly)];
-  }),
-);
+const COLUMNS = [
+  { col: "nominal", of: (row) => Math.round(row.nominal) },
+  { col: "adjusted", of: (row) => Math.round(row.adjusted) },
+  { col: "monthly", of: (row) => Math.round(row.monthly) },
+  // Column D is a percentage with one decimal, so it is compared at that.
+  { col: "share", of: (row) => Math.round(row.shareOfFinalSalary * 1000) / 10 },
+];
+
+const expected = ["slutlon", "totBrutto", "efterSkatt"].map((key) => {
+  const row = fixture.table1.find((r) => r.key === key);
+  if (row === undefined) throw new Error(`default-run.json has no ${key} row`);
+  return { key, want: COLUMNS.map((column) => column.of(row)) };
+});
+
+/** How many ages Figur 2 and the disposable income chart cover: `A2:A22`. */
+const WINDOW = 21;
 
 const browser = await chromium.launch({ executablePath: browserPath() });
 const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
@@ -115,29 +124,45 @@ tab.on("console", (message) => {
 await tab.goto(pathToFileURL(page).href);
 await tab.waitForSelector(".table1 tbody tr[data-key]", { timeout: 15000 });
 
-/** The number in a Table 1 row, found by the model's key and not by its label. */
-async function shown(key) {
-  const text = await tab.locator(`.table1 tbody tr[data-key="${key}"] td.num`).first().textContent();
+/** One cell of a Table 1 row, found by the model's key and the column's name. */
+async function shown(key, col) {
+  const text = await tab
+    .locator(`.table1 tbody tr[data-key="${key}"] td[data-col="${col}"]`)
+    .textContent();
   if (text === null) return Number.NaN;
   // Intl groups with a narrow no-break space in sv-SE, and writes the decimal
-  // comma this table never shows.
+  // comma the percentage column uses.
   return Number(text.replace(/[^\d,-]/g, "").replace(",", "."));
 }
 
 const problems = [];
-for (const [key, want] of expected) {
-  const got = await shown(key);
-  const ok = got === want;
-  if (!ok) problems.push(`${key}: the page shows ${got}, the engine says ${want}`);
-  console.log(`${ok ? "OK      " : "MISMATCH"} ${key.padEnd(12)} ${got} kr/month`);
+for (const { key, want } of expected) {
+  const got = [];
+  for (const column of COLUMNS) got.push(await shown(key, column.col));
+  const wrong = COLUMNS.filter((column, i) => got[i] !== want[i]);
+  for (const column of wrong) {
+    const i = COLUMNS.indexOf(column);
+    problems.push(`${key}.${column.col}: the page shows ${got[i]}, the engine says ${want[i]}`);
+  }
+  console.log(
+    `${wrong.length === 0 ? "OK      " : "MISMATCH"} ${key.padEnd(12)} ` +
+      COLUMNS.map((column, i) => `${column.col}=${got[i]}`).join("  "),
+  );
 }
 
 const table2Rows = await tab.locator(".table2 tbody tr").count();
 const figures = await tab.locator("figure.figure").count();
+// Figur 2 is the second figure; its stack must cover the whole `A2:A22` window,
+// one column of bars per age, or the window has silently moved.
+const stacked = await tab.locator("figure.figure").nth(1).locator("svg rect.bar").evaluateAll(
+  (nodes) => new Set(nodes.map((node) => node.getAttribute("x"))).size,
+);
 console.log(`rows in Table 2 : ${table2Rows}`);
 console.log(`figures         : ${figures}`);
+console.log(`columns in Fig 2: ${stacked}`);
 if (table2Rows === 0) problems.push("Table 2 is empty");
-if (figures !== 2) problems.push(`${figures} figures rendered, expected 2`);
+if (figures !== 3) problems.push(`${figures} figures rendered, expected 3`);
+if (stacked !== WINDOW) problems.push(`Figur 2 has ${stacked} columns, expected ${WINDOW}`);
 
 if (shots) {
   mkdirSync(shots, { recursive: true });

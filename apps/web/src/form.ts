@@ -6,11 +6,16 @@
  * the model's own wording, and the defaults a fresh workbook opens with. None
  * of it is retyped here, so next year's extraction updates the form by itself.
  *
+ * The numeric variables are cells you type into, the way the workbook's own
+ * input cells are. A typed value is clamped to the range the extraction allows
+ * and written back into the field, so the form can never show a number the run
+ * did not use.
+ *
  * The form is built once and then left alone -- re-creating the fields on every
  * keystroke would take the focus with it. Only the results re-render.
  */
 import { options } from "@typfallsmodellen/data";
-import { RETIREMENT_AGES, Scheme } from "@typfallsmodellen/engine";
+import { RETIREMENT_AGES } from "@typfallsmodellen/engine";
 import type { SchemeId, TypfallInput } from "@typfallsmodellen/engine";
 
 import { t } from "./i18n.js";
@@ -18,6 +23,17 @@ import type { Lang } from "./i18n.js";
 
 const BIRTH_YEARS = options.ranges.birthYears as readonly number[];
 const SCHEMES = options.choices.occupationalPension as readonly { value: number; label: string }[];
+
+/** The workbook's own dropdowns, read as the range they cover. */
+const span = (values: readonly number[]): { min: number; max: number } => ({
+  min: Math.min(...values),
+  max: Math.max(...values),
+});
+
+const BORN = span(BIRTH_YEARS);
+const RETIREMENT = span(RETIREMENT_AGES);
+// `Börjar arbeta vid ålder` has no extracted list; the sheet offers 15 to 40.
+const START_WORK = { min: 15, max: 40 };
 
 export interface FormHandle {
   readonly element: HTMLElement;
@@ -39,51 +55,61 @@ export function createForm(
   const relabels: Relabel[] = [];
 
   const field = (
-    labelText: string,
     control: HTMLElement,
-    relabel: Relabel,
-    hint?: string,
+    relabel: (l: Lang) => { label: string; hint?: string },
     className = "field",
   ) => {
     const wrap = document.createElement("label");
     wrap.className = className;
     const caption = document.createElement("span");
     caption.className = "field-label";
-    caption.textContent = labelText;
-    if (className.includes("field-check")) wrap.append(control, caption);
-    else wrap.append(caption, control);
-    if (hint !== undefined) {
-      const note = document.createElement("span");
-      note.className = "field-hint";
-      note.textContent = hint;
-      wrap.append(note);
-    }
-    relabels.push((l) => relabel(l));
+    const note = document.createElement("span");
+    note.className = "field-hint";
+
+    const apply = (l: Lang) => {
+      const text = relabel(l);
+      caption.textContent = text.label;
+      note.textContent = text.hint ?? "";
+      note.hidden = text.hint === undefined;
+    };
+    apply(lang);
+
+    if (className.includes("field-check")) wrap.append(control, caption, note);
+    else wrap.append(caption, control, note);
+    relabels.push(apply);
     element.append(wrap);
-    return caption;
   };
 
-  const select = (values: readonly number[], selected: number, apply: (v: number) => void) => {
-    const el = document.createElement("select");
-    for (const v of values) {
-      const option = document.createElement("option");
-      option.value = String(v);
-      option.textContent = String(v);
-      if (v === selected) option.selected = true;
-      el.append(option);
-    }
-    el.addEventListener("change", () => apply(Number(el.value)));
-    return el;
-  };
-
-  const number = (value: number, step: number, apply: (v: number) => void) => {
+  /**
+   * A cell you type a number into.
+   *
+   * `change` rather than `input`: re-running the model on every keystroke would
+   * fire on the half-typed "19" of "1960". The value is clamped to the workbook's
+   * range and written back, so what the field shows is what the model was given.
+   */
+  const number = (
+    value: number,
+    { min, max, step }: { min: number; max: number; step: number },
+    apply: (v: number) => void,
+  ) => {
     const el = document.createElement("input");
     el.type = "number";
+    el.inputMode = "numeric";
     el.value = String(value);
+    el.min = String(min);
+    el.max = String(max);
     el.step = String(step);
+    let current = value;
     el.addEventListener("change", () => {
-      const v = Number(el.value);
-      if (Number.isFinite(v)) apply(v);
+      const typed = Number(el.value);
+      if (!Number.isFinite(typed) || el.value.trim() === "") {
+        el.value = String(current);
+        return;
+      }
+      const clamped = Math.min(Math.max(typed, min), max);
+      current = clamped;
+      el.value = String(clamped);
+      apply(clamped);
     });
     return el;
   };
@@ -101,36 +127,36 @@ export function createForm(
     return el;
   };
 
-  const bornCaption = field(
-    t("birthYear", lang),
-    select(BIRTH_YEARS, initial.born, (born) => onChange({ born })),
-    (l) => (bornCaption.textContent = t("birthYear", l)),
+  const range = ({ min, max }: { min: number; max: number }) => `${min}–${max}`;
+
+  field(
+    number(initial.born, { ...BORN, step: 1 }, (born) => onChange({ born })),
+    (l) => ({ label: t("birthYear", l), hint: range(BORN) }),
   );
 
-  const parCaption = field(
-    t("retirementAge", lang),
-    select(RETIREMENT_AGES, initial.retirementAge, (retirementAge) => onChange({ retirementAge })),
-    (l) => (parCaption.textContent = t("retirementAge", l)),
-  );
-
-  const startCaption = field(
-    t("startWorkAge", lang),
-    select(
-      Array.from({ length: 26 }, (_, i) => 15 + i),
-      initial.startWorkAge,
-      (startWorkAge) => onChange({ startWorkAge }),
+  field(
+    number(initial.retirementAge, { ...RETIREMENT, step: 1 }, (retirementAge) =>
+      onChange({ retirementAge }),
     ),
-    (l) => (startCaption.textContent = t("startWorkAge", l)),
+    (l) => ({ label: t("retirementAge", l), hint: range(RETIREMENT) }),
+  );
+
+  field(
+    number(initial.startWorkAge, { ...START_WORK, step: 1 }, (startWorkAge) =>
+      onChange({ startWorkAge }),
+    ),
+    (l) => ({ label: t("startWorkAge", l), hint: range(START_WORK) }),
   );
 
   // The workbook asks for an annual salary and divides by twelve on the way in
   // (mdlIndataInputOutput.bas:291), so the field is annual here too.
-  const salaryCaption = field(
-    t("annualSalary", lang),
-    number(Math.round(initial.monthlySalary * 12), 1000, (annual) =>
-      onChange({ monthlySalary: annual / 12 }),
+  field(
+    number(
+      Math.round(initial.monthlySalary * 12),
+      { min: 0, max: 100_000_000, step: 1000 },
+      (annual) => onChange({ monthlySalary: annual / 12 }),
     ),
-    (l) => (salaryCaption.textContent = t("annualSalary", l)),
+    (l) => ({ label: t("annualSalary", l), hint: `${t("kronor", l)} / ${t("years", l)}` }),
   );
 
   const schemeSelect = document.createElement("select");
@@ -144,46 +170,28 @@ export function createForm(
   schemeSelect.addEventListener("change", () =>
     onChange({ scheme: Number(schemeSelect.value) as SchemeId }),
   );
-  const schemeCaption = field(t("occupational", lang), schemeSelect, (l) => {
-    schemeCaption.textContent = t("occupational", l);
-  });
+  field(schemeSelect, (l) => ({ label: t("occupational", l) }), "field field-wide");
 
   const marriedBox = document.createElement("input");
   marriedBox.type = "checkbox";
   marriedBox.checked = initial.married;
   marriedBox.addEventListener("change", () => onChange({ married: marriedBox.checked }));
-  const marriedCaption = field(
-    t("married", lang),
-    marriedBox,
-    (l) => {
-      marriedCaption.textContent = t("married", l);
-    },
-    undefined,
-    "field field-check",
-  );
+  field(marriedBox, (l) => ({ label: t("married", l) }), "field field-check");
 
-  const inflationCaption = field(
-    t("inflation", lang),
+  field(
     percentField(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation })),
-    (l) => (inflationCaption.textContent = t("inflation", l)),
-    "%",
+    (l) => ({ label: t("inflation", l), hint: "%" }),
   );
 
-  const growthCaption = field(
-    t("realGrowth", lang),
+  field(
     percentField(initial.realGrowth, (realGrowth) => onChange({ realGrowth })),
-    (l) => (growthCaption.textContent = t("realGrowth", l)),
-    "%",
+    (l) => ({ label: t("realGrowth", l), hint: "%" }),
   );
 
-  const returnCaption = field(
-    t("realReturn", lang),
+  field(
     percentField(initial.realReturn, (realReturn) => onChange({ realReturn })),
-    (l) => (returnCaption.textContent = t("realReturn", l)),
-    "%",
+    (l) => ({ label: t("realReturn", l), hint: "%" }),
   );
-
-  void Scheme;
 
   return {
     element,

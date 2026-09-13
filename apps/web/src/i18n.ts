@@ -41,6 +41,7 @@ export const L = {
   currentPrices: "21", //   Löpande priser
   fixedPrices: "22", //     Fasta priser (2025)
   table1: "24", //          Tabell 1. Specificerat resultat över slutlön och pensionsinkomster
+  table2: "49", //          Tabell 2. Månadsinkomster från 56 ålder
   year: "27", //            År
   pension: "28", //         Pension
   yearsAge: "29", //        års ålder
@@ -70,6 +71,37 @@ export const L = {
   incomePension: "242", //  Inkomstpension
   supplementary: "330", //  Tilläggspension
   iptFull: "481", //        Pensionstillägg (IPT) (40/40)
+
+  // Table 1's own headings, footnotes and the three rows the first draft left
+  // out. The letters A)-D) are typed into the sheet's header cells rather than
+  // stored in SysLang, so they are composed in tables.ts.
+  at: "47", //              vid
+  pensionWord: "28", //     Pension
+  currentPricesKronor: "42", // Löpande priser, kronor
+  shareOfFinalSalaryShort: "393", // Som andel av slutlön
+  shareOfIncomeBefore: "479", // Som andel av inkomsten året innan
+  housingSupplement: "185", // Bostadstillägg för pensionärer m.m.
+  privateSavingIsk: "485", // Privat pensionssparande (ISK / KF)
+  tableAboveShows: "456", // Tabellen ovan visar värden
+  lastRightShort: "64", //  Inkl sista pensionsrätten som ... medräknas först året efter.
+  occupationalLifelong: "457", // Tjänstepension betalas ut livsvarigt
+
+  // The figures. These are the rows `Data_till_Start` itself looks up for each
+  // chart's series names -- Y2:Y10 for Figur 2, AN2:AN6 for the disposable
+  // income chart, N1:T2 for Figur 1 -- so they follow the workbook's choice
+  // even where an equivalent string exists on another row.
+  figure1: "68", //         Figur 1. Löneinkomst mellan 22
+  andPensionFrom: "420", // och pension från
+  fixedPricesNote: "439", // Fasta priser (reala priser) - priset justerat för inflation
+  currentPricesNote: "440", // Löpande priser (nominella priser) - priset anges i aktuell prisnivå
+  figure2: "374", //        Figur 2. Månadsinkomster: 56 - 76 års ålder
+  todayWageLevel: "465", // Dagens (2025) lönenivå
+  earningsAndPension: "335", // Lön och pension
+  salaryChart: "422", //    Lön
+  continuedWork: "328", //  Lön vid fortsatt arbete
+  occupationalChart: "332", // Tjänstepension
+  grossIncomeChart: "333", // Bruttoinkomst
+  netIncomeChart: "334", // Nettoinkomst
 } as const;
 
 export type LabelName = keyof typeof L;
@@ -87,6 +119,15 @@ const EXPECTED_SV: Partial<Record<LabelName, string>> = {
   guarantee: "Garantipension",
   incomePension: "Inkomstpension",
   supplementary: "Tilläggspension",
+  currentPricesKronor: "Löpande priser, kronor",
+  shareOfIncomeBefore: "Som andel av inkomsten året innan",
+  housingSupplement: "Bostadstillägg för pensionärer m.m.",
+  privateSavingIsk: "Privat pensionssparande (ISK / KF)",
+  todayWageLevel: "Dagens (2025) lönenivå",
+  earningsAndPension: "Lön och pension",
+  continuedWork: "Lön vid fortsatt arbete",
+  grossIncomeChart: "Bruttoinkomst",
+  netIncomeChart: "Nettoinkomst",
 };
 
 /**

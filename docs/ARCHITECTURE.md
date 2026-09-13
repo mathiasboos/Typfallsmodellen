@@ -77,14 +77,30 @@ an invention:
 | `qualifyingYears` | years with a pension right, capped at 40 | `rng_wyears` |
 | `warnings` | the corrections the run made to its inputs | the workbook's dialogs |
 
-**The two figures plot `rows`, not `table2`.** An earlier draft of this document said they were
-Excel charts bound to Table 2's range; the file says otherwise. The Start sheet's two chart objects
-are line charts of **sixteen series each**, and in the distributed workbook every series reference
-reads `#REFERENS!` — the result sheets are cleared when it opens, which breaks them — so the
-series list cannot be recovered from the file at all. Sixteen series against `MvaluesRow`'s
-seventeen columns says plainly what they plot: the per-age matrix, one line per column, age along
-the bottom. `mdlChartData.bas` only shows and hides them, so there is no VBA to port either.
-`apps/web` draws `rows` accordingly.
+**The figures plot `rows`, not `table2`, and what they plot is known.** Two earlier drafts of this
+document were wrong about this: the first said the figures were Excel charts bound to Table 2's
+range, the second that their series could not be recovered at all. The second is true only of the
+chart objects — every series reference in them reads `#REFERENS!`, because `Workbook_Open` clears
+the result sheets and breaks them. But the charts are not fed from the Start sheet directly. They
+are fed from **`Data_till_Start`**, a sheet of live formulas whose headings and columns survive
+intact, and LibreOffice plus openpyxl — the path `tools/extract/formulas.py` already uses — reads
+every one of them:
+
+| Block | Ages | Columns |
+| --- | --- | --- |
+| `A2:L22` | `Int(par)-10 … +10`, with `A12 = Int(par)` | Ålder, Lön, Lön vid fortsatt arbete, Inkomstpension (`ip + tp`), Premiepension, Tilläggspension, Garantipension + Pensionstillägg, Tjänstepension, Bruttoinkomst (as `brutto - netto`, so the stack totals the gross), Inkomst efter skatt, Disponibel inkomst, Bidrag |
+| `N3:T107` | 0 … 104 | År, Ålder, Löpande priser, Fasta priser (2025), Dagens (2025) lönenivå, CPI, Income index |
+| `Y2:Y10`, `AN2:AN6` | — | the two charts' series names, as `SysLang` row lookups |
+
+Every source column is one of `MvaluesRow`'s seventeen — including 16 and 17, the price and
+wage-level factors, which exist so the three Figur 1 views can be derived from one run rather than
+from three. `mdlChartData.bas` only shows and hides the charts, so there is no VBA to port either.
+`apps/web/src/chart.ts` draws `rows` through those definitions.
+
+Two of the sheet's own quirks are left behind, both noted where they are: the Figur 1 block reads a
+separate nominal wage column for ages 0–22 and `brutto` from 23 on (the same number while nobody
+draws a pension), and its Tilläggspension column would count ATP twice if it were stacked beside
+Inkomstpension, which already includes it.
 
 `rows` is the spine — Table 2 is a slice of it with columns paired, and Table 1 reads the state at
 the retirement age. A caller that wants something the tables do not carry can read `rows` directly.
@@ -110,6 +126,20 @@ where they come from, which is what keeps it free of a runtime.
 
 `apps/web` is plain TypeScript and Vite — no UI framework, no chart library, no network at runtime.
 The figures are inline SVG.
+
+It renders the Start sheet as the sheet lays it out: eight input cells you type numbers into, Table
+1 with the four columns `C23:F23` heads — A) löpande priser, B) fasta priser, C) per månad, D) som
+andel av slutlön — its rows in `A24:A45`'s order and its two notes under the gross total, then
+Figur 1, Figur 2 and the disposable income chart, then Table 2. Every heading, row label, legend
+entry and footnote is a `SysLang` row the workbook itself looks up for that cell, so a year that
+renumbers the sheet is caught by `checkLabels` rather than silently relabelling the page.
+
+The figures wear the workbook's colours, which is the point of them. Those colours fail the
+data-visualisation guidance's lightness and chroma bands — Excel's pastels are lighter and greyer
+than it wants — while passing its colour-blindness and normal-vision separation checks; the relief
+it asks for in exchange is present, in the 2px surface gap between stacked bands, a legend and a
+hover readout on every figure, and Table 2 carrying every plotted number in text. The agency's
+wordmark, which sits inside the workbook's own plot areas, is not reproduced.
 
 **Its build output is one self-contained HTML file**, `dist/typfallsmodellen.html`. That is forced
 by the delivery promise rather than chosen for elegance: a browser refuses ES module imports and

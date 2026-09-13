@@ -5,12 +5,16 @@
  * there is no debounce and no incremental update -- every change re-runs the
  * model and rebuilds the results. That keeps the state in one place: whatever is
  * on screen is what `run()` returned for what the form says.
+ *
+ * The results follow the Start sheet's own order: Table 1, Figur 1, Figur 2,
+ * the disposable income chart, Table 2.
  */
 import { content } from "@typfallsmodellen/data";
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
-import { renderComposition, renderIncome } from "./chart.js";
+import { renderDisposable, renderFigure1, renderFigure2 } from "./chart.js";
+import type { FigureView } from "./chart.js";
 import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
 import { LANGS, t } from "./i18n.js";
@@ -31,11 +35,22 @@ const deaths = loadDeathProbabilities();
  *
  * `rng_Chart_Earning_factor` is the workbook's month/year switch: `buildTable2`
  * divides by it, so asking for monthly amounts is a model setting rather than a
- * division in the view. Table 1 carries both scales on every row, so it needs
- * nothing here.
+ * division in the view. Table 1 carries all four of the sheet's columns on every
+ * row, so it needs nothing here.
  */
 function viewContext(view: View): ModelContext {
   return contextFromSettings(new Map(), { chartEarningFactor: view.monthly ? 12 : 1 });
+}
+
+/**
+ * The retirement age the run used, which is not always the one asked for.
+ *
+ * `startsetup` raises a retirement age below the cohort's earliest and says so
+ * in a warning; every heading that names the age reads it back from there.
+ */
+function retirementAge(input: TypfallInput, result: TypfallResult): number {
+  const corrected = result.warnings.find((w) => w.field === "ParYear");
+  return typeof corrected?.used === "number" ? corrected.used : input.retirementAge;
 }
 
 let input: TypfallInput = defaultInput();
@@ -139,30 +154,44 @@ function section(title: string, body: HTMLElement): HTMLElement {
 
 function render(): void {
   renderHeading();
-  const result = run(input, viewContext(view), { deaths });
+  const context = viewContext(view);
+  const result = run(input, context, { deaths });
   const lang = view.lang;
+  const par = retirementAge(input, result);
 
-  const table2Title =
-    lang === "sv"
-      ? `Tabell 2. ${view.monthly ? "Månadsinkomster" : "Årsinkomster"} från ${
-          result.table2[0]?.age ?? ""
-        } års ålder`
-      : `Table 2. ${view.monthly ? "Monthly" : "Annual"} income from age ${
-          result.table2[0]?.age ?? ""
-        }`;
+  const figures: FigureView = {
+    lang,
+    par,
+    perMonth: view.monthly,
+    priceBasis: context.priceBasis,
+  };
 
-  const composition =
-    lang === "sv" ? "Vad inkomsten består av" : "What the income is made of";
-  const levels = lang === "sv" ? "Brutto, efter skatt och disponibelt" : "Gross, after tax and disposable";
+  // The sheet's own heading with this run's start age in it. The age is the
+  // label's *last* number -- "Tabell 2. Månadsinkomster från 56 ålder" -- so the
+  // table's own number is left alone.
+  const table2Title = t("table2", lang).replace(
+    /\d+(?=\D*$)/,
+    String(result.table2[0]?.age ?? Math.trunc(par) - 10),
+  );
 
   results.replaceChildren();
   const warned = warnings(result);
   if (warned) results.append(warned);
   results.append(
     scaleSwitch(),
-    section(t("table1", lang), renderTable1(result, lang, view.monthly)),
-    renderComposition(result, lang, composition),
-    renderIncome(result, lang, levels),
+    section(
+      t("table1", lang),
+      wrapScroll(
+        renderTable1(result, lang, {
+          par,
+          finalSalaryYears: context.finalSalaryYears,
+          lastPensionRight: context.lastPensionRight > 0,
+        }),
+      ),
+    ),
+    renderFigure1(result, figures),
+    renderFigure2(result, figures),
+    renderDisposable(result, figures),
     section(table2Title, wrapScroll(renderTable2(result, lang))),
   );
 
@@ -172,7 +201,8 @@ function render(): void {
   results.append(foot);
 }
 
-/** Table 2 is wider than a phone; give it its own scroller rather than the page. */
+/** Both tables are wider than a phone; give each its own scroller rather than
+ * letting it widen the page. */
 function wrapScroll(table: HTMLElement): HTMLElement {
   const box = document.createElement("div");
   box.className = "scroll";
