@@ -36,6 +36,8 @@ export function Xage(year: number, context: ModelContext): number {
   if (year <= 2023) return 66;
   if (year <= 2026) return 67;
   if (year <= 2028) return 68;
+  // `Rng_riktage + 1` -- the *cohort's* riktålder, which `prepareRun` puts on
+  // the context for the run. See pension/retirementAges.ts.
   return context.riktage + 1;
 }
 

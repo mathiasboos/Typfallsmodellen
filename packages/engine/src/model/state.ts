@@ -235,9 +235,14 @@ export interface RunState {
 /** The loop locals the post-loop recomputation reads. See `RunState.leftovers`. */
 export interface Leftovers {
   /**
-   * The loop counter. VBA leaves a completed `For` one past its limit, so this
-   * is `slutage + 1`, which is what `year_(mini(age, 100))` at :2614 and
-   * `year_(mini(age, slutage))` at :2749 are indexed with.
+   * The loop counter.
+   *
+   * A completed VBA `For` leaves its counter one past the limit, so it starts
+   * at `slutage + 1` -- but `creditLastPensionRight` resets it to the
+   * retirement age (`age = PAR`, VBA_go.bas:2445) before the recomputation that
+   * reads it. So it is `slutage + 1` only when the final pension right is
+   * switched off, and the retirement age otherwise. Both cases are indexed by
+   * `year_(mini(age, 100))` at :2614 and `year_(mini(age, slutage))` at :2749.
    */
   age: number;
   /** `Gage` -- the age the higher grundavdrag starts at, from the last iteration. */

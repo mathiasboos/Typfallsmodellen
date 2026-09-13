@@ -163,11 +163,12 @@ export function formatReport(comparison: ComparisonRun, worstLimit = 20): string
 
   const notes = settings.issues.filter((issue) => !issue.fatal);
   if (notes.length > 0) {
-    out.push("## Settings that differ from the model's normal values");
+    out.push("## Settings this run used that are not the model's normal ones");
     out.push("");
     out.push(
-      "Not fatal, but worth knowing: either the export ran with something other than " +
-        "the shipped settings, or packages/data/options.json is stale.",
+      "The engine was configured to match, so the comparison is sound — but it checks " +
+        "the engine against the model *under these settings*, which are not the ones a " +
+        "website would use.",
     );
     out.push("");
     for (const issue of notes) out.push(`- ${issue.message}`);

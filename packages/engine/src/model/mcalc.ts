@@ -367,13 +367,23 @@ export function resolveWithdrawal(run: Run, age: number): void {
 export function prepareRun(
   setup: SetupResult,
   input: TypfallInput,
-  context: ModelContext,
+  contextIn: ModelContext,
   state: RunState,
   deltalTables: DeltalTables,
   warnings: Warning[] = [],
 ): Run {
   const { vectors: v, profile } = setup;
   const born = profile.born;
+
+  // `Rng_riktage` is a cell on Nyckeltal, looked up by cohort, and two rules
+  // read it: the age the higher grundavdrag starts at (`Xage`, via
+  // Skatteregler.bas:26) and the LAS age that KAP-KL's premium steps down at
+  // (Tjänstepensioner.bas:1335). Both take the context, so the cohort's value
+  // goes on it here rather than each of them reaching for the cohort.
+  const context: ModelContext = Object.freeze({
+    ...contextIn,
+    riktage: profile.riktalder,
+  });
 
   // Pension starts on the first of the month the typfall turns PAR.
   const pmonth = 12 - vbaInt(12 * (born + profile.par - vbaInt(born + profile.par)));

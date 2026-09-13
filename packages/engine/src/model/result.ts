@@ -131,6 +131,13 @@ function creditLastPensionRight(run: Run): void {
   s.ip.set(par, dtalIp > 0 ? s.ipPbh.get(par) / dtalIp : 0);
   s.pp.set(par, dtalPp > 0 ? s.ppPbh.get(par) / dtalPp : 0);
 
+  // `age = PAR` (VBA_go.bas:2445). The loop's counter is reset here, inside the
+  // final-pension-right block and before the tax and benefit recomputation that
+  // reads it -- so `year_(mini(age, 100))` there is the retirement year, not the
+  // year the loop happened to stop at. Every other loop local keeps its last
+  // value; see `RunState.leftovers`.
+  s.leftovers.age = par;
+
   // Garantipension is measured on its own divisor, at the riktålder.
   const gpDtal = fnDeltalIp(born, p.riktalder, deltalTables);
 

@@ -34,6 +34,16 @@ export function workbookDefault(name: string, fallback: number): number {
 }
 
 /**
+ * Where each setting's value comes from.
+ *
+ * `defaultContext` reads the workbook's normal column; a golden file's context
+ * reads what that particular run was set to. Everything else about building the
+ * context is the same, which is the point: the mapping from Adv_settings name to
+ * context field lives in one place and both go through it.
+ */
+export type SettingSource = (name: string, fallback: number) => number;
+
+/**
  * Settings read by the pension, tax and benefit rules.
  *
  * Named after the workbook's variables so each one can be traced back. Where a
@@ -274,6 +284,34 @@ export interface ModelContext {
  * loop lands.
  */
 export function defaultContext(overrides: Partial<ModelContext> = {}): ModelContext {
+  return buildContext(workbookDefault, overrides);
+}
+
+/**
+ * The settings a particular run used, for anything the run recorded.
+ *
+ * A golden file carries the whole of Adv_settings as it stood during the
+ * export. Reading it back means the engine is configured the way the workbook
+ * was, rather than the comparison being refused because someone had left a
+ * setting off its normal value -- or, worse, run anyway against the wrong one.
+ *
+ * Names are matched case-insensitively; anything the run did not record falls
+ * back to the workbook's normal value.
+ */
+export function contextFromSettings(
+  settings: ReadonlyMap<string, number>,
+  overrides: Partial<ModelContext> = {},
+): ModelContext {
+  return buildContext((name, fallback) => {
+    const value = settings.get(name.toLowerCase());
+    return value === undefined ? workbookDefault(name, fallback) : value;
+  }, overrides);
+}
+
+function buildContext(
+  workbookDefault: SettingSource,
+  overrides: Partial<ModelContext>,
+): ModelContext {
   const base: ModelContext = {
     marginal: workbookDefault("marginal", 0) === 1 ? 1 : 0,
     socTak: 0,

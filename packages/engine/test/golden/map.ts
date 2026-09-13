@@ -7,7 +7,7 @@
  */
 
 import optionsJson from "../../../data/options.json" with { type: "json" };
-import { SCHEME_CHOICES, defaultContext, defaultInput } from "../../src/index.js";
+import { SCHEME_CHOICES, contextFromSettings, defaultInput } from "../../src/index.js";
 import type { ModelContext, SchemeId, TypfallInput } from "../../src/index.js";
 import type { GoldenCase, GoldenFile } from "./parse.js";
 
@@ -20,14 +20,14 @@ interface AdvancedSettingSpec {
 
 const SPECS = optionsJson.advancedSettings as readonly AdvancedSettingSpec[];
 
-/** A setting in the file that the engine cannot vouch for. */
+/** A setting the run used that is not the model's normal value. */
 export interface SettingIssue {
   readonly setting: string;
-  /** What the workbook exported. */
+  /** What the run used. */
   readonly exported: string;
   /** What packages/data/options.json says the model's normal value is. */
   readonly expected: string;
-  /** Fatal issues make the comparison meaningless rather than merely suspect. */
+  /** True when the file cannot be compared at all. See `UNUSABLE_SETTINGS`. */
   readonly fatal: boolean;
   readonly message: string;
 }
@@ -42,6 +42,8 @@ export interface GoldenSettings {
   readonly married: boolean;
   /** `# caseset`: which set the macro generated, when it said. */
   readonly caseSet: string | undefined;
+  /** Every Adv_settings value the run recorded, lower-cased, for the context. */
+  readonly advanced: ReadonlyMap<string, number>;
   /** The model version string, for the report. */
   readonly modelVersion: string;
   readonly exportedAt: string;
@@ -51,27 +53,22 @@ export interface GoldenSettings {
 }
 
 /**
- * Settings that decide what the exported numbers *mean*. A disagreement here is
- * not a note in the report -- it makes every comparison after it worthless, so
- * the harness refuses rather than reporting agreement it cannot vouch for.
+ * Settings that make the file itself unusable, rather than merely unusual.
  *
- * `Alt_p_age` earns its place: at 1 or 2 the batch runner overrides the
- * retirement age in column D from the Nyckeltal sheet
- * (mdlIndataInputOutput.bas:283-288), so the input in the file is not the input
- * that produced the output beside it.
+ * Everything else on Adv_settings is a *configuration*, and a golden file
+ * records the whole sheet -- so the engine is configured to match it rather
+ * than refusing because a setting was off its normal value. These two cannot be
+ * matched, because they break the relationship between the file's inputs and
+ * its outputs:
+ *
+ * - `Alt_p_age` at 1 or 2 makes the batch runner take the retirement age from
+ *   the Nyckeltal sheet instead of column D
+ *   (mdlIndataInputOutput.bas:283-288), so the input in the file is not the
+ *   input that produced the output beside it.
+ * - `Risk` above 0 draws the fund return at random, so no second run of the
+ *   same inputs -- by the workbook or by the engine -- can reproduce it.
  */
-const FATAL_SETTINGS = new Set(
-  [
-    "rng_Bara_fastapriser",
-    "Alt_p_age",
-    "Risk",
-    "Average_Earning",
-    "marginal",
-    "w_ref",
-    "rng_Sista_PensRatt",
-    "rngPens_Inflation",
-  ].map((name) => name.toLowerCase()),
-);
+const UNUSABLE_SETTINGS = new Set(["Alt_p_age", "Risk"].map((name) => name.toLowerCase()));
 
 /** Reads a setting under any of the keys it may have been written with. */
 function lookup(file: GoldenFile, ...keys: string[]): string | undefined {
@@ -105,38 +102,81 @@ function normalValue(name: string): { canonical: string; value: number } | undef
 }
 
 /**
- * Checks every setting the file carries against the model's normal value.
+ * Settings whose Adv_settings row documents a name and a normal value but holds
+ * no value cell of its own -- the live setting is a named range somewhere else
+ * on the sheet. `rng_Bara_fastapriser` is the clearest: its row says the name
+ * and the normal value 1, while the range itself is at A47.
  *
- * HOWTO.md asks for "Anvand normala installningar" before the run, so the two
- * should agree. Where they do not, either the export ran with something other
- * than the shipped model or packages/data/options.json is stale -- both worth
- * knowing before reading a single number.
+ * An export that reads the row rather than the name finds a blank cell there,
+ * and VBA's `IsNumeric(Empty)` is True, so the blank is written out as 0. That
+ * is not a setting of 0; it is no reading at all. Taking it at face value put
+ * the whole first comparison on the wrong price basis.
  */
-function checkAdvancedSettings(file: GoldenFile): SettingIssue[] {
-  const issues: SettingIssue[] = [];
+const NO_VALUE_CELL = new Set(
+  SPECS.filter((spec) => spec.current === null || spec.current === undefined).map((spec) =>
+    spec.name.toLowerCase(),
+  ),
+);
 
-  for (const [key, exported] of file.settings) {
+/**
+ * Every Adv_settings value the run recorded, keyed by lower-cased name.
+ *
+ * This is what the engine's context is built from, so it is configured exactly
+ * as the workbook was. Free-text rows are skipped; there is nothing to compare
+ * a label against. So are the rows above, which carry no reading to trust.
+ */
+function advancedSettings(file: GoldenFile): Map<string, number> {
+  const values = new Map<string, number>();
+  for (const [key, raw] of file.settings) {
     if (!key.startsWith("adv.")) continue;
     const name = key.slice("adv.".length);
-    const normal = normalValue(name);
-    if (normal === undefined) continue; // a setting the extraction does not model
-    const actual = Number(exported);
-    if (!Number.isFinite(actual)) continue; // free text, nothing to compare
-    if (actual === normal.value) continue;
+    if (NO_VALUE_CELL.has(name)) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) values.set(name, value);
+  }
+  return values;
+}
 
-    const fatal = FATAL_SETTINGS.has(name);
+/**
+ * Notes where the run's settings are not the model's normal ones.
+ *
+ * These are not failures. HOWTO.md asks for "Anvand normala installningar"
+ * before a run, but a file that records something else is still perfectly
+ * comparable -- the engine is built from the same settings. What matters is
+ * saying so, because it changes what the comparison proves: it checks the
+ * engine against the model *under those settings*, which may not be the ones a
+ * website would use.
+ *
+ * The exception is `UNUSABLE_SETTINGS`, which no configuration can rescue.
+ */
+function checkAdvancedSettings(file: GoldenFile, used: ReadonlyMap<string, number>): SettingIssue[] {
+  const issues: SettingIssue[] = [];
+
+  for (const [name, actual] of used) {
+    const normal = normalValue(name);
+    const fatal = UNUSABLE_SETTINGS.has(name);
+    if (normal === undefined) continue; // a setting the extraction does not model
+    // The export formats to ten decimals, so an extracted 0.010000000000000009
+    // comes back as 0.01. That is the same number, not a changed setting.
+    const same = Math.abs(actual - normal.value) <= Math.abs(normal.value) * 1e-9;
+    if (same && !fatal) continue;
+    if (fatal && actual === 0) continue; // 0 is the usable value for both of these
+
     issues.push({
       setting: normal.canonical,
-      exported,
+      exported: String(actual),
       expected: String(normal.value),
       fatal,
       message: fatal
-        ? `${normal.canonical} was ${exported} during the export but the model's normal ` +
-          `value is ${normal.value}. This changes what the exported numbers mean, so the ` +
-          `comparison would be meaningless. Re-run the export after clicking "Anvand ` +
-          `normala installningar" on Adv_settings.`
-        : `${normal.canonical} was ${exported} during the export, against a normal value ` +
-          `of ${normal.value}.`,
+        ? `${normal.canonical} was ${actual} during the export. ` +
+          (name === "risk"
+            ? "That draws the fund return at random, so nothing can reproduce this run."
+            : "That makes the batch runner take the retirement age from the Nyckeltal " +
+              "sheet rather than from the input column, so the inputs in the file are not " +
+              "the ones that produced the outputs beside them.") +
+          " Re-run the export with it at 0."
+        : `${normal.canonical} was ${actual}, against a normal value of ${normal.value}. ` +
+          `The engine was configured to match.`,
     });
   }
 
@@ -144,7 +184,8 @@ function checkAdvancedSettings(file: GoldenFile): SettingIssue[] {
 }
 
 export function readSettings(file: GoldenFile): GoldenSettings {
-  const issues = checkAdvancedSettings(file);
+  const advanced = advancedSettings(file);
+  const issues = checkAdvancedSettings(file, advanced);
   const assumed: string[] = [];
 
   const belopp12 = lookup(file, "adv.rng_belopp12", "belopp12");
@@ -165,6 +206,7 @@ export function readSettings(file: GoldenFile): GoldenSettings {
     compareTo: compareToValue as 0 | 1 | 2,
     married: asBoolean(gift, defaultInput().married),
     caseSet: lookup(file, "caseset"),
+    advanced,
     modelVersion: lookup(file, "model") ?? "unknown",
     exportedAt: lookup(file, "exported") ?? "unknown",
     assumed,
@@ -229,10 +271,12 @@ export function toInput(row: GoldenCase, settings: GoldenSettings): TypfallInput
 /**
  * The settings every case ran under.
  *
- * `defaultContext()` is already built from the workbook's own Adv_settings via
- * packages/data/options.json, so there is nothing to translate -- the file's
- * settings are checked against it in `readSettings` rather than copied over it.
+ * Built from the Adv_settings block the file carries, falling back to the
+ * workbook's normal value for anything it does not record. The mapping from
+ * sheet name to context field is `defaultContext`'s own -- see
+ * `contextFromSettings` in src/model/context.ts -- so there is nothing to keep
+ * in step here.
  */
-export function toContext(): ModelContext {
-  return defaultContext();
+export function toContext(settings: GoldenSettings): ModelContext {
+  return contextFromSettings(settings.advanced);
 }

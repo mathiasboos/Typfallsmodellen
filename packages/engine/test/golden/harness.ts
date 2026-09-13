@@ -61,14 +61,13 @@ export function compareGoldenFile(path: string = GOLDEN_PATH): ComparisonRun {
   const fatal = settings.issues.filter((issue) => issue.fatal);
   if (fatal.length > 0) {
     throw new Error(
-      `the golden file was exported with settings the comparison cannot work ` +
-        `around:\n` +
+      `the golden file cannot be compared against:\n` +
         fatal.map((issue) => `  - ${issue.message}`).join("\n"),
     );
   }
 
   const deaths = loadDeathProbabilities();
-  const context = toContext();
+  const context = toContext(settings);
   const started = Date.now();
 
   const cases = file.cases.map((row): CaseComparison => {
