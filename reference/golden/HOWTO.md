@@ -65,6 +65,22 @@ re-used on every subsequent build.
 | `ExportGoldenCasesFromSheet` | writes the CSV from what is on the sheet, recomputing nothing. |
 | `ReportMikrosimState` | says what is actually on the sheet. **Start here when something looks wrong.** |
 | `CompareRunners` | runs a few cases both ways and checks they agree. |
+| `ReportPublicAvg` | measures the public service fee ceiling the model applies, one typfall and about a second. See below. |
+
+### `ReportPublicAvg`
+
+The engine matches ten of the twelve columns exactly on all 61 quick cases. The two that do not are
+net and disposable income, in 20 of them, and the whole gap is the ceiling on the public service fee
+in `PublicAvg` (`Skatteregler.bas:1356`): the exported nets say the workbook caps the 1% fee at
+`1.87 × IBB` for every retirement year from 2022 on, where the function's own source says 1.55 for
+2025 and 1.42 from 2026.
+
+The source and the compiled p-code agree with each other, the `IBB` vector is right, and no value of
+`born` or `year` makes the formula reach the observed ceiling — so the arithmetic and the code
+disagree, and only the workbook can settle it. `ReportPublicAvg` runs one typfall to fill `born` and
+`IBB()`, then calls `PublicAvg` with an income far above any possible cap, which returns the ceiling
+divided by a hundred. That measures the factor rather than assuming it. Run it and send the
+Immediate window (**Ctrl+G**) output.
 
 To go from the quick set to the full one: run `ExportGoldenCases` and let it re-run everything, or
 run the quick set, save, and add cases by hand — there is no merge step, because the CSV is always

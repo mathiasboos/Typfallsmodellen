@@ -20,6 +20,8 @@ Attribute VB_Name = "ExportGoldenCases"
 '                               when something looks wrong.
 '   CompareRunners              runs a few cases both ways and checks they agree.
 '                               Run it once after importing.
+'   ReportPublicAvg             measures the public service fee ceiling the model
+'                               actually applies. See the comment above it.
 '
 ' The CSV is rewritten after every case, not once at the end, so a halt, a crash
 ' or a workbook closed without saving still leaves a complete file for every case
@@ -614,6 +616,105 @@ End Function
 ' Nyckeltal sheet instead of column D (mdlIndataInputOutput.bas:283-288), which
 ' would put an input in the file that did not produce the output beside it. The
 ' direct driver reads column D, so the setting has to be off either way.
+'==============================================================================
+' Measures the public service fee ceiling the model actually applies.
+'
+' Ten of the twelve exported columns match the web port exactly. The two that do
+' not are net and disposable income, in 20 of the 61 quick cases, and the whole
+' gap is the ceiling in PublicAvg (Skatteregler.bas:1356).
+'
+' Reading the exported nets backwards says the workbook caps the 1% fee at
+' 1.87 * IBB for every retirement year from 2022 on -- 150 722 in 2025 and
+' 155 958 from 2026 -- where the source says 1.55 and 1.42. The source and the
+' compiled p-code agree with each other, the IBB vector is right, and no value
+' of born or year can make the formula produce 150 722. So the arithmetic and
+' the code disagree, and only the workbook can say which is doing what.
+'
+' This runs one typfall to fill born and IBB(), then asks PublicAvg itself. The
+' ceiling is measured, not assumed: calling it with an income far above any
+' possible cap returns cap/100 rounded, so cap/IBB is the factor it really used.
+'
+' Run it, then send the Immediate window (Ctrl+G) output.
+'==============================================================================
+Public Sub ReportPublicAvg()
+    Dim years As Variant
+    Dim i As Long
+    Dim y As Long
+    Dim par As Long
+    Dim ibbAtPar As Double
+    Dim capFee As Double
+    Dim msg As String
+
+    RequireDirectRetirementAge
+
+    ' Case 37 of the quick set: the cohort and retirement age with the largest
+    ' measured gap, 258 kr/year.
+    RunOneTypfall 1959, 23, 66, 462000, 0, 0, 0.017, 0, 4
+
+    par = 66
+    ibbAtPar = IBB(par)
+
+    Debug.Print String(70, "=")
+    Debug.Print "ReportPublicAvg -- born 1959, retires at 66, salary 462 000/year"
+    Debug.Print String(70, "=")
+    Debug.Print "born      " & born
+    Debug.Print "PAR       " & PAR
+    Debug.Print "year_(66) " & year_(par)
+    Debug.Print "IBB(66)   " & ibbAtPar & "      (the port has 80600)"
+    Debug.Print "IBB(67)   " & IBB(67) & "      (the port has 83400)"
+    Debug.Print ""
+    Debug.Print "PublicAvg(Besk, 0.01, 66, 0, year), by year:"
+    Debug.Print "  year   fee at 282300   fee at the cap   cap = fee*100   cap/IBB(66)"
+
+    years = Array(2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2029)
+    For i = LBound(years) To UBound(years)
+        y = years(i)
+        ' 99 000 000 is far above any conceivable ceiling, so this returns the
+        ' capped fee whatever the factor is -- the ceiling, measured.
+        capFee = PublicAvg(99000000#, 0.01, par, 0, y)
+        Debug.Print "  " & y & _
+                    Space$(6) & Format$(PublicAvg(282300#, 0.01, par, 0, y), "0") & _
+                    Space$(12) & Format$(capFee, "0") & _
+                    Space$(12) & Format$(capFee * 100, "0") & _
+                    Space$(8) & Format$(capFee * 100 / ibbAtPar, "0.0000")
+    Next i
+
+    Debug.Print ""
+    Debug.Print "The port expects cap/IBB(66) to read 2.0920 for 2019-2020, 1.9500 for"
+    Debug.Print "2021, 1.8700 for 2022, 1.7500 for 2023, 1.6000 for 2024, 1.5500 for"
+    Debug.Print "2025 and 1.4200 from 2026. The exported nets say it reads 1.8700 from"
+    Debug.Print "2022 on. Whichever this prints is the answer."
+
+    msg = "The measurement is in the Immediate window (Ctrl+G)." & vbCrLf & vbCrLf & _
+          "Copy the whole block and send it back."
+    MsgBox msg, vbInformation
+End Sub
+
+
+' One typfall through the model, by the same route RunCaseDirect takes, but
+' driven from arguments rather than from a row of the Mikrosim sheet.
+Private Sub RunOneTypfall(ByVal bornYear As Long, ByVal startWorkAge As Long, _
+                          ByVal retireAge As Long, ByVal annualSalary As Double, _
+                          ByVal inflation As Double, ByVal realGrowth As Double, _
+                          ByVal fundReturn As Double, ByVal ips As Double, _
+                          ByVal tjpChoice As Long)
+    Application.Range("BornYear") = bornYear
+    Application.Range("wStartYear") = startWorkAge
+    Application.Range("PARYear") = retireAge
+    Application.Range("Wage_Monthly") = annualSalary / 12
+    Application.Range("rng_Yearly_Inflation") = inflation
+    Application.Range("rng_Real_Growth") = realGrowth
+    Application.Range("rng_FondAvkastning") = fundReturn
+    Application.Range("IPS") = ips
+    Application.Range("rng_TJP_Listbox") = tjpChoice
+
+    pblnCloseOrSave = False
+    StartUp_Indata True
+    pblnCloseOrSave = True
+    Application_Rest_Screen
+End Sub
+
+
 Private Sub RequireDirectRetirementAge()
     If NamedValue("Alt_p_age", 0) <> 0 Then
         Err.Raise 5, , "Alt_p_age is " & NamedValue("Alt_p_age", 0) & _

@@ -340,6 +340,58 @@ wrong code. Two things it has to get right:
 - VBA reads and assigns the function's own name as a variable (`If Jobb14 < 0 Then Jobb14 = 0`), on
   both sides of a condition.
 
+### An open divergence: the public service fee ceiling
+
+`PublicAvg` is the one place where the port and the workbook have been seen to disagree, and the
+disagreement is not yet explained. The function caps the 1% fee at a multiple of the
+inkomstbasbelopp that has been lowered each year (`Skatteregler.bas:1362-1369`):
+
+```vba
+lim2 = (2.092 * IBB(year - Int(born)))
+If year = 2021 Then lim2 = 1.95 * IBB(year - Int(born))
+If year = 2022 Then lim2 = 1.87 * IBB(year - Int(born))
+If year = 2023 Then lim2 = 1.75 * IBB(year - Int(born))
+If year = 2024 Then lim2 = 1.6  * IBB(year - Int(born))
+If year = 2025 Then lim2 = 1.55 * IBB(year - Int(born))
+If year >= 2026 Then lim2 = 1.42 * IBB(year - Int(born))
+```
+
+`reduktioner.ts` ports that line for line. But across the 61-case golden file the workbook behaves
+as if the factor were **1.87 for every retirement year from 2022 on**:
+
+| retirement year | `IBB(par)` | the port's ceiling | fee | the workbook's ceiling | fee |
+|---|---|---|---|---|---|
+| 2019–2020 | 64 400 | 2.092 × IBB | 1 347 | the same | 1 347 |
+| 2022 | 71 000 | 1.87 × IBB | 1 328 | the same | 1 328 |
+| 2025 | 80 600 | 1.55 × IBB = 124 930 | 1 249 | 1.87 × IBB = 150 722 | 1 507 |
+| 2026+ | 83 400 | 1.42 × IBB = 118 428 | 1 184 | 1.87 × IBB = 155 958 | 1 560 |
+
+That is the whole of the remaining golden-file gap: 20 cases, net and disposable only, 258 kr/year
+for a 2025 retirement and 376 for 2026 and later. Three of the cases sit below the workbook's
+ceiling and above the port's, and there the workbook's fee is *exactly* `cbefvi / 100`
+(139 800 → 1 398, 130 700 → 1 307, 131 600 → 1 316), which pins the taxable income to the krona and
+leaves the ceiling as the only moving part. The two ceilings are in the ratio 1.03474, exactly
+`83 400 / 80 600`, so it is `k × IBB(par)` with one constant — not a fixed amount, and not `pbb` or
+`fpb`, whose ratios across the two groups disagree.
+
+What has been ruled out offline:
+
+- `reference/vba/` is byte-identical to the VBA inside `source/Typfallsmodellen.xlsb`, and the
+  **compiled p-code** carries the same six branches, so this is not a stale-p-code case.
+- Nyckeltal column 88 holds 80 600 for 2025 and 83 400 flat from 2026, so the `IBB` vector is the
+  workbook's own.
+- `RulesfromSkatt` is 0, so nothing freezes the rule year; `Last_pratt` is 0, so the netto comes
+  from the age loop with `Skyear = year_(age)`, which is the path the engine takes too.
+- `born` has one declaration project-wide (`VBA_go.bas:12`), and **no** value of `born` or `year`
+  makes `f(year) × IBB(year − Int(born))` reach 150 722 — the most the formula can produce for that
+  cohort is 139 746, at `year = 2020`.
+
+The quick case set has no retirement year 2023 or 2024, which is why a single `1.87` explains every
+diverging case: those are the two years that would tell a frozen factor apart from one that simply
+stopped being updated. Settling it needs a measurement from inside Excel —
+`?PublicAvg(282300, 0.01, 66, 0, 2025)` in the Immediate window after a run of the case-37 typfall
+returns 1249 if the workbook's own function follows its source, and 1507 if it does not.
+
 ### Things kept as written
 
 - **`sared` reads `alder` and `binkomst` that are not its parameters** and are never assigned
@@ -532,17 +584,32 @@ shipped typfall, committed so an unintended change shows up as a diff; it is a r
 not a check against the workbook.
 
 **The golden file is what closes that gap**, and it is the only check in the project that compares
-the engine against the real model end to end. `reference/golden/golden-cases.csv` holds 294 cases
+the engine against the real model end to end. `reference/golden/golden-cases.csv` holds the cases
 the workbook itself computed, and `npm run compare` runs the engine over the same inputs and diffs
 all twelve output columns — the final salary, the five public pensions and their total, the
 occupational pension, private saving, and the tax, benefits and disposable income at retirement.
-Everything downstream of the earning phase depends on it; until it is committed, the gate skips and
+Everything downstream of the earning phase depends on it; if the file is absent the gate skips and
 what is written above still stands.
 
-It does not cover Table 2, the life-income sums or the pension-wealth box: the workbook's batch
-runner writes Table 1 only. Nor does it reach a part-year retirement, a hand-entered wage list,
-private saving, children, or a spouse — the generated cases use none of those, so those paths stay
-on unit tests.
+What is committed today is the **quick set: 61 cases**, exported with `ExportGoldenCasesQuick`.
+Ten of the twelve columns match it exactly, to the last decimal the CSV carries, on every case:
+the final salary, all five public pensions, the occupational pension, private saving, the gross,
+and the housing supplement. The two that do not are net and disposable income, in 20 of the 61
+cases, and the cause is localised — see *An open divergence: the public service fee ceiling* under
+**Tax rules**. Disposable inherits the gap rather than adding to it: the benefits column matches
+and `IndDisp = Netto + Bidrag`.
+
+The full 295-case set can follow at any time with `ExportGoldenCasesResume`, which picks up after
+the 61 without recomputing them.
+
+What the quick set does *not* reach, so those paths stay on unit tests:
+
+- **Retirement years 2023 and 2024.** It jumps from 2022 to 2025, which is exactly why one constant
+  explains every diverging case above and why it took a workbook measurement to say which.
+- **Table 2, the life-income sums and the pension-wealth box.** The batch runner writes Table 1
+  only.
+- **Part-year retirement, a hand-entered wage list, private saving, children and a spouse.** The
+  generated cases use none of them.
 
 ### Where the workbook's addresses are
 
