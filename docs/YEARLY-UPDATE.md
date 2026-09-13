@@ -19,6 +19,14 @@ Download from
 <https://www.pensionsmyndigheten.se/statistik-och-rapporter/pensionsmodellen/typfallsmodellen>
 and replace `source/Typfallsmodellen.xlsb`.
 
+**Write down which build it is, and keep that file.** The version number on the
+`Versionsinformation` sheet is not a build identity: two downloads have already been seen calling
+themselves "Version 4.8" with different code in `Skatteregler.bas`, distinguishable only by an extra
+bullet in the version history. Everything downstream — the extracted data, the VBA diff, the golden
+file — has to come from the *same* file, so keep the one you extracted from and export the golden
+cases from that same copy, not from whatever is in the downloads folder later. See the
+`ReportPublicAvg` section of `reference/golden/HOWTO.md` for what it cost to learn this.
+
 ### 2. Regenerate the data
 
 ```bash
@@ -96,8 +104,10 @@ mechanically translated and you changed it by hand, or a riksnorm row moved, the
 
 The fixtures in `reference/fixtures/` are regenerated from the new workbook, so they check the
 new data. The golden files in `reference/golden/` are **not** — they came from a previous Excel
-run. Regenerate them from the new workbook too (see `reference/README.md`), otherwise the
-comparison is checking the new engine against last year's rules.
+run. Regenerate them from the new workbook too (see `reference/golden/HOWTO.md`), otherwise the
+comparison is checking the new engine against last year's rules. Do not skip that procedure's
+step 5, `ReportPublicAvg` — it takes a second and it is what catches exporting from a different
+build than the one you extracted the data from.
 
 Keep the previous golden file as well: re-running it with the rule-year overrides pinned to last
 year's rules should still reproduce last year's numbers, which catches accidental changes to

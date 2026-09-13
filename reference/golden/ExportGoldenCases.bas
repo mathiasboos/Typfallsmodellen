@@ -977,6 +977,18 @@ Private Sub BuildQuickCases()
     ' F (1): the worked example from the user manual -- a care assistant born
     ' 1960, working from 20 to 67 on 27 000 kr/month under KAP-KL.
     AddCase 1960, 20, 67, 324000, 0, 0, 0.017, 5
+
+    ' G (4): retirement in 2023 and 2024 -- the only two rule years no other
+    ' block reaches, and the cohorts either side of the delningstal splice at
+    ' 1958. One salary below the public service fee ceiling and one well above
+    ' it, because a ceiling only shows itself when something crosses it. Their
+    ' absence is how a golden file exported from the wrong build went a week
+    ' without being noticed: every factor the older PublicAvg got wrong was one
+    ' of these years or later, and a single wrong constant fitted all of them.
+    AddCase 1957, 23, 66, 180000, 0, 0, 0.017, 4
+    AddCase 1957, 23, 66, 462000, 0, 0, 0.017, 4
+    AddCase 1958, 23, 66, 180000, 0, 0, 0.017, 4
+    AddCase 1958, 23, 66, 462000, 0, 0, 0.017, 4
 End Sub
 
 
@@ -1035,6 +1047,14 @@ Private Sub BuildFullCases()
     ' F: the worked example from the user manual -- a care assistant born 1960,
     ' working from 20 to 67 on 27 000 kr/month under KAP-KL.
     AddCase 1960, 20, 67, 324000, 0, 0, 0.017, 5
+
+    ' G: retirement in 2023 and 2024. The cohort list above jumps 1955 to 1960,
+    ' and block B's retirement ages on the 1959 cohort reach 2024 but not 2023,
+    ' so without this the two years have no case at all. See BuildQuickCases.
+    AddCase 1957, 23, 66, 180000, 0, 0, 0.017, 4
+    AddCase 1957, 23, 66, 462000, 0, 0, 0.017, 4
+    AddCase 1958, 23, 66, 180000, 0, 0, 0.017, 4
+    AddCase 1958, 23, 66, 462000, 0, 0, 0.017, 4
 End Sub
 
 

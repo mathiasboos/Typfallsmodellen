@@ -14,8 +14,12 @@ re-used on every subsequent build.
 ## What you need
 
 - Windows with Excel 2007 or later
-- `Typfallsmodellen-yyyy-mm-dd.xlsb` — the same version as `source/Typfallsmodellen.xlsb` in this
-  repository. If they differ, the comparison checks the engine against the wrong rules.
+- **The same build as `source/Typfallsmodellen.xlsb` in this repository.** Not merely the same
+  version number: two downloads have already been seen calling themselves "Version 4.8" with
+  different code in `Skatteregler.bas`. The one this port is built from is the one whose
+  `Versionsinformation` sheet carries *"Mindre buggfixar, t.ex. löpande priser, fasta löner och för
+  lång kod i huvudmodulen."* under Version 4.8. Step 5 below checks it in a second; if you skip it
+  and the builds differ, the comparison checks the engine against rules it was never given.
 
 ## Steps
 
@@ -47,7 +51,7 @@ re-used on every subsequent build.
 6. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
    `F5` (or **Run → Run Sub/UserForm**). Excel asks where to save the CSV.
 
-7. **Wait.** It runs **61** typfall through the model — about half an hour. Excel will look
+7. **Wait.** It runs **65** typfall through the model — a bit over half an hour. Excel will look
    unresponsive while it works, and the status bar shows how far it has got. A dialog reporting the
    number of cases means it finished.
 
@@ -67,8 +71,8 @@ re-used on every subsequent build.
 
 | Sub | What it does |
 |---|---|
-| `ExportGoldenCasesQuick` | 61 cases, ~30 min. The boundaries that carry the most information. |
-| `ExportGoldenCases` | all 295, a couple of hours. Maximum coverage. |
+| `ExportGoldenCasesQuick` | 65 cases, ~32 min. The boundaries that carry the most information. |
+| `ExportGoldenCases` | all 299, a couple of hours. Maximum coverage. |
 | `ExportGoldenCasesResume` | keeps the inputs on the sheet and runs only the rows without results. Use it after a halt, or to work through the full set in sittings. |
 | `ExportGoldenCasesFromSheet` | writes the CSV from what is on the sheet, recomputing nothing. |
 | `ReportMikrosimState` | says what is actually on the sheet. **Start here when something looks wrong.** |
@@ -77,22 +81,21 @@ re-used on every subsequent build.
 
 ### `ReportPublicAvg`
 
-The engine matches ten of the twelve columns exactly on all 61 quick cases. The two that do not are
-net and disposable income, in 20 of them, and the whole gap is the ceiling on the public service fee
-in `PublicAvg` (`Skatteregler.bas:1356`).
+A one-second check that the workbook in front of you is the build the port was written against.
 
-`ReportPublicAvg` measures that ceiling: it runs one typfall to fill `born` and `IBB()`, then calls
-`PublicAvg` with an income far above any possible cap, which returns the ceiling divided by a
-hundred. The factor is measured rather than assumed.
+It runs one typfall to fill `born` and `IBB()`, then calls `PublicAvg` with an income far above any
+possible cap, which returns the ceiling over a hundred — so the factor is measured rather than
+assumed. Read the last column, `cap/IBB`, against `Skatteregler.bas`: 2.0920 for 2019–2020, 1.9500
+for 2021, 1.8700 for 2022, 1.7500 for 2023, 1.6000 for 2024, 1.5500 for 2025, 1.4200 from 2026.
 
-Run against the workbook that produced the committed `golden-cases.csv`, it showed the ceiling
-following the source exactly for 2019, 2020, 2021 and 2022, and then **staying at the 2022 factor
-of 1.87 for 2023, 2024, 2025 and 2026** — where the `Skatteregler.bas` in `source/` says 1.75, 1.60,
-1.55 and 1.42. That is an older `PublicAvg`, so the CSV was exported from a different build of the
-model than the one `packages/data` is extracted from.
+This exists because it has already happened. The first golden file was exported from a build whose
+`PublicAvg` stopped at 2022 — every year from 2023 on used the 2022 factor of 1.87 — while
+`packages/data` was extracted from the corrected build. Ten of the twelve columns still matched,
+which is exactly what makes the failure mode dangerous: two builds can share every data table and
+differ in a rule. It cost a week, and 258 kronor a year of pension looked for all that time like a
+bug in the port.
 
-**Re-run it whenever the workbook is replaced**, including at the yearly update: it is a one-second
-check that the file you are exporting from is the file the port was built against.
+**Re-run it whenever the workbook is replaced**, including at the yearly update.
 
 To go from the quick set to the full one: run `ExportGoldenCases` and let it re-run everything, or
 run the quick set, save, and add cases by hand — there is no merge step, because the CSV is always

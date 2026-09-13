@@ -340,30 +340,24 @@ wrong code. Two things it has to get right:
 - VBA reads and assigns the function's own name as a variable (`If Jobb14 < 0 Then Jobb14 = 0`), on
   both sides of a condition.
 
-### The public service fee ceiling: the workbook runs older code
+### The public service fee ceiling, and why builds are checked now
 
-`PublicAvg` caps the 1% fee at a multiple of the inkomstbasbelopp that has been lowered each year.
-`Skatteregler.bas:1362-1369` in `source/Typfallsmodellen.xlsb` reads:
+`PublicAvg` caps the 1% fee at a multiple of the inkomstbasbelopp that has been lowered each year
+(`Skatteregler.bas:1362-1369`), and `reduktioner.ts` ports it line for line. It is correct as
+ported. It is written up here because getting to that conclusion cost a week, and the lesson is
+about process rather than about tax.
 
-```vba
-lim2 = (2.092 * IBB(year - Int(born)))
-If year = 2021 Then lim2 = 1.95 * IBB(year - Int(born))
-If year = 2022 Then lim2 = 1.87 * IBB(year - Int(born))
-If year = 2023 Then lim2 = 1.75 * IBB(year - Int(born))
-If year = 2024 Then lim2 = 1.6  * IBB(year - Int(born))
-If year = 2025 Then lim2 = 1.55 * IBB(year - Int(born))
-If year >= 2026 Then lim2 = 1.42 * IBB(year - Int(born))
-```
+The first golden file diverged from the engine in net and disposable income, in 20 of 61 cases —
+258 kr/year for a 2025 retirement, 376 from 2026. Everything else matched exactly, including the
+gross, so it was purely the tax; and in three cases that sat below the workbook's ceiling and above
+the port's, the workbook's fee came to *exactly* `cbefvi / 100`, which pinned the taxable income to
+the krona and left the ceiling as the only moving part.
 
-`reduktioner.ts` ports that line for line, and it is the whole of the remaining golden-file gap:
-20 of the 61 quick cases, net and disposable only, 258 kr/year for a 2025 retirement and 376 for
-2026 and later.
+`ReportPublicAvg` (in `reference/golden/ExportGoldenCases.bas`) then measured the ceiling the
+exporting workbook actually applied, by calling `PublicAvg` with an income far above any possible
+cap so that it returns the ceiling over a hundred:
 
-`ReportPublicAvg` (in `reference/golden/ExportGoldenCases.bas`) measures the ceiling the workbook
-actually applies, by calling `PublicAvg` with an income far above any possible cap so that it
-returns the ceiling over a hundred. Run against the workbook that produced `golden-cases.csv`:
-
-| year | measured ceiling | the source above | `1.87 × IBB(year)` |
+| year | measured | `Skatteregler.bas` here | `1.87 × IBB(year)` |
 |---|---|---|---|
 | 2019 | 134 700 | 2.092 × 64 400 = 134 724 ✓ | — |
 | 2020 | 139 700 | 2.092 × 66 800 = 139 746 ✓ | — |
@@ -374,30 +368,27 @@ returns the ceiling over a hundred. Run against the workbook that produced `gold
 | 2025 | 150 700 | 1.55 × 80 600 = 124 930 ✗ | **150 722** ✓ |
 | 2026+ | 156 000 | 1.42 × 83 400 = 118 428 ✗ | **155 958** ✓ |
 
-So `IBB(year - Int(born))` is indexed correctly for every year — 2023 really does read 2023's
-inkomstbasbelopp — and the 2021 and 2022 branches fire correctly. What does not happen is the 2023,
-2024, 2025 and 2026 branches firing at all: 2022's wins for every later year. Exactly one code
-shape produces that table:
+`IBB(year - Int(born))` is indexed correctly for every year — 2023 really does read 2023's
+inkomstbasbelopp — and the 2021 and 2022 branches fire correctly. What never fires is 2023, 2024,
+2025 or 2026. That is `PublicAvg` as written when 2022 was the last legislated year: the chain
+ending at `If year >= 2022 Then lim2 = 1.87 * IBB(...)`, with nothing after it.
 
-```vba
-lim2 = (2.092 * IBB(year - Int(born)))
-If year = 2021 Then lim2 = 1.95 * IBB(year - Int(born))
-If year >= 2022 Then lim2 = 1.87 * IBB(year - Int(born))   ' >=, and nothing after it
-```
+**The golden file had been exported from a different build of the model.** Two downloads both call
+themselves "Version 4.8"; the corrected one is distinguished only by a line in its
+`Versionsinformation` sheet, *"Mindre buggfixar, t.ex. löpande priser, fasta löner och för lång kod
+i huvudmodulen."* — and that is the one in `source/`, which every table in `packages/data` comes
+from.
 
-The `>=` is forced: with `= 2022` and no later branches, 2023 would fall through to the 2.092
-default and give 155 436, not 138 941.
+Three things came out of it, and they are the reason this section exists:
 
-That is an older `PublicAvg`, written when 2022 was the last legislated year. The workbook in
-`source/` is not that build — its VBA source and its compiled p-code both carry all six branches,
-and `reference/vba/` is byte-identical to it. **The golden file was therefore produced by a
-different build of the model than the one every extracted table in `packages/data` comes from.**
-
-That is the thing to fix, not `reduktioner.ts`. A port checked against one build and fed data from
-another is only accidentally right: ten columns agreeing says the two builds share their Nyckeltal,
-mortality and delningstal tables, not that they share their rules. Until `source/` and the workbook
-that produced `golden-cases.csv` are the same file, this ceiling is the one known difference and
-there may be others the quick set does not reach.
+- **Ten columns agreeing is not evidence of the same build.** Two builds can share every Nyckeltal,
+  mortality and delningstal table and still differ in a rule. Only the rule that differs shows.
+- **`ReportPublicAvg` is now step 5 of the export procedure** (`reference/golden/HOWTO.md`) and part
+  of the yearly update. A second of checking against half an hour of exporting and a week of
+  chasing 258 kronor.
+- **The case set covers 2023 and 2024 now.** It used to jump from retirement in 2022 straight to
+  2025, so all four wrong factors looked like one constant. Block G exists for that, and
+  `golden.test.ts` asserts those years stay covered.
 
 ### Things kept as written
 

@@ -124,11 +124,14 @@ describe("the golden-file harness", () => {
     expect(blockOf(144, full)).toBe("A");
     expect(blockOf(145, full)).toBe("B");
     expect(blockOf(295, full)).toBe("F");
+    expect(blockOf(299, full)).toBe("G");
 
     const quick = blocksOf("quick");
     expect(blockOf(32, quick)).toBe("A");
     expect(blockOf(33, quick)).toBe("B");
     expect(blockOf(61, quick)).toBe("F");
+    expect(blockOf(62, quick)).toBe("G");
+    expect(blockOf(65, quick)).toBe("G");
 
     // Nothing to group by when the set is unknown.
     expect(blockOf(1, [])).toBe("?");
@@ -138,13 +141,26 @@ describe("the golden-file harness", () => {
     // The block totals are the contract the report's grouping rests on; if the
     // macro's BuildQuickCases and caseSets.ts drift apart, the report labels
     // the wrong cases.
-    expect(caseSet("quick")).toHaveLength(61);
-    expect(caseSet("full")).toHaveLength(295);
+    expect(caseSet("quick")).toHaveLength(65);
+    expect(caseSet("full")).toHaveLength(299);
     for (const name of ["quick", "full"] as const) {
       const total = blocksOf(name).reduce((sum, b) => sum + b.count, 0);
       expect(total, `${name} blocks do not add up to its cases`).toBe(caseSet(name).length);
     }
-    expect(blocksOf("quick").map((b) => b.count)).toEqual([32, 12, 8, 4, 4, 1]);
+    expect(blocksOf("quick").map((b) => b.count)).toEqual([32, 12, 8, 4, 4, 1, 4]);
+  });
+
+  it("covers every rule year from 2019 on", () => {
+    // The gap this closes: the quick set used to jump from retirement in 2022
+    // straight to 2025, so a PublicAvg frozen at the 2022 ceiling looked like
+    // one constant rather than four wrong ones, and a golden file exported
+    // from the wrong build of the model went a week undetected.
+    const retirementYears = new Set(
+      caseSet("quick").map((c) => c.born + c.retirementAge),
+    );
+    for (const year of [2023, 2024]) {
+      expect(retirementYears, `no quick case retires in ${year}`).toContain(year);
+    }
   });
 
   it("picks a case set by its declared name, then by count", () => {

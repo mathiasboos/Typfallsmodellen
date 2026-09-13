@@ -117,6 +117,11 @@ function buildQuick(): Builder {
   b.add(1960, 20, 67, 324_000, 0, 0, 0.017, 5);
   b.block("F", "the user manual's care assistant");
 
+  for (const born of [1957, 1958]) {
+    for (const salary of [180_000, 462_000]) b.add(born, 23, 66, salary, 0, 0, 0.017, 4);
+  }
+  b.block("G", "retirement in 2023 and 2024");
+
   return b;
 }
 
@@ -156,6 +161,11 @@ function buildFull(): Builder {
 
   b.add(1960, 20, 67, 324_000, 0, 0, 0.017, 5);
   b.block("F", "the user manual's care assistant");
+
+  for (const born of [1957, 1958]) {
+    for (const salary of [180_000, 462_000]) b.add(born, 23, 66, salary, 0, 0, 0.017, 4);
+  }
+  b.block("G", "retirement in 2023 and 2024");
 
   return b;
 }
