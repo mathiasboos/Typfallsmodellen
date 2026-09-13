@@ -14,7 +14,8 @@
     "check:riksnorm": "python3 tools/extract/extract_riksnorm.py --check",
     "check:ages": "python3 tools/extract/extract_retirement_ages.py --check",
     "check:names": "python3 tools/extract/check_names.py",
-    "compare": "npm run compare -w @typfallsmodellen/engine"
+    "compare": "npm run compare -w @typfallsmodellen/engine",
+    "verify:offline": "node tools/build/verify-offline.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
