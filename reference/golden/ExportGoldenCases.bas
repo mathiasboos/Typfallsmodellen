@@ -18,11 +18,27 @@ Attribute VB_Name = "ExportGoldenCases"
 '                               recomputing nothing.
 '   ReportMikrosimState         says what is actually on the sheet. Start here
 '                               when something looks wrong.
+'   CompareRunners              runs a few cases both ways and checks they agree.
+'                               Run it once after importing.
 '
-' The CSV is rewritten after every chunk, not once at the end, so a halt, a
-' crash or a workbook closed without saving still leaves a complete file for
-' every case that finished. An earlier version wrote it only on the way out,
-' and a halted run left two hours of work in an unsaved workbook.
+' The CSV is rewritten after every case, not once at the end, so a halt, a crash
+' or a workbook closed without saving still leaves a complete file for every case
+' that finished. An earlier version wrote it only on the way out, and a halted
+' run left two hours of work in an unsaved workbook.
+'
+' The per-case loop is driven here rather than through the model's own batch
+' runner. InputXGetY calls WaitIfCalculationStateIsNotDone after every row
+' (mdlIndataInputOutput.bas:415), and that routine demands
+' Application.CalculationState = xlDone within 0.2 seconds of Application_Rest
+' having just switched Excel to manual calculation (mdlTools.bas:1377). On a
+' workbook this size it does not always get there, and then it hits the author's
+' own Stop -- labelled "Should never happen" -- and the run halts in the
+' debugger. Nothing else in the model calls that routine: StartUp_Indata, which
+' is what actually runs Mcalc, does not. So the loop below does what InputXGetY
+' does per row and leaves the calculation state to settle on its own.
+'
+' Set USE_MODEL_BATCH_RUNNER to True to go back through InputXGetY. CompareRunners
+' checks the two agree.
 '
 ' The cases deliberately straddle rule boundaries -- cohorts either side of 1938
 ' and 1954 for ATP, salaries around the garantipension phase-out and the state
@@ -50,10 +66,15 @@ Private Const FALLBACK_UNTIL_ROW As String = "U3"       ' rngExecuteUntilRow
 Private Const INPUT_COLUMNS As Long = 10                ' B to K
 Private Const OUTPUT_COLUMNS As Long = 12               ' M to X
 
-' Rows per call to the batch runner. Small enough that a halt costs little and
-' the CSV is refreshed often, large enough that the per-call overhead stays out
-' of the way.
-Private Const CHUNK_ROWS As Long = 25
+' True runs the cases through the model's own InputXGetY, which is where the
+' calculation watchdog lives. False drives the rows here instead. See the note at
+' the top of the module.
+Private Const USE_MODEL_BATCH_RUNNER As Boolean = False
+
+' Rows per call to the model's batch runner, when that path is used. One, so the
+' CSV is written after every case there too -- the watchdog fires per row, so a
+' larger chunk buys nothing and risks losing the rows since the last write.
+Private Const CHUNK_ROWS As Long = 1
 
 ' A bound on every scan down the sheet, so an odd sheet state cannot walk to
 ' row a million.
@@ -158,6 +179,104 @@ End Sub
 
 
 '==============================================================================
+' Checks the direct driver against the model's own batch runner.
+'
+' Runs the first few cases both ways and compares all twelve results. The direct
+' driver skips the batch runner's calculation watchdog, and this is what shows
+' that the watchdog is the only thing it skips.
+'
+' Run it once after importing the module. The InputXGetY half can still stop in
+' the debugger -- that is the routine being compared against. If it does, run
+'
+'     Application.Calculation = xlCalculationAutomatic
+'
+' in the Immediate window and press F5.
+'==============================================================================
+Public Sub CompareRunners()
+    Const SAMPLE As Long = 4
+
+    Dim ws As Worksheet
+    Dim layout As MikrosimLayout
+    Dim viaRunner() As Double
+    Dim withInputs As Long, withOutputs As Long
+    Dim firstRow As Long, lastRow As Long
+    Dim r As Long, i As Long, c As Long
+    Dim differences As String
+    Dim compared As Long
+    Dim a As Double, b As Double
+
+    Set ws = ThisWorkbook.Worksheets("Mikrosim")
+    layout = ResolveLayout()
+    CountRows ws, layout, withInputs, withOutputs
+
+    If withInputs = 0 Then
+        BuildCases "quick"
+        ClearPreviousRun ws, layout, mCaseCount
+        WriteInputs ws, layout
+        withInputs = mCaseCount
+    End If
+
+    firstRow = layout.FirstDataRow
+    lastRow = firstRow + WorksheetFunction.Min(SAMPLE, withInputs) - 1
+    compared = lastRow - firstRow + 1
+    ReDim viaRunner(1 To compared, 1 To OUTPUT_COLUMNS)
+
+    ' The model's own runner first, so its results are the ones being matched.
+    ClearResults ws, layout, firstRow, lastRow
+    RunChunksViaModelRunner ws, layout, "", firstRow, lastRow, compared
+    For r = firstRow To lastRow
+        For i = 1 To OUTPUT_COLUMNS
+            viaRunner(r - firstRow + 1, i) = ws.Cells(r, layout.FirstOutputCol + i - 1).Value
+        Next i
+    Next r
+
+    ClearResults ws, layout, firstRow, lastRow
+    RunRowsDirect ws, layout, "", firstRow, lastRow, compared
+
+    For r = firstRow To lastRow
+        For i = 1 To OUTPUT_COLUMNS
+            a = viaRunner(r - firstRow + 1, i)
+            b = ws.Cells(r, layout.FirstOutputCol + i - 1).Value
+            If a <> b Then
+                differences = differences & vbCrLf & "  row " & r & " " & _
+                              ColLetter(layout.FirstOutputCol + i - 1) & ": runner " & _
+                              CsvNum(a) & ", direct " & CsvNum(b)
+            End If
+        Next i
+    Next r
+
+    If Len(differences) = 0 Then
+        MsgBox compared & " cases x " & OUTPUT_COLUMNS & " columns: the direct driver " & _
+               "and the model's batch runner agree exactly." & vbCrLf & vbCrLf & _
+               "Safe to run ExportGoldenCasesQuick.", vbInformation
+    Else
+        MsgBox "The two runners disagree:" & differences & vbCrLf & vbCrLf & _
+               "Do not trust the direct driver. Set USE_MODEL_BATCH_RUNNER to True " & _
+               "and report this.", vbCritical
+    End If
+End Sub
+
+
+' Writes the generated cases into the input columns, one row each.
+Private Sub WriteInputs(ByVal ws As Worksheet, ByRef layout As MikrosimLayout)
+    Dim i As Long, c As Long
+    For i = 1 To mCaseCount
+        For c = 0 To INPUT_COLUMNS - 1
+            ws.Cells(layout.FirstDataRow + i - 1, layout.FirstInputCol + c).Value = mCases(c + 1, i)
+        Next c
+    Next i
+End Sub
+
+
+' Clears just the result columns for a range of rows.
+Private Sub ClearResults(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                         ByVal firstRow As Long, ByVal lastRow As Long)
+    ws.Range(ws.Cells(firstRow, layout.FirstOutputCol), _
+             ws.Cells(lastRow, layout.LastOutputCol)).ClearContents
+End Sub
+
+
+'==============================================================================
 ' Says what is actually on the Mikrosim sheet.
 '
 ' Run this first when an export reports nothing to write. It resolves the same
@@ -226,7 +345,6 @@ Private Sub RunExport(ByVal caseSet As String)
     Dim ws As Worksheet
     Dim layout As MikrosimLayout
     Dim savePath As String
-    Dim i As Long, c As Long
 
     Set ws = ThisWorkbook.Worksheets("Mikrosim")
     layout = ResolveLayout()
@@ -251,11 +369,7 @@ Private Sub RunExport(ByVal caseSet As String)
     ' settle before it hits a Stop (mdlIndataInputOutput.bas:33).
     ClearPreviousRun ws, layout, mCaseCount
 
-    For i = 1 To mCaseCount
-        For c = 0 To INPUT_COLUMNS - 1
-            ws.Cells(layout.FirstDataRow + i - 1, layout.FirstInputCol + c).Value = mCases(c + 1, i)
-        Next c
-    Next i
+    WriteInputs ws, layout
 
     Application.ScreenUpdating = True
 
@@ -267,14 +381,34 @@ End Sub
 
 
 '==============================================================================
-' Runs the batch runner over firstRow..lastRow, a chunk at a time.
-'
-' The CSV is rewritten after every chunk. Rewriting a few hundred rows costs
-' milliseconds, and it is what makes a halt cost one chunk rather than the run.
+' Runs firstRow..lastRow, by whichever path USE_MODEL_BATCH_RUNNER selects.
 '==============================================================================
 Private Sub RunChunks(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
                       ByVal savePath As String, ByVal firstRow As Long, _
                       ByVal lastRow As Long, ByVal totalCases As Long)
+    If USE_MODEL_BATCH_RUNNER Then
+        RunChunksViaModelRunner ws, layout, savePath, firstRow, lastRow, totalCases
+    Else
+        RunRowsDirect ws, layout, savePath, firstRow, lastRow, totalCases
+    End If
+End Sub
+
+
+'==============================================================================
+' The model's own batch runner, over firstRow..lastRow a chunk at a time.
+'
+' Kept because it is the model's path and worth being able to fall back to, but
+' it calls WaitIfCalculationStateIsNotDone after every row, so it can stop in the
+' debugger. If it does: in the Immediate window run
+'
+'     Application.Calculation = xlCalculationAutomatic
+'
+' and press F5. Nothing is lost -- results are written to the row before the
+' watchdog runs.
+'==============================================================================
+Private Sub RunChunksViaModelRunner(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                                    ByVal savePath As String, ByVal firstRow As Long, _
+                                    ByVal lastRow As Long, ByVal totalCases As Long)
     Dim chunkStart As Long, chunkEnd As Long
     Dim done As Long
 
@@ -299,7 +433,7 @@ Private Sub RunChunks(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
 
         ' Save what we have before starting the next chunk, not at the end.
         done = chunkEnd - layout.FirstDataRow + 1
-        WriteCsv savePath, ws, layout, done
+        If Len(savePath) > 0 Then WriteCsv savePath, ws, layout, done
 
         Application.StatusBar = "Typfall " & done & " of " & totalCases & _
                                 " done -- CSV saved to " & savePath
@@ -315,6 +449,195 @@ Private Sub SetRunRange(ByVal firstRow As Long, ByVal lastRow As Long)
     NamedRange("rngExecuteFromRow", FALLBACK_FROM_ROW).Value = firstRow
     NamedRange("rngExecuteUntilRow", FALLBACK_UNTIL_ROW).Value = lastRow
 End Sub
+
+
+'--- the per-row driver -------------------------------------------------------
+
+'==============================================================================
+' Runs firstRow..lastRow one case at a time, without the batch runner.
+'
+' The CSV is rewritten after each case, so whatever has finished is on disk
+' before the next one starts. Pass an empty savePath to run without writing.
+'==============================================================================
+Private Sub RunRowsDirect(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                          ByVal savePath As String, ByVal firstRow As Long, _
+                          ByVal lastRow As Long, ByVal totalCases As Long)
+    Dim r As Long
+    Dim done As Long
+
+    RequireDirectRetirementAge
+
+    Application.Range("rng_Run_From_Indata") = True   ' as InputXGetY does at :95
+    SetNamedValue "rng_Abort_run", 0
+    cases = 1                                         ' Public in VBA_go
+
+    On Error GoTo Cleanup
+    For r = firstRow To lastRow
+        RunCaseDirect ws, layout, r, (r = firstRow)
+
+        ' Hand the calculation state back to Excel and let it settle in its own
+        ' time. Demanding that it be settled *now* is what trips the model's
+        ' watchdog; we simply do not ask.
+        Application.Calculation = xlCalculationAutomatic
+
+        done = r - layout.FirstDataRow + 1
+        If Len(savePath) > 0 Then WriteCsv savePath, ws, layout, done
+        Application.StatusBar = "Typfall " & done & " of " & totalCases & " done" & _
+                                IIf(Len(savePath) > 0, " -- CSV saved to " & savePath, "")
+        ' The sheet's own abort switch, so a long run can be stopped from Excel
+        ' rather than from the debugger.
+        DoEvents
+        If NamedValue("rng_Abort_run", 0) <> 0 Then Exit For
+    Next r
+
+Cleanup:
+    Dim failed As Long, why As String
+    failed = Err.Number
+    why = Err.Description
+    On Error Resume Next
+    Application.Range("rng_Run_From_Indata") = False   ' as InputXGetY does at :450
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+    If failed <> 0 Then
+        MsgBox "Stopped at row " & r & ": " & why & vbCrLf & vbCrLf & _
+               "Every case before this one is in the CSV, and on the sheet. " & _
+               "ExportGoldenCasesResume will carry on from here.", vbExclamation
+    End If
+End Sub
+
+
+'==============================================================================
+' One case: fill the model's inputs, run it, read the twelve results back.
+'
+' Mirrors mdlIndataInputOutput.bas 279-390, minus the batch runner's own
+' bookkeeping -- the abort check, the chart bar, the runtime clock, and the
+' calculation watchdog.
+'==============================================================================
+Private Sub RunCaseDirect(ByVal ws As Worksheet, ByRef layout As MikrosimLayout, _
+                          ByVal r As Long, ByVal isFirstRow As Boolean)
+    Dim rng As Range
+    Dim marker As Range
+    Dim i As Long
+    Dim col As Long
+    Dim compareTo As Long
+    Dim monthly As Boolean
+    Dim value As Double
+
+    col = layout.FirstInputCol
+
+    ' The ten input columns, in the order InputXGetY reads them (:279-:301).
+    Application.Range("BornYear") = ws.Cells(r, col).Value
+    Application.Range("wStartYear") = ws.Cells(r, col + 1).Value
+    Application.Range("PARYear") = ws.Cells(r, col + 2).Value
+    ' Column E is an annual salary; the model wants a monthly one (:291).
+    Application.Range("Wage_Monthly") = ws.Cells(r, col + 3).Value / 12
+    Application.Range("rng_Yearly_Inflation") = ws.Cells(r, col + 4).Value
+    Application.Range("rng_Real_Growth") = ws.Cells(r, col + 5).Value
+    Application.Range("rng_FondAvkastning") = ws.Cells(r, col + 6).Value
+    ' Column I selects one of the workbook's own wage lists. Every generated case
+    ' leaves it 0, and the batch runner never switches rng_Egen_Lon back off once
+    ' it has been switched on, so a case that used one would quietly contaminate
+    ' the rest of the run. Refuse instead.
+    If ws.Cells(r, col + 7).Value > 1 Then
+        Err.Raise 5, , "row " & r & " asks for the workbook's own wage list (column I = " & _
+                  ws.Cells(r, col + 7).Value & "), which this export does not run"
+    End If
+    Application.Range("IPS") = ws.Cells(r, col + 8).Value
+    Application.Range("rng_TJP_Listbox") = ws.Cells(r, col + 9).Value
+
+    ' The sheet's progress highlight. Cosmetic, so a workbook without the name
+    ' still runs.
+    Set marker = NamedRange("rng_Current_Row_Indata", "")
+    If Not marker Is Nothing Then marker.Value = r
+
+    pblnCloseOrSave = False
+    StartUp_Indata isFirstRow          ' Application_Rest, Mcalc, Application_Wakeup
+    pblnCloseOrSave = True
+    cases = cases + 1
+
+    ' Screen updating back off for speed, but calculation left alone -- putting
+    ' it back to manual here is exactly what makes the watchdog trip.
+    Application_Rest_Screen
+
+    ' Table 1 column D, which Mcalc writes as values rather than formulas, so
+    ' these are safe to read whatever the calculation mode.
+    Set rng = ThisWorkbook.Names("rngTopXYOutput").RefersToRange
+    compareTo = CLng(NamedValue("Rng_CompareTo", 0))
+    monthly = NamedValue("Rng_belopp12", 0) <> 0
+
+    For i = 1 To OUTPUT_COLUMNS
+        value = rng.Cells(OutputOffset(i, compareTo), 1).Value
+        If monthly Then value = value / 12
+        ws.Cells(r, layout.FirstOutputCol + i - 1).Value = value
+    Next i
+End Sub
+
+
+'==============================================================================
+' Which Table 1 row each output column comes from, as an offset into the block
+' rngTopXYOutput points at.
+'
+' The offsets are InputXGetY's own (mdlIndataInputOutput.bas:328-356). From D28
+' they land on Slutlon A24, IP A28, Tot_Brutto A36, Efterskatt A42, Bidrag A43
+' and Disp_efterskatt A45 -- which npm run check:names asserts.
+'==============================================================================
+Private Function OutputOffset(ByVal i As Long, ByVal compareTo As Long) As Long
+    Select Case i
+        Case 1
+            ' Rng_CompareTo picks which of the three pre-retirement rows.
+            If compareTo = 0 Then
+                OutputOffset = -3          ' Slutlon
+            ElseIf compareTo = 1 Then
+                OutputOffset = -2          ' Nettolon
+            Else
+                OutputOffset = -1          ' Disponibel
+            End If
+        Case 2: OutputOffset = 9           ' Total pension brutto
+        Case 3: OutputOffset = 1           ' Inkomstpension
+        Case 4: OutputOffset = 2           ' (A)TP
+        Case 5: OutputOffset = 3           ' Premiepension
+        Case 6: OutputOffset = 4           ' Garantipension
+        Case 7: OutputOffset = 5           ' Inkomstpensionstillagg
+        Case 8: OutputOffset = 7           ' Tjanstepension
+        Case 9: OutputOffset = 8           ' IPS
+        Case 10: OutputOffset = 15         ' Efter skatt
+        Case 11: OutputOffset = 16         ' Bidrag
+        Case 12: OutputOffset = 18         ' Disponibel inkomst
+        Case Else
+            Err.Raise 5, , "no output offset for column " & i
+    End Select
+End Function
+
+
+' Alt_p_age 1 or 2 makes the batch runner take the retirement age from the
+' Nyckeltal sheet instead of column D (mdlIndataInputOutput.bas:283-288), which
+' would put an input in the file that did not produce the output beside it. The
+' direct driver reads column D, so the setting has to be off either way.
+Private Sub RequireDirectRetirementAge()
+    If NamedValue("Alt_p_age", 0) <> 0 Then
+        Err.Raise 5, , "Alt_p_age is " & NamedValue("Alt_p_age", 0) & _
+                  " on Adv_settings. Set it to 0: the export needs the retirement age " & _
+                  "in column D to be the one the model uses."
+    End If
+End Sub
+
+
+' Sets a named cell if the workbook has it, and shrugs if it does not.
+Private Sub SetNamedValue(ByVal name As String, ByVal value As Variant)
+    Dim target As Range
+    Set target = NamedRange(name, "")
+    If Not target Is Nothing Then target.Value = value
+End Sub
+
+
+Private Function NamedValue(ByVal name As String, ByVal fallback As Double) As Double
+    On Error GoTo Fallback
+    NamedValue = CDbl(Application.Range(name).Value)
+    Exit Function
+Fallback:
+    NamedValue = fallback
+End Function
 
 
 '--- the sheet ----------------------------------------------------------------

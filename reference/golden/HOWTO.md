@@ -30,23 +30,29 @@ re-used on every subsequent build.
    right-click it → **Remove ExportGoldenCases…** → **No** (do not export it) before importing,
    or the import lands beside it as `ExportGoldenCases1` and you will run the wrong one.
 
-4. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
+4. **Check the two runners agree.** Put the cursor in **`CompareRunners`** and press `F5`. It runs
+   four cases both through the model's own batch runner and through this module's own per-row
+   driver, and compares all twelve results. It should report that they agree exactly. This takes a
+   couple of minutes and is worth doing once per model version — see "Why there are two runners"
+   below.
+
+5. **Run it.** Still in the VBA editor, put the cursor in **`ExportGoldenCasesQuick`** and press
    `F5` (or **Run → Run Sub/UserForm**). Excel asks where to save the CSV.
 
-5. **Wait.** It runs **61** typfall through the model, twenty-five at a time — about half an hour.
-   Excel will look unresponsive while it works, and the status bar shows how far it has got. A
-   dialog reporting the number of cases means it finished.
+6. **Wait.** It runs **61** typfall through the model — about half an hour. Excel will look
+   unresponsive while it works, and the status bar shows how far it has got. A dialog reporting the
+   number of cases means it finished.
 
-   **The CSV is rewritten after every chunk**, so the file on disk is always complete for the cases
-   that have finished. A halt costs the chunk in progress, not the run.
+   **The CSV is rewritten after every case**, so the file on disk is always complete for everything
+   that has finished. A halt costs the case in progress, nothing else.
 
-6. **Save the workbook** if you might want to add the rest later. The results live on the `Mikrosim`
+7. **Save the workbook** if you might want to add the rest later. The results live on the `Mikrosim`
    sheet, and closing without saving loses them — which is what makes `ExportGoldenCasesResume`
    possible or impossible.
 
-7. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
+8. **Put the CSV here**, as `reference/golden/golden-cases.csv`, and commit it.
 
-8. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
+9. **Run the comparison**: `npm run compare` from the repository root. See below for what it tells
    you.
 
 ### The other entry points
@@ -58,6 +64,7 @@ re-used on every subsequent build.
 | `ExportGoldenCasesResume` | keeps the inputs on the sheet and runs only the rows without results. Use it after a halt, or to work through the full set in sittings. |
 | `ExportGoldenCasesFromSheet` | writes the CSV from what is on the sheet, recomputing nothing. |
 | `ReportMikrosimState` | says what is actually on the sheet. **Start here when something looks wrong.** |
+| `CompareRunners` | runs a few cases both ways and checks they agree. |
 
 To go from the quick set to the full one: run `ExportGoldenCases` and let it re-run everything, or
 run the quick set, save, and add cases by hand — there is no merge step, because the CSV is always
@@ -142,34 +149,58 @@ says so. For the eight that decide what the numbers *mean* — the price basis, 
 `Average_Earning`, `marginal`, `w_ref`, `rng_Sista_PensRatt` and `rngPens_Inflation` — the run stops
 instead, because a comparison against the wrong settings would report agreement that is not there.
 
+## Why there are two runners
+
+The workbook has its own batch runner, `InputXGetY`, and it has a breakpoint that stops the whole
+run in the VBA debugger. `WaitIfCalculationStateIsNotDone` (`mdlIndataInputOutput.bas:12`) waits for
+`Application.CalculationState` to reach `xlDone`, and hits a bare `Stop` if it has not within
+**0.2 seconds** — two 0.1-second waits — with the author's own comment beside it: *"Should never
+happen, the full rebuild should fix the calculation state"*.
+
+It does happen. The three lines before it are:
+
+```vba
+Application_Rest                   ' sets calculation to MANUAL (mdlTools.bas:1377)
+wsIndata.Range("rngRunTime") = ... ' dirties formulas on the sheet
+Application.StatusBar = ...
+WaitIfCalculationStateIsNotDone    ' now demands a settled calculation state
+```
+
+In manual calculation Excel reports `xlPending` and stays there, because it will not recalculate on
+its own. `CalculateFullRebuild` is meant to clear that; on a workbook this size, with `w_ref` on a
+volatile `=YEAR(NOW())-1`, it does not reliably do so inside 0.2 seconds. The watchdog runs **after
+every row**, so a long run gets a fresh chance to trip on each one. In practice it has stopped a
+295-case run on case 294 and a 61-case run on case 25.
+
+That routine is called from two places, both inside `InputXGetY`. Nothing else in the model calls
+it — in particular `StartUp_Indata`, which is what actually runs `Mcalc`, does not. So this module
+drives the per-row loop itself: it sets the same named ranges from columns B–K, calls
+`StartUp_Indata`, reads the same twelve cells back, and leaves the calculation state alone instead
+of demanding it be settled. `CompareRunners` is what shows that the watchdog is the only thing this
+skips.
+
+To go back to the model's own runner, set `USE_MODEL_BATCH_RUNNER` to `True` at the top of the
+module.
+
 ## If the run halts in the VBA debugger
 
-This has happened, and it is worth knowing it is not a failure.
+If you are on the model's runner — or running `CompareRunners`, which exercises it deliberately —
+you can still land on that `Stop`. **Nothing is lost when it fires**: results are written to the row
+before the watchdog runs.
 
-The workbook has its own breakpoint: `Stop` at line 33 of `mdlIndataInputOutput`, inside
-`WaitIfCalculationStateIsNotDone`, with the author's own comment beside it — *"Should never happen,
-the full rebuild should fix the calculation state"*. It fires when Excel has not finished
-recalculating within **0.2 seconds** (two 0.1-second waits) of being asked. On a sheet with a lot of
-dirty cells that is a hair-trigger, not a fault, and it is the workbook's code rather than this
-macro's.
+Do not reset. In the Immediate window (`Ctrl+G`):
 
-**Nothing is lost when it fires.** The batch runner writes each row's results beside it as it goes,
-so every case that finished is still on the `Mikrosim` sheet.
+```
+Application.Calculation = xlCalculationAutomatic
+```
 
-To recover:
+then press **F5**. That satisfies the condition the loop is waiting for, so it returns normally and
+the run carries on. Repeat if it trips again.
 
-1. In the VBA editor: **Run → Reset**.
-2. Open the Immediate window (`Ctrl+G`) and run this one line, which puts back the application
-   state the model changes while it runs:
-   ```
-   Application.Calculation = xlCalculationAutomatic: Application.EnableEvents = True: Application.ScreenUpdating = True
-   ```
-3. Run **`ExportGoldenCasesFromSheet`**. It writes the CSV from what is already on the sheet, runs
-   nothing, and stops at the first row with no results — so a half-finished row is left out rather
-   than exported as zeros.
-
-If you would rather finish the remaining cases first, set `P3` and `U3` on the `Mikrosim` sheet to
-the rows you still want and call `InputXGetY` directly, then export from the sheet.
+To stop instead: **Run → Reset**, then the same line plus `Application.EnableEvents = True:
+Application.ScreenUpdating = True`, **save the workbook**, and `ExportGoldenCasesFromSheet` to bank
+what finished. `ExportGoldenCasesResume` picks up from the first row without results — the runner
+only clears the result block for the rows it is about to run, so the finished ones survive.
 
 ## If something else goes wrong
 

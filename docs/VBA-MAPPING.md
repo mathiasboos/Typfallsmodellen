@@ -564,6 +564,21 @@ row offsets −3, 1, 6, 9, 15, 16 and 18 from D28 land on Slutlön A24, IP A28, 
 (the row the runner skips), Tot_Brutto A36, Efterskatt A42, Bidrag A43 and Disp_efterskatt A45 —
 exactly the rows `rng_Tabell1_*` name.
 
+### The batch runner's calculation watchdog
+
+`InputXGetY` calls `WaitIfCalculationStateIsNotDone` after every row (`mdlIndataInputOutput.bas:415`).
+That routine waits for `Application.CalculationState` to reach `xlDone` and hits a bare `Stop` if it
+has not within 0.2 seconds. The three statements before the call include `Application_Rest`, which
+sets calculation to **manual** (`mdlTools.bas:1377`), followed by two writes that dirty formulas —
+and in manual mode Excel reports `xlPending` and stays there. So the watchdog is asking a question
+the preceding line has just made hard to answer, on a workbook whose `w_ref` sits on a volatile
+`=YEAR(NOW())-1`.
+
+It is the model's bug, not the port's, and the workbook is not modified. The golden-file export
+works around it by driving the per-row loop itself — the routine is called from nowhere else, and
+`StartUp_Indata`, which runs `Mcalc`, does not call it. `CompareRunners` in the macro checks the two
+paths give identical results.
+
 ### `riktage(year)` is not `Rng_riktL`
 
 The VBA has a `riktage(year, typ)` function giving the lowest pension age and the riktålder for an
