@@ -6,6 +6,8 @@ __pycache__/
 # Node
 node_modules/
 dist/
+# Re-embedded from packages/data/mortality-risks.bin on every web build
+apps/web/src/generated/
 .vite/
 *.tsbuildinfo
 

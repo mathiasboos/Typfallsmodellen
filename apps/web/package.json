@@ -1,0 +1,20 @@
+{
+  "name": "@typfallsmodellen/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node ../../tools/build/embed-mortality.mjs && vite build && node ../../tools/build/inline-single-file.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && vitest run"
+  },
+  "dependencies": {
+    "@typfallsmodellen/engine": "*",
+    "@typfallsmodellen/data": "*"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}

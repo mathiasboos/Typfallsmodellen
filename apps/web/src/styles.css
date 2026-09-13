@@ -1,0 +1,229 @@
+/*
+ * One stylesheet, no framework.
+ *
+ * The palette is the validated categorical set from the data-visualisation
+ * guidance: eight hues in fixed order, with separate steps for the dark
+ * surface rather than an automatic inversion. Only the five slots the figures
+ * use are declared. Light-mode slots 3, 4 and 5 sit below 3:1 against the
+ * surface, which obliges relief -- the legend, the tooltip and both tables
+ * carry the numbers in text, so identity is never colour alone.
+ */
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --surface-raised: #ffffff;
+  --border: #e3e2dd;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #ececea;
+  --axis: #c3c2b7;
+  --accent: #2a78d6;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+
+  --radius: 8px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --surface-raised: #222221;
+    --border: #383835;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2a2a28;
+    --axis: #383835;
+    --accent: #3987e5;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+#app {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-block: 24px 64px;
+  padding-inline: 16px;
+}
+
+.masthead { margin-bottom: 24px; }
+.masthead h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.01em; }
+.subtitle { margin: 6px 0 12px; color: var(--text-secondary); max-width: 62ch; }
+
+.langs, .toggle { display: flex; gap: 6px; flex-wrap: wrap; }
+.toggle { margin-bottom: 4px; }
+
+.chip {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--axis); }
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+  align-items: start;
+}
+@media (max-width: 820px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.panel h2 { margin: 0 0 12px; font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
+
+.results { display: grid; gap: 20px; min-width: 0; }
+
+.inputs { display: grid; gap: 12px; position: sticky; top: 16px; }
+@media (max-width: 820px) { .inputs { position: static; } }
+
+.field { display: grid; gap: 4px; }
+.field-label { font-size: 0.85rem; color: var(--text-secondary); }
+.field-hint { font-size: 0.75rem; color: var(--text-muted); }
+.field input, .field select {
+  font: inherit;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  width: 100%;
+}
+.field input[type="checkbox"] { width: auto; justify-self: start; }
+.field input.percent { max-width: 110px; }
+
+.scroll { overflow-x: auto; }
+
+.table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.table th, .table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table th { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+.table td.num, .table th:not(:first-child) { text-align: right; }
+.table tr.strong td { font-weight: 650; }
+.table tbody tr:last-child td { border-bottom: none; }
+
+.figure {
+  position: relative;
+  margin: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.figure figcaption {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.figure svg { width: 100%; height: auto; display: block; touch-action: none; }
+
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.tick { fill: var(--text-muted); font-size: 11px; font-family: var(--font); }
+.tick-y { text-anchor: end; }
+.tick-x { text-anchor: middle; }
+.line { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+/* A 2px surface gap keeps adjacent bands separable without relying on hue. */
+.band { stroke: var(--surface-raised); stroke-width: 2; }
+.crosshair { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; }
+
+.legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.legend li { display: flex; align-items: center; gap: 6px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+.tooltip {
+  position: absolute;
+  top: 46px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
+  min-width: 190px;
+}
+.tooltip strong { display: block; margin-bottom: 4px; color: var(--text-primary); }
+.tooltip-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-secondary);
+}
+.tooltip-row .num { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+
+.warnings {
+  border: 1px solid var(--series-4);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  background: var(--surface-raised);
+}
+.warnings p { margin: 4px 0; font-size: 0.88rem; }
+
+.footnote { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
+
+.table tr.section th {
+  padding-top: 14px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.table tbody tr:first-child th { padding-top: 0; }
+.field-check { grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
