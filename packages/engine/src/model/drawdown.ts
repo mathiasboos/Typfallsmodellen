@@ -248,9 +248,19 @@ function garantipensionDivisor(run: Run, age: number): number {
   if (!context.ownDeltal && vbaInt(p.born) <= 1958) {
     return deltalTables.incomePension(vbaInt(p.born), age);
   }
-  // The workbook reads a fixed cell on the mortality sheet, which holds the
-  // same figure computed for this cohort.
-  return deltalTables.incomePension(vbaInt(p.born), age);
+  // QUIRK: the workbook reads `mortality!L5` (VBA_go.bas:1356 and :1496), a
+  // worksheet formula holding this cohort's income pension delningstal at the
+  // riktalder -- 16.67 for 1959, beside the cells holding 1959 and 66. It does
+  // not vary with `age`, so the guarantee underlag is the pension as it would
+  // be at the riktalder rather than the larger one a later withdrawal buys.
+  // That is what a guarantee underlag should be, and it is also what feeds the
+  // inkomstpensionstillagg.
+  //
+  // The port had `age` here, which is the same figure whenever retirement is
+  // at the riktalder and only then. It went unnoticed until the full golden
+  // set, whose block B draws the 1959 cohort at 67, 68, 70 and 75: nine cases
+  // where the supplement was wrong by up to 525 kr a month.
+  return deltalTables.incomePension(vbaInt(p.born), p.riktalder);
 }
 
 /** `gp` with the arguments Mcalc always passes. */
