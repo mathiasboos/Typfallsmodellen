@@ -127,12 +127,31 @@ where they come from, which is what keeps it free of a runtime.
 `apps/web` is plain TypeScript and Vite — no UI framework, no chart library, no network at runtime.
 The figures are inline SVG.
 
-It renders the Start sheet as the sheet lays it out: eight input cells you type numbers into, Table
-1 with the four columns `C23:F23` heads — A) löpande priser, B) fasta priser, C) per månad, D) som
-andel av slutlön — its rows in `A24:A45`'s order and its two notes under the gross total, then
-Figur 1, Figur 2 and the disposable income chart, then Table 2. Every heading, row label, legend
-entry and footnote is a `SysLang` row the workbook itself looks up for that cell, so a year that
-renumbers the sheet is caught by `checkLabels` rather than silently relabelling the page.
+It renders the Start sheet as the sheet lays it out: seven cells you type numbers into, a
+riktålder checkbox, Table 1 with the four columns `C23:F23` heads — A) löpande priser, B) fasta
+priser, C) per månad, D) som andel av slutlön — its rows in `A24:A45`'s order and its two notes
+under the gross total, then Figur 1, Figur 2 and the disposable income chart, then Table 2. Every
+heading, row label, legend entry and footnote is a `SysLang` row the workbook itself looks up for
+that cell, so a year that renumbers the sheet is caught by `checkLabels` rather than silently
+relabelling the page.
+
+Two of the form's fields are not the Start sheet's own, chosen this way on request rather than by
+following `mdlIndataInputOutput.bas` one-for-one:
+
+- **The salary field asks for a monthly wage** (`Wage_Monthly`, which `TypfallInput.monthlySalary`
+  already is) instead of the sheet's own annual Årslön, which divides by twelve on the way in
+  (`mdlIndataInputOutput.bas:291`). Binding the field to it directly removes that round trip rather
+  than adding one.
+- **A riktålder checkbox mirrors `rng_Riktålder`** (`wsStart.cls:33`, `mdlAlternativePensYear.
+  bas:51`): checked, a birth-year change writes that cohort's riktålder (`riktalderFor`, already
+  exported for the golden-file harness) into the retirement age and locks the field to it, exactly
+  as the sheet's own checkbox does; unchecked, the field is the plain typed cell it always was.
+
+Table 1 and Table 2 each carry a **CSV download** beside their own title bar
+(`apps/web/src/tables.ts`'s `table1ToCsv` / `table2ToCsv`), built from the same rows and the same
+`kronor` / `percent` formatting the table renders — not a second, divergent export path. Neither is
+a workbook feature, so the delimiter follows Excel's own per-locale convention (`;` and a decimal
+comma for Swedish, `,` and a decimal point otherwise) rather than a `SysLang` row.
 
 The page's colours are SEB's rather than the workbook's or this port's own choice — read out of
 `SEB_colors_2026.pptx`'s theme and its colour-reference slide (`apps/web/src/styles.css`'s header

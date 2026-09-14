@@ -247,3 +247,78 @@ export function renderTable2(result: TypfallResult, lang: Lang): HTMLElement {
 
   return table;
 }
+
+// -------------------------------------------------------------- CSV export --
+
+/**
+ * A field for a delimited row: quoted, with internal quotes doubled, only when
+ * it contains the delimiter, a quote or a newline -- the ordinary CSV rule.
+ */
+function csvField(value: string, delimiter: string): string {
+  if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function csvLine(cells: readonly string[], delimiter: string): string {
+  return cells.map((c) => csvField(c, delimiter)).join(delimiter);
+}
+
+/**
+ * Swedish Excel opens a CSV with `;` fields and a decimal comma; everyone
+ * else's with `,` fields and a decimal point. Both tables are already
+ * formatted in the chosen locale (`kronor`, `percent`), so the delimiter is
+ * the one thing this has to choose for itself.
+ */
+function delimiterFor(lang: Lang): string {
+  return lang === "sv" ? ";" : ",";
+}
+
+/**
+ * Table 1 as a CSV, one line per data row in the sheet's own order. The
+ * spacer and the two footnotes are prose, not data, and are left out.
+ */
+export function table1ToCsv(result: TypfallResult, lang: Lang, view: Table1View): string {
+  const delimiter = delimiterFor(lang);
+  const byKey = new Map(result.table1.map((r) => [r.key, r]));
+  const lines: string[] = [
+    csvLine(
+      [
+        `${t("pensionWord", lang)} ${t("at", lang)} ${view.par} ${t("yearsAge", lang)}`,
+        ...TABLE1_COLUMNS.map((c) => `${c.letter}) ${c.head(lang)}`),
+      ],
+      delimiter,
+    ),
+  ];
+  for (const line of TABLE1_LINES) {
+    if (line.kind !== "row") continue;
+    const row = byKey.get(line.key);
+    if (row === undefined) continue;
+    lines.push(
+      csvLine(
+        [label(line.label, lang, result, view), ...TABLE1_COLUMNS.map((c) => c.text(row, lang))],
+        delimiter,
+      ),
+    );
+  }
+  return lines.join("\r\n");
+}
+
+/** Table 2 as a CSV, in the same twelve columns and row order as the table. */
+export function table2ToCsv(result: TypfallResult, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const lines: string[] = [csvLine(TABLE2_COLUMNS.map((c) => t(c.label, lang)), delimiter)];
+  for (const row of result.table2) {
+    lines.push(
+      csvLine(
+        TABLE2_COLUMNS.map((col, i) => {
+          const value = col.get(row);
+          return i < 2 ? String(value) : kronor(value, lang);
+        }),
+        delimiter,
+      ),
+    );
+  }
+  return lines.join("\r\n");
+}

@@ -21,6 +21,10 @@ export const LANGS: readonly Lang[] = ["sv", "en"];
 
 type Entry = Partial<Record<Lang, string>>;
 const LABELS = i18n.labels as Record<string, Entry>;
+// Keyed by identifier rather than SysLang row -- these are Start-sheet control
+// captions (checkbox and button text), extracted separately from the numbered
+// labels but looked up the same way below.
+const CAPTIONS = i18n.captions as Record<string, Entry>;
 
 /** Label key → the SysLang row it came from, with that row's Swedish text. */
 export const L = {
@@ -102,6 +106,12 @@ export const L = {
   occupationalChart: "332", // Tjänstepension
   grossIncomeChart: "333", // Bruttoinkomst
   netIncomeChart: "334", // Nettoinkomst
+
+  // A monthly rather than annual salary field, and the riktålder checkbox --
+  // both requested directly rather than following the Start sheet's own
+  // Årslön field and its `rng_Riktålder` checkbox one-for-one.
+  monthlySalary: "435", // Månadslön
+  riktalderCheckbox: "chkRecPensAge", // Riktålder (a control caption, not a SysLang row)
 } as const;
 
 export type LabelName = keyof typeof L;
@@ -128,6 +138,8 @@ const EXPECTED_SV: Partial<Record<LabelName, string>> = {
   continuedWork: "Lön vid fortsatt arbete",
   grossIncomeChart: "Bruttoinkomst",
   netIncomeChart: "Nettoinkomst",
+  monthlySalary: "Månadslön",
+  riktalderCheckbox: "Riktålder",
 };
 
 /**
@@ -140,7 +152,7 @@ const EXPECTED_SV: Partial<Record<LabelName, string>> = {
 export function checkLabels(): string[] {
   const wrong: string[] = [];
   for (const [name, sv] of Object.entries(EXPECTED_SV) as [LabelName, string][]) {
-    const got = LABELS[L[name]]?.sv;
+    const got = LABELS[L[name]]?.sv ?? CAPTIONS[L[name]]?.sv;
     if (got !== sv) wrong.push(`${name} (key ${L[name]}): expected "${sv}", found "${got ?? ""}"`);
   }
   return wrong;
@@ -154,6 +166,6 @@ export function checkLabels(): string[] {
  * mode's labels are all translated; the fallback is for the ones Phase 4 reaches.
  */
 export function t(name: LabelName, lang: Lang): string {
-  const entry = LABELS[L[name]];
+  const entry = LABELS[L[name]] ?? CAPTIONS[L[name]];
   return entry?.[lang] || entry?.sv || "";
 }

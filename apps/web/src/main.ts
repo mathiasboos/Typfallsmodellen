@@ -19,7 +19,8 @@ import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
 import { LANGS, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
-import { renderTable1, renderTable2 } from "./tables.js";
+import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
+import type { Table1View } from "./tables.js";
 import "./styles.css";
 
 interface View {
@@ -143,13 +144,40 @@ function warnings(result: TypfallResult): HTMLElement | undefined {
   return box;
 }
 
-function section(title: string, body: HTMLElement): HTMLElement {
+function section(title: string, body: HTMLElement, actions?: HTMLElement): HTMLElement {
   const wrap = document.createElement("section");
   wrap.className = "panel";
   const head = document.createElement("h2");
-  head.textContent = title;
+  const heading = document.createElement("span");
+  heading.textContent = title;
+  head.append(heading);
+  if (actions) head.append(actions);
   wrap.append(head, body);
   return wrap;
+}
+
+/**
+ * A CSV download for one table. Not a workbook feature -- there is no SysLang
+ * row for it -- so the button text is a plain per-language literal, the same
+ * way the subtitle above is.
+ */
+function exportButton(lang: Lang, filename: string, csv: () => string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "export-btn";
+  button.textContent = lang === "sv" ? "Ladda ner CSV" : "Download CSV";
+  button.addEventListener("click", () => {
+    // A BOM, so Excel reads å/ä/ö as UTF-8 instead of guessing a legacy
+    // codepage from the bytes.
+    const blob = new Blob(["﻿" + csv()], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+  return button;
 }
 
 function render(): void {
@@ -177,22 +205,31 @@ function render(): void {
   results.replaceChildren();
   const warned = warnings(result);
   if (warned) results.append(warned);
+  const table1View: Table1View = {
+    par,
+    finalSalaryYears: context.finalSalaryYears,
+    lastPensionRight: context.lastPensionRight > 0,
+  };
+
   results.append(
     scaleSwitch(),
     section(
       t("table1", lang),
-      wrapScroll(
-        renderTable1(result, lang, {
-          par,
-          finalSalaryYears: context.finalSalaryYears,
-          lastPensionRight: context.lastPensionRight > 0,
-        }),
+      wrapScroll(renderTable1(result, lang, table1View)),
+      exportButton(lang, lang === "sv" ? "tabell1.csv" : "table1.csv", () =>
+        table1ToCsv(result, lang, table1View),
       ),
     ),
     renderFigure1(result, figures),
     renderFigure2(result, figures),
     renderDisposable(result, figures),
-    section(table2Title, wrapScroll(renderTable2(result, lang))),
+    section(
+      table2Title,
+      wrapScroll(renderTable2(result, lang)),
+      exportButton(lang, lang === "sv" ? "tabell2.csv" : "table2.csv", () =>
+        table2ToCsv(result, lang),
+      ),
+    ),
   );
 
   const foot = document.createElement("p");
