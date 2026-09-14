@@ -492,34 +492,6 @@ function overlay(
 }
 
 /**
- * `Data_till_Start!C`: the salary the run would have paid had work continued.
- *
- * The cell reads `IF(age < Int(par), NA(), IF(par < age, C(previous), B(previous)))`
- * times an index ratio taken at `par` over the one at this age -- so it starts
- * from the last full salary and then follows the wage level. Written here as
- * that one ratio rather than as the sheet's row-by-row carry, which multiplies
- * the ratio in again at every step.
- */
-function continuedWork(
-  rows: readonly MvaluesRow[],
-  all: readonly MvaluesRow[],
-  view: FigureView,
-): (row: MvaluesRow) => number {
-  const par = Math.trunc(view.par);
-  const before = all.find((r) => r.age === par - 1);
-  const atPar = all.find((r) => r.age === par);
-  const base = before?.income ?? 0;
-  return (row) => {
-    if (row.age < par) return 0;
-    const ratio =
-      view.priceBasis === 1 && atPar !== undefined && row.indexFactor > 0
-        ? atPar.indexFactor / row.indexFactor
-        : 1;
-    return (base * ratio) / scale(view);
-  };
-}
-
-/**
  * Figur 2: what the income is made of, year by year around retirement.
  *
  * The stack is `Data_till_Start` columns B, D, G, E, H in the order the chart
@@ -528,12 +500,15 @@ function continuedWork(
  * Tjänstepension. The sheet's separate Tilläggspension column, F, is left out
  * on purpose: D already contains it, so stacking both would count ATP twice for
  * everyone born before 1954.
+ *
+ * "Lön vid fortsatt arbete" (`Data_till_Start!C`, the salary the run would
+ * have paid had work continued) was drawn as a fourth overlay here; removed
+ * on request, series and legend both.
  */
 export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElement {
   const { lang } = view;
   const per = scale(view);
   const rows = aroundRetirement(result, view.par);
-  const continued = continuedWork(rows, result.rows, view);
 
   const bands: readonly Series[] = [
     {
@@ -576,13 +551,6 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   ];
   const lines: readonly Series[] = [
     {
-      key: "continued",
-      name: (l) => t("continuedWork", l),
-      colour: "--fig-continued",
-      mark: "line",
-      get: continued,
-    },
-    {
       key: "after-tax",
       name: (l) => t("incomeAfterTax", l),
       colour: "--fig-after-tax",
@@ -614,8 +582,7 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   shadeRetirement(svg, retirementEdge(rows, view.par, centre, step));
   svg.append(label(t("earningsAndPension", lang), PLOT.left - 56, PLOT.top - 10, "axis-title"));
   stack(svg, rows, bands, y, centre, width);
-  overlay(svg, rows, lines[0]!, y, centre, Math.trunc(view.par));
-  overlay(svg, rows, lines[1]!, y, centre);
+  overlay(svg, rows, lines[0]!, y, centre);
   ageTicks(svg, rows, centre);
 
   const series = [...bands, ...lines];

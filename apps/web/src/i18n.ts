@@ -105,7 +105,8 @@ export const L = {
   todayWageLevel: "465", // Dagens (2025) lönenivå
   earningsAndPension: "335", // Lön och pension
   salaryChart: "422", //    Lön
-  continuedWork: "328", //  Lön vid fortsatt arbete
+  // continuedWork (328, "Lön vid fortsatt arbete") is not used: the series it
+  // named was removed from Figur 2 on request, legend and all.
   occupationalChart: "332", // Tjänstepension
   grossIncomeChart: "333", // Bruttoinkomst
   netIncomeChart: "334", // Nettoinkomst
@@ -143,7 +144,6 @@ const EXPECTED_SV: Partial<Record<LabelName, string>> = {
   privateSavingIsk: "Privat pensionssparande (ISK / KF)",
   todayWageLevel: "Dagens (2025) lönenivå",
   earningsAndPension: "Lön och pension",
-  continuedWork: "Lön vid fortsatt arbete",
   grossIncomeChart: "Bruttoinkomst",
   netIncomeChart: "Nettoinkomst",
   monthlySalary: "Månadslön",

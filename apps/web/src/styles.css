@@ -63,7 +63,6 @@
   --fig-guarantee: #fbc111;
   --fig-premium: #48b866;
   --fig-occupational: #d3c5a6;
-  --fig-continued: #4885c5;
   --fig-after-tax: #000000;
   --fig-current: #4885c5;
   --fig-fixed: #005d35;
@@ -98,7 +97,6 @@
 
     --fig-salary: #6d9dd1;
     --fig-income-pension: #6dc685;
-    --fig-continued: #6d9dd1;
     --fig-after-tax: #ffffff;
     --fig-current: #6d9dd1;
     --fig-fixed: #b6e3c2;
@@ -383,7 +381,6 @@ body {
 .line-current { stroke-dasharray: 2 3; }
 .line-wage-level { stroke-dasharray: 8 4; }
 .line-fixed { stroke-width: 3; }
-/* "Lön vid fortsatt arbete" is solid on request -- no dasharray override. */
 .line-after-tax { stroke-dasharray: 6 3; }
 /* A 2px surface gap keeps stacked bands separable without relying on hue. */
 .bar { stroke: var(--surface-raised); stroke-width: 2; }
