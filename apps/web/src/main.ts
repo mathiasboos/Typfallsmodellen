@@ -9,10 +9,17 @@
  * The results follow the Start sheet's own order: Table 1, Figur 1, Figur 2,
  * the disposable income chart, the tax-per-year chart, Table 2. The last of
  * those is not a workbook figure -- see `renderTaxChart`'s own comment.
+ *
+ * The workbook has two modes, chosen by a pair of radio circles on the Start
+ * sheet, and this keeps them: normal mode runs on a `TypfallInput` alone, which
+ * is the whole reason `viewContext` could get this far handing `run()` an empty
+ * settings map. Avancerat adds `advanced.ts`'s settings and `salaryPath.ts`'s
+ * own wage vector on top.
  */
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
+import { createAdvancedPanel } from "./advanced.js";
 import { renderDisposable, renderFigure1, renderFigure2, renderTaxChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
 import { loadDeathProbabilities } from "./deaths.js";
@@ -20,6 +27,7 @@ import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis } from "./kpis.js";
+import { createSalaryPath } from "./salaryPath.js";
 import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
 import type { Table1View } from "./tables.js";
 import "./styles.css";
@@ -29,6 +37,9 @@ interface View {
   /** The workbook's own month/year switch. */
   readonly monthly: boolean;
 }
+
+/** The workbook's two radio circles: `Normalt` and `Avancerat`. */
+type Mode = "normal" | "advanced";
 
 const deaths = loadDeathProbabilities();
 
@@ -41,7 +52,22 @@ const deaths = loadDeathProbabilities();
  * row, so it needs nothing here.
  */
 function viewContext(view: View): ModelContext {
-  return contextFromSettings(new Map(), { chartEarningFactor: view.monthly ? 12 : 1 });
+  return contextFromSettings(new Map(), {
+    ...(mode === "advanced" ? advanced : {}),
+    chartEarningFactor: view.monthly ? 12 : 1,
+  });
+}
+
+/**
+ * The typfall as the run sees it.
+ *
+ * Normal mode suspends the advanced entries rather than dropping them -- the
+ * workbook leaves them sitting on its sheet too, and switching modes to compare
+ * would be useless if the second switch came back to an empty form. Only
+ * `Använd normala inställningar` clears them.
+ */
+function runInput(): TypfallInput {
+  return mode === "advanced" ? { ...input, ...advancedInput } : input;
 }
 
 /**
@@ -57,6 +83,11 @@ function retirementAge(input: TypfallInput, result: TypfallResult): number {
 
 let input: TypfallInput = defaultInput();
 let view: View = { lang: "sv", monthly: true };
+let mode: Mode = "normal";
+/** Adv_settings, as overrides on top of the workbook's own normal values. */
+let advanced: Partial<ModelContext> = {};
+/** The Start-sheet side of advanced mode: today just the own wage vector. */
+let advancedInput: Partial<TypfallInput> = {};
 
 const root = document.querySelector("#app");
 if (!(root instanceof HTMLElement)) throw new Error("#app is missing from the page");
@@ -71,6 +102,68 @@ const form = createForm(input, view.lang, (patch) => {
   input = Object.freeze({ ...input, ...patch });
   render();
 });
+
+const advancedPanel = createAdvancedPanel(view.lang, (patch) => {
+  advanced = { ...advanced, ...patch };
+  render();
+});
+
+const salaryPath = createSalaryPath(view.lang, (path) => {
+  advancedInput = path === undefined ? {} : { ownIncome: path };
+  render();
+});
+
+/** Everything advanced mode adds, hidden until the mode is switched. */
+const advancedBox = document.createElement("div");
+advancedBox.className = "advanced-box";
+advancedBox.hidden = true;
+advancedBox.append(advancedPanel.element, salaryPath.element);
+
+/**
+ * `Använd normala inställningar` -- the button the Adv_settings sheet carries.
+ *
+ * Clears both halves of advanced mode and puts every control back to the
+ * workbook's own value, rather than merely suspending them the way switching
+ * back to Normalt does.
+ */
+const resetAdvanced = document.createElement("button");
+resetAdvanced.type = "button";
+resetAdvanced.className = "export-btn";
+resetAdvanced.dataset.action = "reset-advanced";
+resetAdvanced.addEventListener("click", () => {
+  advanced = {};
+  advancedInput = {};
+  advancedPanel.reset();
+  salaryPath.reset();
+  render();
+});
+advancedBox.append(resetAdvanced);
+
+function modeToggle(): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "panel-toggle mode-toggle";
+  box.setAttribute("role", "group");
+  const choices: readonly { mode: Mode; label: (l: Lang) => string }[] = [
+    { mode: "normal", label: (l) => (l === "sv" ? "Normalt" : "Normal") },
+    { mode: "advanced", label: (l) => (l === "sv" ? "Avancerat" : "Advanced") },
+  ];
+  for (const choice of choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.mode = choice.mode;
+    button.textContent = choice.label(view.lang);
+    button.className = choice.mode === mode ? "panel-btn active" : "panel-btn";
+    button.addEventListener("click", () => {
+      mode = choice.mode;
+      render();
+    });
+    box.append(button);
+  }
+  return box;
+}
+
+const modeBox = document.createElement("div");
+modeBox.className = "mode-row";
 
 /** Rebuilt on a language change, so the subtitle and the active chip follow. */
 function renderHeading(): void {
@@ -96,6 +189,8 @@ function renderHeading(): void {
     button.addEventListener("click", () => {
       view = { ...view, lang };
       form.relabel(lang);
+      advancedPanel.relabel(lang);
+      salaryPath.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -188,10 +283,28 @@ function exportButton(lang: Lang, filename: string, csv: () => string): HTMLButt
 
 function render(): void {
   renderHeading();
-  const context = viewContext(view);
-  const result = run(input, context, { deaths });
   const lang = view.lang;
-  const par = retirementAge(input, result);
+
+  modeBox.replaceChildren(modeToggle());
+  advancedBox.hidden = mode !== "advanced";
+  resetAdvanced.textContent =
+    lang === "sv" ? "Använd normala inställningar" : "Use the normal settings";
+
+  const context = viewContext(view);
+  const typfall = runInput();
+  const result = run(typfall, context, { deaths });
+  const par = retirementAge(typfall, result);
+
+  // The salary grid fills from, and resets to, the path the model derives for
+  // the Start sheet as it currently stands. Once an own vector is in use the
+  // run's own `wagePath` just echoes it back, so the baseline has to come from
+  // a run without it. A run is well under a millisecond, and this second one
+  // only happens in advanced mode.
+  if (mode === "advanced") {
+    const { ownIncome, ...withoutOwnIncome } = typfall;
+    const baseline = ownIncome === undefined ? result : run(withoutOwnIncome, context, { deaths });
+    salaryPath.setBaseline(baseline.wagePath, input.born);
+  }
 
   const figures: FigureView = {
     lang,
@@ -263,9 +376,13 @@ function wrapScroll(table: HTMLElement): HTMLElement {
   return box;
 }
 
+const inputs = document.createElement("div");
+inputs.className = "input-column";
+inputs.append(modeBox, form.element, advancedBox);
+
 const layout = document.createElement("div");
 layout.className = "layout";
-layout.append(form.element, results);
+layout.append(inputs, results);
 
 root.append(header, layout);
 document.documentElement.lang = view.lang;

@@ -303,6 +303,137 @@ if (taxChartColumns !== WINDOW) {
   problems.push(`Tax-per-year chart has ${taxChartColumns} columns, expected ${WINDOW}`);
 }
 
+// ---- Avancerat lage -----------------------------------------------------
+//
+// Normal mode is everything above; this drives the workbook's other mode. The
+// point of each check is that the setting reaches the *model*, not merely the
+// DOM: a control that renders but is never read would pass a "the field exists"
+// assertion and fail every user.
+
+const modeButtons = await tab.locator(".mode-toggle .panel-btn").count();
+if (modeButtons !== 2) {
+  problems.push(`mode toggle has ${modeButtons} buttons, expected 2 (Normalt / Avancerat)`);
+}
+
+// Advanced settings must not be reachable until the mode is switched.
+if (await tab.locator(".advanced-box").isVisible()) {
+  problems.push("the advanced panel is visible in normal mode");
+}
+
+await tab.locator('.mode-toggle .panel-btn[data-mode="advanced"]').click();
+await tab.waitForTimeout(50);
+
+const advGroups = await tab.locator(".advanced-box .adv-group").count();
+console.log(`advanced groups : ${advGroups}`);
+// Six settings groups plus the salary-path grid.
+if (advGroups !== 7) {
+  problems.push(`advanced mode shows ${advGroups} groups, expected 7`);
+}
+
+/** Opens the group holding a setting and returns its control. */
+async function setting(key) {
+  const control = tab.locator(`[data-setting="${key}"]`);
+  const group = control.locator("xpath=ancestor::details[1]");
+  if (!(await group.evaluate((node) => node.open))) {
+    await group.locator("summary").click();
+  }
+  return control;
+}
+
+// A concrete municipal rate, against the historical average the default uses.
+// 35% is well above the ~32.4% average, so the tax has to rise.
+const municipalBefore = await table2Cell(table2Rows - 1, municipalCol);
+const kommunalskatt = await setting("kommunalskatt");
+await kommunalskatt.fill("35");
+await kommunalskatt.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const municipalAfter = await table2Cell(table2Rows - 1, municipalCol);
+console.log(`municipal tax   : ${municipalBefore} -> ${municipalAfter} at 35%`);
+if (!(municipalAfter > municipalBefore)) {
+  problems.push(
+    `a 35% municipal rate did not raise the municipal tax (${municipalBefore} -> ${municipalAfter})`,
+  );
+}
+
+// Aterstall: the reset button has to undo it.
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const municipalReset = await table2Cell(table2Rows - 1, municipalCol);
+if (municipalReset !== municipalBefore) {
+  problems.push(
+    `the reset button left the municipal tax at ${municipalReset}, expected ${municipalBefore}`,
+  );
+}
+
+// Housing supplement: the shipped typfall draws none, and a rent high enough
+// has to bring some in. `Bidrag` is Table 2's benefits column.
+const benefitsCol = table2Headers.findIndex(
+  (text) => text.startsWith("Bidrag") || text.startsWith("Benefits"),
+);
+if (benefitsCol === -1) {
+  problems.push("Table 2 has no benefits column to check the housing supplement against");
+} else {
+  const benefitsBefore = await table2Cell(table2Rows - 1, benefitsCol);
+  const hyra = await setting("hyra");
+  await hyra.fill("12000");
+  await hyra.dispatchEvent("change");
+  await tab.waitForTimeout(50);
+  const benefitsAfter = await table2Cell(table2Rows - 1, benefitsCol);
+  console.log(`benefits at rent: ${benefitsBefore} -> ${benefitsAfter} at 12 000 kr/month`);
+  if (!(benefitsAfter > benefitsBefore)) {
+    problems.push(
+      `doubling the rent did not raise the housing supplement (${benefitsBefore} -> ${benefitsAfter})`,
+    );
+  }
+  await tab.locator('[data-action="reset-advanced"]').click();
+  await tab.waitForTimeout(50);
+}
+
+// The salary grid fills from the computed path rather than empty, and zeroing
+// a year has to cost pension. An empty grid would read as a lifetime of no
+// income, which is the failure this guards.
+const ownIncome = await setting("ownIncome");
+await ownIncome.check();
+await tab.waitForTimeout(80);
+const gridRows = await tab.locator(".adv-grid tbody tr").count();
+console.log(`salary grid rows: ${gridRows}`);
+// Ages 15 up to the last worked one; retirement is at 66 for this typfall.
+if (gridRows < 40 || gridRows > 60) {
+  problems.push(`the salary grid has ${gridRows} rows, expected about fifty`);
+}
+const firstIncome = await tab
+  .locator(".adv-grid tbody tr")
+  .last()
+  .locator("input")
+  .first()
+  .inputValue();
+if (!(Number(firstIncome) > 0)) {
+  problems.push(`the salary grid filled the last worked year with ${firstIncome}, expected an income`);
+}
+
+const grossBefore = await table2Cell(table2Rows - 1, grossCol);
+// Zero the last ten worked years -- a decade of leave.
+for (let i = 0; i < 10; i += 1) {
+  const cells = tab.locator(".adv-grid tbody tr").nth(gridRows - 1 - i).locator("input");
+  await cells.first().fill("0");
+  await cells.first().dispatchEvent("change");
+  await cells.last().fill("0");
+  await cells.last().dispatchEvent("change");
+}
+await tab.waitForTimeout(80);
+const grossAfter = await table2Cell(table2Rows - 1, grossCol);
+console.log(`gross pension   : ${grossBefore} -> ${grossAfter} after zeroing ten years`);
+if (!(grossAfter < grossBefore)) {
+  problems.push(
+    `zeroing ten years of salary did not lower the pension (${grossBefore} -> ${grossAfter})`,
+  );
+}
+
+// Back to normal mode for the screenshots, and to leave the page as found.
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
+await tab.waitForTimeout(50);
+
 if (shots) {
   mkdirSync(shots, { recursive: true });
   await tab.screenshot({ path: join(shots, "sv.png"), fullPage: true });

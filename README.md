@@ -53,8 +53,8 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
 | 2. Golden-file harness vs. Excel | done | 299 typfall out of the real model, twelve output columns, every cell exact — `npm run compare` |
 | 3. Normal-mode website | done | the Start sheet: eight typed input cells, Table 1's four columns, Table 2, Figur 1, Figur 2 and the disposable income chart, Swedish and English — one offline HTML file |
-| 4. Advanced mode | next | the other seventy-six `Adv_settings` |
-| 5. Polish, CI, deploy | | |
+| 4. Advanced mode | done | the workbook's second mode: twenty-five of the `Adv_settings` in the manual's own groups, and the Indata_lista wage vector as an editable grid |
+| 5. Polish, CI, deploy | next | |
 
 ### Verified so far
 
@@ -67,6 +67,7 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | The earning phase of the main loop, end to end | the `Brutto` sheet's per-age trace — PGI, PGB and all three contributions | exact |
 | **Every Table 1 figure, end to end** | **299 typfall the real model computed, all twelve output columns** | **3 588 of 3 588 cells exact** |
 | The built HTML file, opened from disk with the network cut | all four Table 1 columns read back out of Chromium, against the engine's own snapshot | no outbound requests, no page errors, values exact — `npm run verify:offline` |
+| Advanced mode, driven in the same browser | a municipal rate, a rent, and ten zeroed salary years, each read back out of the rendered tables | every setting moves the model, and `Använd normala inställningar` puts it back |
 | VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |

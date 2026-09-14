@@ -29,17 +29,13 @@ import { options } from "@typfallsmodellen/data";
 import { RETIREMENT_AGES, riktalderFor } from "@typfallsmodellen/engine";
 import type { SchemeId, TypfallInput } from "@typfallsmodellen/engine";
 
+import { fieldSet, rangeHint, span } from "./controls.js";
+import type { Relabel } from "./controls.js";
 import { t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
 
 const BIRTH_YEARS = options.ranges.birthYears as readonly number[];
 const SCHEMES = options.choices.occupationalPension as readonly { value: number; label: string }[];
-
-/** The workbook's own dropdowns, read as the range they cover. */
-const span = (values: readonly number[]): { min: number; max: number } => ({
-  min: Math.min(...values),
-  max: Math.max(...values),
-});
 
 const BORN = span(BIRTH_YEARS);
 const RETIREMENT = span(RETIREMENT_AGES);
@@ -50,15 +46,6 @@ export interface FormHandle {
   readonly element: HTMLElement;
   /** Re-labels the fields after a language change, keeping their values. */
   relabel(lang: Lang): void;
-}
-
-type Relabel = (lang: Lang) => void;
-
-/** A number field, and a way to set its value from outside without losing the
- * invalid-input fallback the field keeps for itself. */
-interface NumberField {
-  readonly element: HTMLInputElement;
-  setValue(v: number): void;
 }
 
 /**
@@ -110,90 +97,7 @@ export function createForm(
   // needs the current one rather than the one it closed over at construction.
   let currentLang = lang;
 
-  const field = (
-    control: HTMLElement,
-    relabel: (l: Lang) => { label: string; hint?: string },
-    className = "field",
-  ): ((l: Lang) => void) => {
-    const wrap = document.createElement("label");
-    wrap.className = className;
-    const caption = document.createElement("span");
-    caption.className = "field-label";
-    const note = document.createElement("span");
-    note.className = "field-hint";
-
-    const apply = (l: Lang) => {
-      const text = relabel(l);
-      caption.textContent = text.label;
-      note.textContent = text.hint ?? "";
-      note.hidden = text.hint === undefined;
-    };
-    apply(lang);
-
-    if (className.includes("field-check")) wrap.append(control, caption, note);
-    else wrap.append(caption, control, note);
-    relabels.push(apply);
-    element.append(wrap);
-    // Returned so a linked control (the riktålder checkbox) can re-run this
-    // field's own hint text without guessing its position in `relabels`.
-    return apply;
-  };
-
-  /**
-   * A cell you type a number into.
-   *
-   * `change` rather than `input`: re-running the model on every keystroke would
-   * fire on the half-typed "19" of "1960". The value is clamped to the workbook's
-   * range and written back, so what the field shows is what the model was given.
-   *
-   * `setValue` lets a linked control (the riktålder checkbox) update the field
-   * the same way a typed change would, so a later invalid entry reverts to that
-   * value rather than to whatever was there before the link took over.
-   */
-  const number = (
-    value: number,
-    { min, max, step }: { min: number; max: number; step: number },
-    apply: (v: number) => void,
-  ): NumberField => {
-    const el = document.createElement("input");
-    el.type = "number";
-    el.inputMode = "numeric";
-    el.min = String(min);
-    el.max = String(max);
-    el.step = String(step);
-    let current = value;
-    const setValue = (v: number) => {
-      current = v;
-      el.value = String(v);
-    };
-    setValue(value);
-    el.addEventListener("change", () => {
-      const typed = Number(el.value);
-      if (!Number.isFinite(typed) || el.value.trim() === "") {
-        el.value = String(current);
-        return;
-      }
-      const clamped = Math.min(Math.max(typed, min), max);
-      setValue(clamped);
-      apply(clamped);
-    });
-    return { element: el, setValue };
-  };
-
-  const percentField = (value: number, apply: (v: number) => void) => {
-    const el = document.createElement("input");
-    el.type = "number";
-    el.value = String(Math.round(value * 1000) / 10);
-    el.step = "0.1";
-    el.className = "percent";
-    el.addEventListener("change", () => {
-      const v = Number(el.value);
-      if (Number.isFinite(v)) apply(v / 100);
-    });
-    return el;
-  };
-
-  const range = ({ min, max }: { min: number; max: number }) => `${min}–${max}`;
+  const { field, number, percent } = fieldSet(element, relabels, lang);
 
   // Retirement age is built before birth year appends it, so birth year's
   // change handler can reach it when the riktålder checkbox is locked -- DOM
@@ -218,7 +122,7 @@ export function createForm(
       onChange({ born: value });
       if (riktalderLocked) applyRiktalder();
     }).element,
-    (l) => ({ label: t("birthYear", l), hint: range(BORN) }),
+    (l) => ({ label: t("birthYear", l), hint: rangeHint(BORN) }),
   );
 
   const relabelRetirement = field(retirement.element, (l) => ({
@@ -226,7 +130,7 @@ export function createForm(
     // The range hint would be misleading while the checkbox has taken over --
     // the field's own disabled state and the checked box beside it already
     // say why, so this just steps aside rather than repeating "Riktålder".
-    ...(riktalderLocked ? {} : { hint: range(RETIREMENT) }),
+    ...(riktalderLocked ? {} : { hint: rangeHint(RETIREMENT) }),
   }));
 
   const riktalderBox = document.createElement("input");
@@ -246,7 +150,7 @@ export function createForm(
     number(initial.startWorkAge, { ...START_WORK, step: 1 }, (startWorkAge) =>
       onChange({ startWorkAge }),
     ).element,
-    (l) => ({ label: t("startWorkAge", l), hint: range(START_WORK) }),
+    (l) => ({ label: t("startWorkAge", l), hint: rangeHint(START_WORK) }),
   );
 
   field(
@@ -278,17 +182,17 @@ export function createForm(
   field(marriedBox, (l) => ({ label: t("married", l) }), "field field-check");
 
   field(
-    percentField(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation })),
+    percent(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation })),
     (l) => ({ label: t("inflation", l), hint: "%" }),
   );
 
   field(
-    percentField(initial.realGrowth, (realGrowth) => onChange({ realGrowth })),
+    percent(initial.realGrowth, (realGrowth) => onChange({ realGrowth })),
     (l) => ({ label: t("realGrowth", l), hint: "%" }),
   );
 
   field(
-    percentField(initial.realReturn, (realReturn) => onChange({ realReturn })),
+    percent(initial.realReturn, (realReturn) => onChange({ realReturn })),
     (l) => ({ label: t("realReturn", l), hint: "%" }),
   );
 

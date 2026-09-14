@@ -16,6 +16,7 @@ import { deltal, incomePensionYear } from "../pension/incomePension.js";
 import { tpFaktor } from "../pension/atp.js";
 import { vbaInt, wsMax, wsMin } from "../vba/math.js";
 import type { Run } from "./mcalc.js";
+import type { OwnIncomeYear } from "./input.js";
 import type { MvaluesRow } from "./state.js";
 import type { Warning } from "./setup.js";
 
@@ -99,6 +100,21 @@ export interface TypfallResult {
   readonly table2: readonly Table2Row[];
   /** The per-age matrix Table 2 is cut from. */
   readonly rows: readonly MvaluesRow[];
+  /**
+   * The income and wage path the run used, one row per working age.
+   *
+   * Not a workbook output -- the Indata_lista sheet is an *input*, which the
+   * workbook fills in from the computed path when you tick `Egen löneutveckling`
+   * (manual section 3.1). This is that fill: shaped as `OwnIncomeYear[]` so
+   * handing it straight back as `TypfallInput.ownIncome` reproduces the same
+   * run, which is what the web form's salary grid starts from.
+   *
+   * `MvaluesRow` carries `income` but not `wage`; both live on the setup
+   * vectors, and only the pair is useful here -- `Varav lön` is what the
+   * pension contributions are taken from, `Inkomst` what private saving is a
+   * share of.
+   */
+  readonly wagePath: readonly OwnIncomeYear[];
   readonly lifeIncome: LifeIncome;
   /** Years with a pension right, capped at 40, which labels the IPT row. */
   readonly qualifyingYears: number;
@@ -477,6 +493,25 @@ export function lifeIncome(run: Run): LifeIncome {
   return { gross, net, disposable, throughAge };
 }
 
+/**
+ * `Income_(age)` and `Wage_(age)`, over the ages that carry either.
+ *
+ * Trailing zeroes are dropped rather than run to `slutage`: past the last
+ * working age both are 0, and `setup.ts` reads a missing age as 0 too, so the
+ * short array and the long one describe the same run. The leading ages are kept
+ * even when empty, so the row an age sits on never shifts.
+ */
+export function buildWagePath(run: Run): OwnIncomeYear[] {
+  const { v } = run;
+  const path: OwnIncomeYear[] = [];
+  for (let age = v.startage; age <= v.slutage; age += 1) {
+    path.push({ age, income: v.income.getOrZero(age), wage: v.wage.getOrZero(age) });
+  }
+  let last = path.length;
+  while (last > 0 && path[last - 1]!.income === 0 && path[last - 1]!.wage === 0) last -= 1;
+  return path.slice(0, last);
+}
+
 /** Assembles the whole result, after the loop has run. */
 export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResult {
   if (run.context.lastPensionRight > 0) creditLastPensionRight(run);
@@ -494,6 +529,7 @@ export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResu
     table1: buildTable1(run),
     table2: buildTable2(run),
     rows: run.s.rows,
+    wagePath: buildWagePath(run),
     lifeIncome: lifeIncome(run),
     qualifyingYears: wsMin(run.s.pgiYears, 40),
     warnings,

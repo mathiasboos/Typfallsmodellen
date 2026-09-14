@@ -112,7 +112,9 @@ and the three economic assumptions. `ModelContext` is Adv_settings: everything a
 behaves, all with the workbook's own defaults. A normal-mode run passes only a `TypfallInput`.
 
 That is the workbook's own split, and it is what lets normal mode show eight fields while advanced
-mode reaches the other seventy-six.
+mode reaches the rest. `result.wagePath` belongs to the same split from the other direction: it is
+the income and wage series the run derived, shaped as `TypfallInput.ownIncome` so the advanced
+form's salary grid can fill from it and hand it straight back.
 
 ### Where the mortality data comes in
 
@@ -209,3 +211,39 @@ because one run is sub-millisecond; what is on screen is exactly what the engine
 the form says. The month/year switch is `rng_Chart_Earning_factor` on the `ModelContext` rather
 than a division in the view, since `buildTable2` already divides by it — the same rule as
 everywhere else here: where the workbook has an opinion, the port does not add a second one.
+
+### Normalt and Avancerat
+
+The page keeps the workbook's two modes, chosen by the toggle above the input panel. The state is
+three variables in `main.ts`: `mode`, an `advanced: Partial<ModelContext>` and an
+`advancedInput: Partial<TypfallInput>`. Normal mode simply does not spread them, so it runs on the
+Start sheet alone — which is why `viewContext` could hand `run()` an empty settings map for the
+whole of phase 3.
+
+Switching back to Normalt **suspends** the advanced entries rather than dropping them; the workbook
+leaves them sitting on its sheet too, and switching modes to compare two answers would be useless
+if coming back showed an empty form. Only `Använd normala inställningar` — the Adv_settings sheet's
+own button — clears them.
+
+The overrides are a typed `Partial<ModelContext>` rather than entries in `contextFromSettings`'s
+name-keyed map, which is not only for the type safety: `buildContext` sets `tjpPar`, `uttagIp`,
+`uttagPp`, `wTime`, `makeBorn`, `table2StartAge` and `chartEarningFactor` to literal sentinels and
+never reads them through `workbookDefault`, so the map cannot reach them at all.
+
+`apps/web/src/advanced.ts` holds the twenty-five exposed settings as a descriptor table, grouped as
+sections 3.2 to 3.8 of the user manual group them, each carrying the `Adv_settings` row it came
+from. The rest of the sheet's seventy-six rows are left out deliberately and the file says why:
+some are Excel's own business, some feed the Mikrosim sheet this port does not have, some are not
+ported, and the remainder are policy experiments wanting a more careful UI than a number box.
+**Their labels are written out in both languages, which is the one place this port retypes the
+workbook** — the workbook never translated that sheet (59 of its 90 rows have an empty English
+string) and what Swedish it carries is maintainer shorthand. The *values* are still never retyped:
+every default comes from `defaultContext()`.
+
+`apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
+up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
+array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for
+me". Amounts are rounded to whole kronor, shown and used, which costs 0.02 kr per month on the
+final salary and keeps the rule that the form never shows a number the run did not use. Once a
+vector is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from a
+second run with `ownIncome` removed.

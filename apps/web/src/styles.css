@@ -111,6 +111,11 @@
 
 * { box-sizing: border-box; }
 
+/* `hidden` has to win over the `display` any class below sets, or an element
+   toggled with `el.hidden` stays on screen. The UA stylesheet's own rule is a
+   bare `[hidden]`, which every one of those classes outranks. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 0;
@@ -253,7 +258,62 @@ body {
 .kpi-unit { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
 
 /* The input block: a label and the cell you type into, one variable per row. */
-.inputs { display: grid; gap: 10px; position: sticky; top: 16px; }
+/* The whole left column sticks, not just the form: advanced mode adds two
+   panels below it that have to travel with it. `max-height`/`overflow` so a
+   long advanced panel scrolls inside the column instead of running off the
+   bottom of a short viewport. */
+.input-column {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.inputs { display: grid; gap: 10px; }
+
+.mode-row { display: flex; }
+.mode-toggle { flex: 1; }
+.mode-toggle .panel-btn { flex: 1; text-align: center; }
+
+.advanced-box { display: grid; gap: 8px; }
+
+.adv-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+.adv-group > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.adv-group > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.adv-group[open] > summary { margin-bottom: 8px; }
+.adv-body { display: grid; gap: 10px; }
+.adv-actions { margin-top: 2px; }
+
+/* One row per age from 15 to the last worked one -- about fifty, so it gets
+   its own scroller rather than stretching the column. */
+.adv-grid-scroll { overflow-y: auto; max-height: 40vh; }
+.adv-grid th, .adv-grid td { padding: 2px 4px; font-size: 0.75rem; }
+.adv-grid thead th { position: sticky; top: 0; z-index: 1; }
+.adv-grid td > input {
+  width: 100%;
+  min-width: 7ch;
+  padding: 2px 4px;
+  font: inherit;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.adv-grid td > input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 860px) { .inputs { position: static; } }
 
 .field {

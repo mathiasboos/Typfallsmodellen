@@ -49,6 +49,7 @@ function stubResult(overrides: {
     table1: overrides.table1 ?? [],
     table2: [],
     rows: overrides.rows ?? [],
+    wagePath: [],
     lifeIncome: { gross: 0, net: 0, disposable: 0, throughAge: overrides.throughAge ?? 0 },
     qualifyingYears: 40,
     warnings: [],

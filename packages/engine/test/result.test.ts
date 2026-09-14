@@ -322,3 +322,79 @@ describe("the default run, against its committed snapshot", () => {
     }
   });
 });
+
+/**
+ * The wage path the advanced form's salary grid starts from.
+ *
+ * `Egen löneutveckling` (manual section 3.1) is filled in from the computed
+ * path and then edited, so the fill has to be an exact description of the run
+ * it came from -- otherwise ticking the box would move the answer before
+ * anyone typed anything.
+ */
+describe("the wage path", () => {
+  it("covers every age from the first, contiguously, and stops at the last worked one", () => {
+    const r = compute();
+    const path = r.wagePath;
+
+    expect(path.length).toBeGreaterThan(0);
+    for (let i = 1; i < path.length; i += 1) {
+      expect(path[i]!.age, `row ${i}`).toBe(path[i - 1]!.age + 1);
+    }
+
+    const last = path[path.length - 1]!;
+    expect(last.income === 0 && last.wage === 0).toBe(false);
+    // Retirement is at 66 in the shipped typfall, so the last worked age is 65.
+    expect(last.age).toBeLessThan((defaultInput() as TypfallInput).retirementAge);
+  });
+
+  it("is nominal, where the per-age matrix's income is in reference-year prices", () => {
+    // `recordRow` multiplies every amount by the price factor before storing
+    // it; `Income_(age)` on the Indata_lista sheet is the unadjusted figure,
+    // and has to stay that way or feeding it back would deflate the run twice.
+    // `kpiFactor` is that same factor, so the two reconcile through it.
+    const r = compute();
+    let differed = 0;
+    for (const m of r.rows) {
+      const entry = r.wagePath.find((x) => x.age === m.age);
+      if (entry === undefined) continue;
+      // `kpiFactor` is itself stored to four decimals, so the slack has to
+      // scale with the amount it multiplies: a 5e-5 error on a 400 000 kr
+      // income is 20 kr, and nothing is wrong with it.
+      const slack = 1 + entry.income * 5e-5;
+      expect(Math.abs(entry.income * m.kpiFactor - m.income), `age ${m.age}`).toBeLessThanOrEqual(slack);
+      if (Math.round(entry.income) !== m.income) differed += 1;
+    }
+    // If they never differed the factor would be 1 throughout and this would
+    // prove nothing.
+    expect(differed).toBeGreaterThan(0);
+  });
+
+  it("reproduces the run when handed straight back as ownIncome", () => {
+    const r = compute();
+    const again = run(
+      { ...(defaultInput() as TypfallInput), ownIncome: r.wagePath },
+      defaultContext(),
+      { deaths },
+    );
+    for (const want of r.table1) {
+      const got = again.table1.find((x) => x.key === want.key)!;
+      expect(got.nominal, `${want.key} nominal`).toBeCloseTo(want.nominal, 6);
+      expect(got.monthly, `${want.key} monthly`).toBeCloseTo(want.monthly, 6);
+    }
+  });
+
+  it("reproduces it from age 15 up too, which is all an own vector reads", () => {
+    // `validate` pins `startage` to 15 whenever `ownIncome` is present, so the
+    // grid shows 15 and up and sends only that slice back.
+    const r = compute();
+    const again = run(
+      { ...(defaultInput() as TypfallInput), ownIncome: r.wagePath.filter((x) => x.age >= 15) },
+      defaultContext(),
+      { deaths },
+    );
+    for (const want of r.table1) {
+      const got = again.table1.find((x) => x.key === want.key)!;
+      expect(got.monthly, `${want.key} monthly`).toBeCloseTo(want.monthly, 6);
+    }
+  });
+});
