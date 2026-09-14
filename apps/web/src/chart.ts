@@ -25,7 +25,7 @@
 import type { MvaluesRow, TypfallResult } from "@typfallsmodellen/engine";
 
 import { kronor } from "./format.js";
-import { t } from "./i18n.js";
+import { dropHeadingNumber, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -323,8 +323,9 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
     },
   ];
 
+  // "Figur 1." is dropped on request; the rest of the sheet's own heading stays.
   const title =
-    `${t("figure1", lang)}-${view.par} ${t("andPensionFrom", lang)} ` +
+    `${dropHeadingNumber(t("figure1", lang))}-${view.par} ${t("andPensionFrom", lang)} ` +
     `${view.par} ${t("yearsAge", lang)}`;
   const svg = newSvg(title);
 
@@ -558,7 +559,11 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
 
   const first = rows[0]?.age ?? view.par;
   const lastAge = rows[rows.length - 1]?.age ?? first;
-  const title = t("figure2", lang).replace(/\d+\s*-\s*\d+/, `${first} - ${lastAge}`);
+  // "Figur 2." is dropped on request, same as Figur 1 and Table 2.
+  const title = dropHeadingNumber(t("figure2", lang)).replace(
+    /\d+\s*-\s*\d+/,
+    `${first} - ${lastAge}`,
+  );
   const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
 
   const svg = newSvg(title);

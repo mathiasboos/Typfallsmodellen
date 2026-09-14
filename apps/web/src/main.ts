@@ -9,7 +9,6 @@
  * The results follow the Start sheet's own order: Table 1, Figur 1, Figur 2,
  * the disposable income chart, Table 2.
  */
-import { content } from "@typfallsmodellen/data";
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
@@ -17,7 +16,7 @@ import { renderDisposable, renderFigure1, renderFigure2 } from "./chart.js";
 import type { FigureView } from "./chart.js";
 import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
-import { LANGS, t } from "./i18n.js";
+import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
 import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
 import type { Table1View } from "./tables.js";
@@ -74,16 +73,14 @@ const form = createForm(input, view.lang, (patch) => {
 /** Rebuilt on a language change, so the subtitle and the active chip follow. */
 function renderHeading(): void {
   const title = document.createElement("h1");
-  title.textContent = "Typfallsmodellen";
+  title.textContent = "Pensionsprognos";
 
   const sub = document.createElement("p");
   sub.className = "subtitle";
   sub.textContent =
     view.lang === "sv"
-      ? `En portering av Pensionsmyndighetens typfallsmodell, ${content.modelVersion}. ` +
-        `Alla beräkningar sker i din webbläsare; ingenting skickas någonstans.`
-      : `A port of the Swedish Pensions Agency's typfallsmodell, ${content.modelVersion}. ` +
-        `Everything is computed in your browser; nothing is sent anywhere.`;
+      ? `Alla beräkningar sker i din webbläsare; ingenting skickas någonstans.`
+      : `Everything is computed in your browser; nothing is sent anywhere.`;
 
   const langs = document.createElement("div");
   langs.className = "langs";
@@ -194,13 +191,19 @@ function render(): void {
     priceBasis: context.priceBasis,
   };
 
-  // The sheet's own heading with this run's start age in it. The age is the
-  // label's *last* number -- "Tabell 2. Månadsinkomster från 56 ålder" -- so the
+  // The sheet's own heading, minus its "Tabell 2." numbering (dropped on
+  // request), with this run's start age written into what's left. The age is
+  // the label's *last* number -- "Månadsinkomster från 56 ålder" -- so the
   // table's own number is left alone.
-  const table2Title = t("table2", lang).replace(
+  const table2Title = dropHeadingNumber(t("table2", lang)).replace(
     /\d+(?=\D*$)/,
     String(result.table2[0]?.age ?? Math.trunc(par) - 10),
   );
+
+  // Replaces SysLang row 24 ("Tabell 1. Specificerat resultat över slutlön och
+  // pensionsinkomster") outright, on request, rather than trimming it the way
+  // Table 2 and the figures trim theirs.
+  const table1Title = lang === "sv" ? "Pensionsinkomst" : "Pension income";
 
   results.replaceChildren();
   const warned = warnings(result);
@@ -214,7 +217,7 @@ function render(): void {
   results.append(
     scaleSwitch(),
     section(
-      t("table1", lang),
+      table1Title,
       wrapScroll(renderTable1(result, lang, table1View)),
       exportButton(lang, lang === "sv" ? "tabell1.csv" : "table1.csv", () =>
         table1ToCsv(result, lang, table1View),

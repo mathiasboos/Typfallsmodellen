@@ -44,7 +44,9 @@ export const L = {
   occupational: "19", //    Välj tjänstepension
   currentPrices: "21", //   Löpande priser
   fixedPrices: "22", //     Fasta priser (2025)
-  table1: "24", //          Tabell 1. Specificerat resultat över slutlön och pensionsinkomster
+  // table1 (SysLang row 24, "Tabell 1. Specificerat resultat över slutlön och
+  // pensionsinkomster") is not used: Table 1's title was replaced outright with
+  // "Pensionsinkomst" on request, in main.ts, rather than composed from it.
   table2: "49", //          Tabell 2. Månadsinkomster från 56 ålder
   year: "27", //            År
   pension: "28", //         Pension
@@ -168,4 +170,13 @@ export function checkLabels(): string[] {
 export function t(name: LabelName, lang: Lang): string {
   const entry = LABELS[L[name]] ?? CAPTIONS[L[name]];
   return entry?.[lang] || entry?.sv || "";
+}
+
+/**
+ * Strips the sheet's own "Tabell 2.", "Figur 1.", "Table 1.", "Chart 2." lead-in
+ * off a heading, on request: Table 2 and both figures keep the rest of the
+ * SysLang text, just not the number the sheet gives itself.
+ */
+export function dropHeadingNumber(text: string): string {
+  return text.replace(/^(Tabell|Tabel|Table|Figur|Figure|Chart)\s*\d+\.?\s*/i, "");
 }
