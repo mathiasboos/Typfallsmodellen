@@ -1,52 +1,76 @@
 /*
  * One stylesheet, no framework.
  *
- * The figures wear the workbook's own colours, because mimicking its charts is
- * the point of them. Those colours were run through the data-visualisation
- * guidance's validator (`scripts/validate_palette.js`): the CVD separation and
- * normal-vision checks pass -- the five stacked bands stay distinguishable --
- * while the lightness band and chroma floor do not, since Excel's pastels sit
- * lighter and greyer than the guidance's bands. That is the trade made on
- * purpose, and it comes with the relief the validator demands: a 2px surface
- * gap between bands, a legend on every figure, a hover readout, and Table 2
- * underneath carrying every plotted number in text.
+ * The palette is SEB's, read out of SEB_colors_2026.pptx -- the theme block
+ * names it "SEB 2025" and the slide lists every step by name. Nothing here is
+ * sampled by eye: each value below is one of those hexes.
  *
- * The banner over each block is the workbook's; the agency's wordmark, which
- * sits inside its plot areas, is deliberately not reproduced.
+ *   Dark green  #005D35  #358157  #99BEAE  #CCDFD7   (100 / 80 / 60 / 20 %)
+ *   Green       #48B866  #6DC685  #B6E3C2  #DAF1E0
+ *   Beige       #D3C5A6  #DCD1B8  #EDE8DB  #F6F3ED
+ *   Blue        #4885C5  #6D9DD1  #B6CEE8  #DAE7F3
+ *   Gold        #FBC111  #FCCD41  #FDE6A0  #FEF3CF
+ *   Red         #FF5B30  #FF7E5D  #FFA088  #FFE0D8
+ *   Grounds     white + black text, #003824 "SEB Senior" + white text
+ *   Greys       #7F7F7F  #AFAFAF  #DFDFDF  #EFEFEF
+ *
+ * The figure steps were chosen with the data-visualisation guidance's validator
+ * rather than by eye, in the order the bands stack:
+ *
+ *   light stack  blue, dark green, gold, green, beige     CVD 10.0, normal 19.1
+ *   dark stack   on #003824                               CVD  9.5, normal 18.4
+ *   light trio   blue, dark green, red                    CVD 14.5, normal 24.5
+ *   dark trio    blue 80%, green 60%, red                 CVD 20.4, normal 22.7
+ *
+ * Two candidates were thrown out by it: pale 60% tints next to beige in the
+ * dark stack (normal-vision 7.9, a hard fail), and red 80% next to green 80% in
+ * the dark trio (deutan 5.3). What fails in every variant is the lightness band
+ * and the chroma floor -- SEB's accents run from very dark to near-neutral,
+ * which is what a brand palette is -- so the relief the validator asks for in
+ * exchange is present: a 2px surface gap between stacked bands, a separate dash
+ * pattern per line, a legend and hover readout on every figure, and Table 2
+ * carrying every plotted number in text.
+ *
+ * Greys lighter than #7F7F7F fill and rule; they never carry text (#AFAFAF on
+ * white is 2.2:1). The banner is the workbook's title bar in SEB Gold; the
+ * agency's wordmark is not reproduced, and neither is anyone else's.
  */
 :root {
   color-scheme: light;
-  --surface: #fcfcfb;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f4f3f0;
-  --border: #e3e2dd;
-  --rule: #b9b8b1;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --grid: #ececea;
-  --axis: #c3c2b7;
-  --accent: #2a78d6;
-  --danger: #c00000;
-  --banner: #ffc000;
-  --banner-ink: #111111;
-  --retired: #e7e6e6;
+  --surface-sunken: #f6f3ed;
+  --border: #dfdfdf;
+  --rule: #afafaf;
+  --text-primary: #000000;
+  --text-secondary: #005d35;
+  --text-muted: #7f7f7f;
+  --grid: #efefef;
+  --axis: #afafaf;
+  --accent: #005d35;
+  --danger: #ff5b30;
+  --danger-tint: #ffe0d8;
+  --danger-ink: #000000;
+  --banner: #fbc111;
+  --banner-ink: #000000;
+  --retired: #efefef;
 
-  /* Figur 2's stack, its two overlays, Figur 1's three views, and the
-     disposable income chart -- each the hue the workbook draws it in. */
-  --fig-salary: #2e75b6;
-  --fig-income-pension: #2e8b57;
-  --fig-guarantee: #ed9f1e;
-  --fig-premium: #2fd0d8;
-  --fig-occupational: #9dc3e6;
-  --fig-continued: #2e75b6;
-  --fig-after-tax: #1f3864;
-  --fig-current: #f4b183;
-  --fig-fixed: #ed7d31;
-  --fig-wage-level: #c00000;
-  --fig-net: #e36c0a;
-  --fig-gross: #f8cbad;
-  --fig-disposable: #111111;
+  /* Figur 2's stack, its two overlays, Figur 1's three price views, and the
+     disposable income chart. Each series keeps its hue across both themes;
+     only the step changes. */
+  --fig-salary: #4885c5;
+  --fig-income-pension: #005d35;
+  --fig-guarantee: #fbc111;
+  --fig-premium: #48b866;
+  --fig-occupational: #d3c5a6;
+  --fig-continued: #4885c5;
+  --fig-after-tax: #000000;
+  --fig-current: #4885c5;
+  --fig-fixed: #005d35;
+  --fig-wage-level: #ff5b30;
+  --fig-net: #005d35;
+  --fig-gross: #ccdfd7;
+  --fig-disposable: #000000;
 
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -55,31 +79,32 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface: #1a1a19;
-    --surface-raised: #222221;
-    --surface-sunken: #2a2a28;
-    --border: #383835;
-    --rule: #4a4a46;
+    /* Black ground, SEB Senior panels: the deck's own dark pairing. */
+    --surface: #000000;
+    --surface-raised: #003824;
+    --surface-sunken: #005d35;
+    --border: #005d35;
+    --rule: #7f7f7f;
     --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --grid: #2a2a28;
-    --axis: #383835;
-    --accent: #3987e5;
-    --danger: #ff8a7a;
-    --banner: #d9a300;
-    --banner-ink: #17170f;
-    --retired: #2e2e2b;
+    --text-secondary: #d3c5a6;
+    --text-muted: #afafaf;
+    --grid: #005d35;
+    --axis: #7f7f7f;
+    --accent: #48b866;
+    --danger: #ff7e5d;
+    --danger-tint: #003824;
+    --danger-ink: #ff7e5d;
+    --retired: #000000;
 
-    /* The same hues, stepped for a dark surface: every one clears 3:1 there. */
-    --fig-salary: #4a90d9;
-    --fig-income-pension: #35a06a;
-    --fig-after-tax: #7f9fd4;
-    --fig-current: #f7c49e;
-    --fig-fixed: #f28c46;
-    --fig-wage-level: #ff7b6b;
-    --fig-net: #f07d26;
-    --fig-disposable: #f2f2f0;
+    --fig-salary: #6d9dd1;
+    --fig-income-pension: #6dc685;
+    --fig-continued: #6d9dd1;
+    --fig-after-tax: #ffffff;
+    --fig-current: #6d9dd1;
+    --fig-fixed: #b6e3c2;
+    --fig-net: #358157;
+    --fig-gross: #99beae;
+    --fig-disposable: #ffffff;
   }
 }
 
@@ -232,13 +257,19 @@ body {
 .table tbody tr:last-child td { border-bottom: none; }
 
 /* Table 1's own furniture: the sheet's blank line, its two red notes, and the
-   heading column D's lower block is measured against. */
-/* The sheet right-aligns Table 1's row labels against their figures. The labels
-   are the one column allowed to wrap, so the table stays narrow on a phone. */
+   heading column D's lower block is measured against. The row labels are
+   right-aligned against their figures, and are the one column allowed to
+   wrap, so the table stays narrow on a phone. */
 .table1 tbody tr:not(.note) td:first-child { text-align: right; white-space: normal; min-width: 14ch; }
 .table1 tr.spacer td { height: 12px; padding: 0; border-right: none; }
-.table1 tr.note td { border-right: none; }
-.table1 .note-text { color: var(--danger); font-size: 0.76rem; white-space: normal; }
+.table1 tr.note td { border-right: none; background: var(--danger-tint); }
+.table1 .note-text {
+  color: var(--danger-ink);
+  font-size: 0.76rem;
+  white-space: normal;
+  border-left: 3px solid var(--danger);
+  padding-left: 8px;
+}
 .table1 .col-note {
   color: var(--text-secondary);
   font-size: 0.76rem;

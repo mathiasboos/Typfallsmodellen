@@ -134,12 +134,17 @@ Figur 1, Figur 2 and the disposable income chart, then Table 2. Every heading, r
 entry and footnote is a `SysLang` row the workbook itself looks up for that cell, so a year that
 renumbers the sheet is caught by `checkLabels` rather than silently relabelling the page.
 
-The figures wear the workbook's colours, which is the point of them. Those colours fail the
-data-visualisation guidance's lightness and chroma bands — Excel's pastels are lighter and greyer
-than it wants — while passing its colour-blindness and normal-vision separation checks; the relief
-it asks for in exchange is present, in the 2px surface gap between stacked bands, a legend and a
-hover readout on every figure, and Table 2 carrying every plotted number in text. The agency's
-wordmark, which sits inside the workbook's own plot areas, is not reproduced.
+The page's colours are SEB's rather than the workbook's or this port's own choice — read out of
+`SEB_colors_2026.pptx`'s theme and its colour-reference slide (`apps/web/src/styles.css`'s header
+comment carries every hex and names its source), with the Start sheet's gold title-bar shape kept
+but redrawn in SEB Gold. Each figure's series were re-stepped in stack order against the
+data-visualisation guidance's validator rather than chosen by eye; the palette fails its lightness
+and chroma bands — SEB's accents run from a very dark green to a near-neutral beige, which is what
+a brand palette is — while passing its colour-blindness and normal-vision separation checks. The
+relief it asks for in exchange is present: a 2px surface gap between stacked bands, a distinct dash
+per line, a legend and hover readout on every figure, and Table 2 carrying every plotted number in
+text. Neither the agency's wordmark nor SEB's own logo is reproduced on the page — the palette is
+borrowed, not the branding.
 
 **Its build output is one self-contained HTML file**, `dist/typfallsmodellen.html`. That is forced
 by the delivery promise rather than chosen for elegance: a browser refuses ES module imports and
