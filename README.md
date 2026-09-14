@@ -114,10 +114,12 @@ offline check in a real Chromium — on every push and pull request. The claims 
 repository, and a claim nothing re-runs is a claim about the day someone last ran it by hand. The
 whole run is a couple of minutes, so nothing is held back for a nightly job.
 
-The four `check:*` scripts are pure-stdlib Python, so the runner's own interpreter is enough. Only
-the full extraction needs `pyxlsb` and LibreOffice, and that is a once-a-year job run by hand.
-Playwright is installed for the offline step alone rather than declared as a dependency — the same
-thing the instructions above tell a human to do.
+`check:ages` reads the `.xlsb` itself and so needs `pyxlsb`; CI builds the same `.venv` from
+`tools/extract/requirements.txt` that the instructions below describe, rather than hand-picking that
+one package, so a new extraction dependency reaches CI without anyone remembering to add it. The
+other three `check:*` scripts re-derive from committed text and need nothing. LibreOffice is still
+only for the full extraction. Playwright is installed for the offline step alone rather than declared
+as a dependency — the same thing the instructions above tell a human to do.
 
 `.github/workflows/deploy.yml` builds from source, re-runs the offline check, and then publishes:
 GitHub Pages from `main`, and a release asset on a `v*` tag. Publishing a page that reaches for the

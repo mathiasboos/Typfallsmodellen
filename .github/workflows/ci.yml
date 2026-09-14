@@ -45,11 +45,20 @@ jobs:
       - name: Unit and property tests
         run: npm test
 
+      # `check:ages` reads the .xlsb itself, which needs pyxlsb. The other three
+      # re-derive from committed text and are stdlib-only, but the venv is built
+      # the way the README tells a human to build it -- from the requirements
+      # file rather than a hand-picked package -- so a new extraction dependency
+      # reaches CI without anyone remembering to add it here. LibreOffice is
+      # still not needed: only the full extraction in tools/extract/run.py wants
+      # it, and that is a once-a-year job run by hand (docs/YEARLY-UPDATE.md).
+      - name: Python dependencies for the workbook-reading check
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r tools/extract/requirements.txt
+
       # These re-derive committed data from the workbook and the VBA dump and
-      # fail if it has drifted. All four are pure-stdlib Python, so the runner's
-      # own interpreter is enough -- no pyxlsb, no LibreOffice. That is only
-      # true of the checks; the full extraction in tools/extract/run.py needs
-      # both, and is a once-a-year job run by hand (docs/YEARLY-UPDATE.md).
+      # fail if it has drifted.
       - name: Re-derive the transpiled tax functions
         run: npm run check:transpile
 
