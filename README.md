@@ -38,6 +38,11 @@ npm install
 npm run build -w @typfallsmodellen/web
 ```
 
+`npm install` also writes `apps/web/src/generated/mortalityRisks.ts`, through the root `prepare`
+script — the death-probability grid packed into a module, since a browser will not `fetch` it over
+`file://`. It is derived from `packages/data` rather than committed, so a fresh clone has to make it
+before anything will typecheck.
+
 That writes **`apps/web/dist/typfallsmodellen.html`** — one self-contained file, about 850 kB.
 The same file is published two ways: at
 [mathiasboos.github.io/Typfallsmodellen](https://mathiasboos.github.io/Typfallsmodellen), and as an

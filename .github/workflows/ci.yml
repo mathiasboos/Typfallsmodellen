@@ -26,13 +26,17 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
+      # `npm ci` also runs the root `prepare` script, which writes
+      # apps/web/src/generated/mortalityRisks.ts. That module is gitignored and
+      # derived from packages/data, so without it a fresh checkout cannot even
+      # typecheck -- which is exactly what this workflow caught on its first run.
       - run: npm ci
 
       - name: Typecheck
@@ -81,8 +85,9 @@ jobs:
       - name: Offline check, in a real browser
         run: npm run verify:offline
 
-      - uses: actions/upload-artifact@v4
-        if: always()
+      # Only on success: without a build there is no file, and `if: always()`
+      # here turned a typecheck failure into two red steps instead of one.
+      - uses: actions/upload-artifact@v5
         with:
           name: typfallsmodellen-html
           path: apps/web/dist/typfallsmodellen.html
