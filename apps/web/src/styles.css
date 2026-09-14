@@ -292,6 +292,13 @@ body {
 .field-check > .field-label { grid-column: 2; grid-row: 1; }
 .field-check > .field-hint { grid-column: 2; grid-row: 2; }
 
+.field-note { font-size: 0.85rem; color: var(--text-secondary); }
+.field-note > summary { cursor: pointer; }
+.field-note > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field-note-body { margin-top: 6px; font-size: 0.78rem; color: var(--text-muted); }
+.field-note-body p { margin: 0 0 8px; }
+.field-note-body p:last-child { margin-bottom: 0; }
+
 .scroll { overflow-x: auto; }
 
 .table {

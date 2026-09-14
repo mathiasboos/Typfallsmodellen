@@ -162,6 +162,13 @@ following `mdlIndataInputOutput.bas` one-for-one:
   exported for the golden-file harness) into the retirement age and locks the field to it, exactly
   as the sheet's own checkbox does; unchecked, the field is the plain typed cell it always was.
 
+A collapsed `<details>` under the three economic-assumption fields explains what those numbers
+mean: the forecast runs at fixed prices (0% inflation, 0% real wage growth, so it reads in today's
+money) and its 1.7% return is expressed as an excess return over general wage growth rather than a
+raw one. Neither sentence is a `SysLang` row, so — like the KPI cards — it is plain per-language
+text local to `createForm`, not a `t()` lookup. Native `<details>` needs no script of its own and
+keeps its own open state across a language switch, since `relabel()` only rewrites its text.
+
 Table 1 and Table 2 each carry a **CSV download** beside their own title bar
 (`apps/web/src/tables.ts`'s `table1ToCsv` / `table2ToCsv`), built from the same rows and the same
 `kronor` / `percent` formatting the table renders — not a second, divergent export path. Neither is

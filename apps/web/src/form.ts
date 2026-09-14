@@ -61,6 +61,40 @@ interface NumberField {
   setValue(v: number): void;
 }
 
+/**
+ * Explains the three economic-assumption fields: not a SysLang row (there is
+ * no "överavkastning" wording on the Start sheet), so -- like the KPI cards'
+ * text -- this is genuine per-language copy rather than a `t()` lookup.
+ */
+function assumptionsNote(l: Lang): { readonly summary: string; readonly paragraphs: readonly string[] } {
+  return l === "sv"
+    ? {
+        summary: "Om pris- och avkastningsantaganden",
+        paragraphs: [
+          "Pensionsprognosen beräknas i fasta priser, det vill säga med antagandet om 0 procent " +
+            "framtida inflation och 0 procent real löneutveckling. Prognosresultatet uttrycks " +
+            "därmed i dagens pris- och löneläge, vilket gör det möjligt att jämföra den " +
+            "prognostiserade pensionen direkt med dagens lön.",
+          "I prognosstandarden antas en avkastning på 1,7 procent. För att pensionens " +
+            "prognosvärde ska sättas i relation till den framtida inkomsten uttrycks " +
+            "avkastningen som en så kallad överavkastning – det vill säga hur mycket kapitalets " +
+            "avkastning överstiger den generella löneutvecklingen.",
+        ],
+      }
+    : {
+        summary: "About the price and return assumptions",
+        paragraphs: [
+          "The pension forecast is calculated in fixed prices, meaning it assumes 0 percent " +
+            "future inflation and 0 percent real wage growth. The forecast result is therefore " +
+            "expressed at today's price and wage level, which makes it possible to compare the " +
+            "forecasted pension directly with today's salary.",
+          "The forecast standard assumes a return of 1.7 percent. To relate the pension's " +
+            "forecast value to future income, the return is expressed as a so-called excess " +
+            "return – that is, how much the return on capital exceeds general wage growth.",
+        ],
+      };
+}
+
 export function createForm(
   initial: TypfallInput,
   lang: Lang,
@@ -257,6 +291,27 @@ export function createForm(
     percentField(initial.realReturn, (realReturn) => onChange({ realReturn })),
     (l) => ({ label: t("realReturn", l), hint: "%" }),
   );
+
+  const assumptionsInfo = document.createElement("details");
+  assumptionsInfo.className = "field-note";
+  const assumptionsSummary = document.createElement("summary");
+  const assumptionsBody = document.createElement("div");
+  assumptionsBody.className = "field-note-body";
+  const applyAssumptionsNote = (l: Lang) => {
+    const note = assumptionsNote(l);
+    assumptionsSummary.textContent = note.summary;
+    assumptionsBody.replaceChildren(
+      ...note.paragraphs.map((text) => {
+        const p = document.createElement("p");
+        p.textContent = text;
+        return p;
+      }),
+    );
+  };
+  applyAssumptionsNote(lang);
+  assumptionsInfo.append(assumptionsSummary, assumptionsBody);
+  relabels.push(applyAssumptionsNote);
+  element.append(assumptionsInfo);
 
   return {
     element,
