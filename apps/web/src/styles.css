@@ -323,6 +323,13 @@ body {
 .table tr.strong td { font-weight: 700; border-top: 1px solid var(--rule); }
 .table tbody tr:last-child td { border-bottom: none; }
 
+/* Table 2 has up to twelve columns and fifty-odd rows; a smaller, tighter
+   grid is what keeps it inside the panel width instead of forcing a
+   horizontal scroll (still there, on .scroll, for whatever doesn't fit --
+   a phone, or a run where every column has a value). */
+.table2 th, .table2 td { padding: 3px 6px; font-size: 0.78rem; }
+.table2 thead th { font-size: 0.72rem; }
+
 /* Table 1's own furniture: the sheet's blank line, its two red notes, and the
    heading column D's lower block is measured against. The row labels are
    right-aligned against their figures, and are the one column allowed to

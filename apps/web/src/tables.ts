@@ -223,6 +223,20 @@ const TABLE2_COLUMNS: readonly { label: LabelName; get: (r: Table2Row) => number
 ];
 
 /**
+ * Table 2's columns, minus any that are zero for every row in this run --
+ * Bidrag or Privat pensionssparande (ISK/KF), say, when this typfall never
+ * pays them (private saving has no normal-mode input yet, so that column is
+ * empty on every run until Phase 4 adds one). Year and age are identifiers,
+ * not amounts, and always show; requested on the same principle as the
+ * figures' own empty-legend-entry trim.
+ */
+function visibleTable2Columns(
+  result: TypfallResult,
+): readonly (typeof TABLE2_COLUMNS)[number][] {
+  return TABLE2_COLUMNS.filter((col, i) => i < 2 || result.table2.some((row) => col.get(row) > 0));
+}
+
+/**
  * Table 2's amounts are already scaled by the model.
  *
  * `rng_Chart_Earning_factor` is 1 for annual and 12 for monthly, and
@@ -230,16 +244,17 @@ const TABLE2_COLUMNS: readonly { label: LabelName; get: (r: Table2Row) => number
  * and not in this function -- see `viewContext` in main.ts.
  */
 export function renderTable2(result: TypfallResult, lang: Lang): HTMLElement {
+  const columns = visibleTable2Columns(result);
   const table = document.createElement("table");
   table.className = "table table2";
 
   const head = table.createTHead().insertRow();
-  for (const col of TABLE2_COLUMNS) head.append(headCell(t(col.label, lang)));
+  for (const col of columns) head.append(headCell(t(col.label, lang)));
 
   const body = table.createTBody();
   for (const row of result.table2) {
     const tr = body.insertRow();
-    TABLE2_COLUMNS.forEach((col, i) => {
+    columns.forEach((col, i) => {
       const value = col.get(row);
       // The first two columns are a year and an age, not money.
       const text = i < 2 ? String(value) : kronor(value, lang);
@@ -310,11 +325,12 @@ export function table1ToCsv(result: TypfallResult, lang: Lang, view: Table1View)
 /** Table 2 as a CSV, in the same twelve columns and row order as the table. */
 export function table2ToCsv(result: TypfallResult, lang: Lang): string {
   const delimiter = delimiterFor(lang);
-  const lines: string[] = [csvLine(TABLE2_COLUMNS.map((c) => t(c.label, lang)), delimiter)];
+  const columns = visibleTable2Columns(result);
+  const lines: string[] = [csvLine(columns.map((c) => t(c.label, lang)), delimiter)];
   for (const row of result.table2) {
     lines.push(
       csvLine(
-        TABLE2_COLUMNS.map((col, i) => {
+        columns.map((col, i) => {
           const value = col.get(row);
           return i < 2 ? String(value) : kronor(value, lang);
         }),

@@ -225,6 +225,23 @@ if (!fig2Legend.some((text) => text.includes("Lön") || text.includes("Earnings"
   problems.push("Figur 2's legend is missing Lön, which is never zero before retirement");
 }
 
+// Table 2 thins its own columns the same way: a column with no value
+// anywhere in this run gets no header. The default typfall has no
+// occupational pension and no private saving (no normal-mode input drives
+// it), so both must be absent; Lön (never zero before retirement) must be
+// present.
+const table2Headers = await tab.locator(".table2 thead th").allTextContents();
+console.log(`Table 2 columns : ${table2Headers.length} (${table2Headers.join(", ")})`);
+if (table2Headers.some((text) => text.includes("Tjänste-pension") || text.includes("Occupational"))) {
+  problems.push("Table 2 still has an occupational-pension column, which is zero for this typfall");
+}
+if (table2Headers.some((text) => text.includes("Privat pensionssparande") || text.includes("Private pension"))) {
+  problems.push("Table 2 still has a private-saving column, which is zero for this typfall");
+}
+if (!table2Headers.some((text) => text === "Lön" || text === "Earnings")) {
+  problems.push("Table 2 is missing Lön, which is never zero before retirement");
+}
+
 if (shots) {
   mkdirSync(shots, { recursive: true });
   await tab.screenshot({ path: join(shots, "sv.png"), fullPage: true });
