@@ -376,7 +376,7 @@ body {
 .line-current { stroke-dasharray: 2 3; }
 .line-wage-level { stroke-dasharray: 8 4; }
 .line-fixed { stroke-width: 3; }
-.line-continued { stroke-dasharray: 8 4; }
+/* "Lön vid fortsatt arbete" is solid on request -- no dasharray override. */
 .line-after-tax { stroke-dasharray: 6 3; }
 /* A 2px surface gap keeps stacked bands separable without relying on hue. */
 .bar { stroke: var(--surface-raised); stroke-width: 2; }

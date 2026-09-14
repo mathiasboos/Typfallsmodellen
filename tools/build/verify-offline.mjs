@@ -98,8 +98,11 @@ const expected = ["slutlon", "totBrutto", "efterSkatt"].map((key) => {
   return { key, want: COLUMNS.map((column) => column.of(row)) };
 });
 
-/** How many ages Figur 2 and the disposable income chart cover: `A2:A22`. */
-const WINDOW = 21;
+// Figur 2 and the disposable income chart cover five years before retirement
+// through age 100 (widened on request from ten years either side of
+// retirement). retirementAge is fixed at par for the default typfall -- no
+// warning corrects it -- so this is exact, not an estimate.
+const WINDOW = 100 - (fixture.input.retirementAge - 5) + 1;
 
 const browser = await chromium.launch({ executablePath: browserPath() });
 const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
@@ -208,6 +211,19 @@ console.log(`columns in Fig 2: ${stacked}`);
 if (table2Rows === 0) problems.push("Table 2 is empty");
 if (figures !== 3) problems.push(`${figures} figures rendered, expected 3`);
 if (stacked !== WINDOW) problems.push(`Figur 2 has ${stacked} columns, expected ${WINDOW}`);
+
+// The default typfall has no occupational pension (scheme 1, "Saknar
+// tjänstepension") and no private saving, so Tjänstepension is zero for
+// every age in the window -- its legend entry must not appear, while Lön
+// (never zero before retirement) must.
+const fig2Legend = await tab.locator("figure.figure").nth(1).locator(".legend li").allTextContents();
+console.log(`Figur 2 legend  : ${fig2Legend.join(" | ")}`);
+if (fig2Legend.some((text) => text.includes("Tjänstepension") || text.includes("Occupational"))) {
+  problems.push("Figur 2's legend still names Tjänstepension, which is zero for this typfall");
+}
+if (!fig2Legend.some((text) => text.includes("Lön") || text.includes("Earnings"))) {
+  problems.push("Figur 2's legend is missing Lön, which is never zero before retirement");
+}
 
 if (shots) {
   mkdirSync(shots, { recursive: true });

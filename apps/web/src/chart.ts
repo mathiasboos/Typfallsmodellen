@@ -376,10 +376,44 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
 
 // ------------------------------------------------- the two column charts ---
 
-/** `A2:A22`: the ten years either side of the retirement age, and it. */
+/**
+ * `A2:A22` on the sheet is ten years either side of retirement; widened here
+ * on request to five years before retirement through age 100, so the working
+ * years get less room and the retirement years more.
+ */
 function aroundRetirement(result: TypfallResult, par: number): readonly MvaluesRow[] {
-  const from = Math.trunc(par) - 10;
-  return result.rows.filter((row) => row.age >= from && row.age <= from + 20);
+  const from = Math.trunc(par) - 5;
+  return result.rows.filter((row) => row.age >= from && row.age <= 100);
+}
+
+/**
+ * Age ticks along a column chart's x-axis: every fifth age once the window is
+ * wide enough that one label per column would collide, but always the first
+ * and last column so the reader can see exactly where the chart starts and
+ * ends.
+ */
+function ageTicks(
+  svg: SVGSVGElement,
+  rows: readonly MvaluesRow[],
+  centre: (i: number) => number,
+): void {
+  const step = rows.length > 25 ? 5 : 1;
+  rows.forEach((row, i) => {
+    const edge = i === 0 || i === rows.length - 1;
+    if (!edge && row.age % step !== 0) return;
+    svg.append(label(String(row.age), centre(i), PLOT.bottom + 16, "tick tick-x"));
+  });
+}
+
+/**
+ * Drops a series from the legend when it never has a value in the rows being
+ * drawn -- on request, for a typfall with no occupational pension or no
+ * garantipension, say. The stacked band or line itself is still drawn
+ * (harmlessly invisible at zero); this only trims the legend, not the
+ * chart's own arithmetic.
+ */
+function visibleSeries(rows: readonly MvaluesRow[], series: readonly Series[]): readonly Series[] {
+  return series.filter((item) => rows.some((row) => item.get(row) > 0));
 }
 
 /** Where each column sits, and how wide it is. */
@@ -582,10 +616,11 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   stack(svg, rows, bands, y, centre, width);
   overlay(svg, rows, lines[0]!, y, centre, Math.trunc(view.par));
   overlay(svg, rows, lines[1]!, y, centre);
-  rows.forEach((row, i) => svg.append(label(String(row.age), centre(i), PLOT.bottom + 16, "tick tick-x")));
+  ageTicks(svg, rows, centre);
 
   const series = [...bands, ...lines];
-  const figure = frame(title, subtitle, svg, legend([...bands].reverse().concat(lines), lang));
+  const legendSeries = visibleSeries(rows, [...bands].reverse().concat(lines));
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang));
   hover(
     svg,
     figure,
@@ -655,11 +690,12 @@ export function renderDisposable(result: TypfallResult, view: FigureView): HTMLE
         class: "marker",
       }),
     );
-    svg.append(label(String(row.age), cx, PLOT.bottom + 16, "tick tick-x"));
   });
+  ageTicks(svg, rows, centre);
 
   const series = [...bands, line];
-  const figure = frame(title, undefined, svg, legend([bands[1]!, bands[0]!, line], lang));
+  const legendSeries = visibleSeries(rows, [bands[1]!, bands[0]!, line]);
+  const figure = frame(title, undefined, svg, legend(legendSeries, lang));
   hover(
     svg,
     figure,
