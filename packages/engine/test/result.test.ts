@@ -192,6 +192,8 @@ describe("Table 2", () => {
       expect(t2.occupationalAndPrivate).toBeCloseTo(m.tjp + m.ips, 6);
       expect(t2.guaranteeAndSupplement).toBeCloseTo(m.garp + m.ptillagg, 6);
       expect(t2.gross).toBeCloseTo(m.brutto, 6);
+      expect(t2.municipalTax).toBeCloseTo(m.municipalTax, 6);
+      expect(t2.stateTax).toBeCloseTo(m.stateTax, 6);
       expect(t2.disposable).toBeCloseTo(m.indDisp, 6);
     }
   });
@@ -239,6 +241,26 @@ describe("life income", () => {
     expect(row(late, Table1Key.IncomePension).monthly).toBeGreaterThan(
       row(early, Table1Key.IncomePension).monthly,
     );
+  });
+});
+
+describe("the municipal/state tax split", () => {
+  it("sums to the same total tax netto already implies, at every age", () => {
+    const r = compute();
+    const par = (defaultInput() as TypfallInput).retirementAge;
+    // `r()` rounds municipalTax, stateTax and netto each to a whole kronor
+    // independently, so their sum can be a kronor off the rounded `tax` a
+    // second, separate rounding of the same figures would give -- allow that
+    // much slack, not the tighter one `toBeCloseTo`'s digit count would ask for.
+    const reconciles = (m: (typeof r.rows)[number]) => {
+      if (m.brutto === 0 && m.netto === 0) return;
+      const tax = m.brutto - m.netto;
+      expect(Math.abs(m.municipalTax + m.stateTax - tax), `age ${m.age}`).toBeLessThanOrEqual(1);
+    };
+    for (const m of r.rows) reconciles(m);
+    // The retirement-transition age is the one row `atRetirement.ts`'s
+    // second tax pass rewrites -- check it explicitly, not just in passing.
+    reconciles(r.rows.find((row) => row.age === par)!);
   });
 });
 

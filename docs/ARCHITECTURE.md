@@ -70,7 +70,7 @@ an invention:
 
 | Field | What it is | Where it comes from |
 |---|---|---|
-| `rows` | one row per age, seventeen columns | `mvalues` in Mcalc |
+| `rows` | one row per age, the seventeen `mvalues` columns plus two this port adds (municipal/state tax) | `mvalues` in Mcalc |
 | `table2` | the cash-flow table, from `rng_tabell2_startAge` | Table 2 on the Start sheet |
 | `table1` | the summary at retirement, four columns per line | Table 1 on the Start sheet |
 | `lifeIncome` | three discounted sums over the retirement | `Life0`, `life1`, `life2` |
@@ -149,6 +149,15 @@ from the DOM-building `renderKpis` specifically so this arithmetic has a unit te
 (`apps/web/test/kpis.test.ts`) despite `apps/web` having no DOM in its test environment; the
 rendered cards themselves are checked, like every other rendering function here, against the real
 built page by `verify:offline`.
+
+**A fourth figure, "Tax per year", is not a workbook chart either**: municipal and state tax,
+stacked, over the same age window Figur 2 covers. The workbook computes this split too
+(`kinkskatt`/`statskatt` in `VBA_go.bas`) but only to combine it into one `Netto` figure and discard
+the parts — this port keeps them, as `MvaluesRow`'s 18th and 19th column (`municipalTax`/`stateTax`,
+`packages/engine/src/model/state.ts`), the only two that are not one of the workbook's own
+seventeen. The split is computed identically for every age, working or retired, so the chart shows
+it uniformly across the whole window rather than inventing a separate "salary tax" category for the
+working years the engine doesn't actually distinguish. Table 2 carries the same two columns.
 
 Two of the form's fields are not the Start sheet's own, chosen this way on request rather than by
 following `mdlIndataInputOutput.bas` one-for-one:

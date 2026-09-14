@@ -21,6 +21,7 @@
  *   dark stack   on #003824                               CVD  9.5, normal 18.4
  *   light trio   blue, dark green, red                    CVD 14.5, normal 24.5
  *   dark trio    blue 80%, green 60%, red                 CVD 20.4, normal 22.7
+ *   tax pair     gold, red (light and dark, on #003824)   CVD 15.4, normal 22.7
  *
  * Two candidates were thrown out by it: pale 60% tints next to beige in the
  * dark stack (normal-vision 7.9, a hard fail), and red 80% next to green 80% in
@@ -69,6 +70,8 @@
   --fig-wage-level: #ff5b30;
   --fig-net: #005d35;
   --fig-gross: #ccdfd7;
+  --fig-municipal-tax: #fbc111;
+  --fig-state-tax: #ff5b30;
   --fig-disposable: #000000;
 
   --radius: 8px;

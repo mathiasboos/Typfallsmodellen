@@ -10,7 +10,9 @@
  * tools/extract/formulas.py.
  *
  * Table 2 is the year-by-year cash flow from `rng_tabell2_startAge`, in the
- * twelve columns `VBA_go.bas:2183` writes.
+ * twelve columns `VBA_go.bas:2183` writes, plus two the workbook never shows:
+ * municipal and state tax, split out of `netto` for this port's own tax-per-
+ * year chart (see `MvaluesRow.municipalTax`/`stateTax`).
  */
 import { Table1Key } from "@typfallsmodellen/engine";
 import type { Table1Row, Table2Row, TypfallResult } from "@typfallsmodellen/engine";
@@ -207,19 +209,22 @@ function appendNotes(body: HTMLTableSectionElement, lang: Lang, view: Table1View
   });
 }
 
-const TABLE2_COLUMNS: readonly { label: LabelName; get: (r: Table2Row) => number }[] = [
-  { label: "year", get: (r) => r.year },
-  { label: "age", get: (r) => r.age },
-  { label: "salary", get: (r) => r.salary },
-  { label: "incomeAndSupplementary", get: (r) => r.incomeAndSupplementary },
-  { label: "premium", get: (r) => r.premium },
-  { label: "occupationalPlusIps", get: (r) => r.occupationalAndPrivate },
-  { label: "guarantee", get: (r) => r.guaranteeAndSupplement },
-  { label: "grossIncome", get: (r) => r.gross },
-  { label: "incomeAfterTax", get: (r) => r.net },
-  { label: "benefits", get: (r) => r.benefits },
-  { label: "privateSavingIsk", get: (r) => r.privateAfterTax },
-  { label: "disposable", get: (r) => r.disposable },
+const TABLE2_COLUMNS: readonly { readonly head: (lang: Lang) => string; readonly get: (r: Table2Row) => number }[] = [
+  { head: (l) => t("year", l), get: (r) => r.year },
+  { head: (l) => t("age", l), get: (r) => r.age },
+  { head: (l) => t("salary", l), get: (r) => r.salary },
+  { head: (l) => t("incomeAndSupplementary", l), get: (r) => r.incomeAndSupplementary },
+  { head: (l) => t("premium", l), get: (r) => r.premium },
+  { head: (l) => t("occupationalPlusIps", l), get: (r) => r.occupationalAndPrivate },
+  { head: (l) => t("guarantee", l), get: (r) => r.guaranteeAndSupplement },
+  { head: (l) => t("grossIncome", l), get: (r) => r.gross },
+  // Not a SysLang extraction -- the workbook never shows this split either.
+  { head: (l) => (l === "sv" ? "Kommunal skatt" : "Municipal tax"), get: (r) => r.municipalTax },
+  { head: (l) => (l === "sv" ? "Statlig skatt" : "State tax"), get: (r) => r.stateTax },
+  { head: (l) => t("incomeAfterTax", l), get: (r) => r.net },
+  { head: (l) => t("benefits", l), get: (r) => r.benefits },
+  { head: (l) => t("privateSavingIsk", l), get: (r) => r.privateAfterTax },
+  { head: (l) => t("disposable", l), get: (r) => r.disposable },
 ];
 
 /**
@@ -249,7 +254,7 @@ export function renderTable2(result: TypfallResult, lang: Lang): HTMLElement {
   table.className = "table table2";
 
   const head = table.createTHead().insertRow();
-  for (const col of columns) head.append(headCell(t(col.label, lang)));
+  for (const col of columns) head.append(headCell(col.head(lang)));
 
   const body = table.createTBody();
   for (const row of result.table2) {
@@ -326,7 +331,7 @@ export function table1ToCsv(result: TypfallResult, lang: Lang, view: Table1View)
 export function table2ToCsv(result: TypfallResult, lang: Lang): string {
   const delimiter = delimiterFor(lang);
   const columns = visibleTable2Columns(result);
-  const lines: string[] = [csvLine(columns.map((c) => t(c.label, lang)), delimiter)];
+  const lines: string[] = [csvLine(columns.map((c) => c.head(lang)), delimiter)];
   for (const row of result.table2) {
     lines.push(
       csvLine(

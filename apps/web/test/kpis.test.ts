@@ -34,6 +34,8 @@ function row(age: number, brutto: number): MvaluesRow {
     indDisp: 0,
     kpiFactor: 1,
     indexFactor: 1,
+    municipalTax: 0,
+    stateTax: 0,
   };
 }
 

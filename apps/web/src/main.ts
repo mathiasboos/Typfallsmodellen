@@ -7,12 +7,13 @@
  * on screen is what `run()` returned for what the form says.
  *
  * The results follow the Start sheet's own order: Table 1, Figur 1, Figur 2,
- * the disposable income chart, Table 2.
+ * the disposable income chart, the tax-per-year chart, Table 2. The last of
+ * those is not a workbook figure -- see `renderTaxChart`'s own comment.
  */
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
-import { renderDisposable, renderFigure1, renderFigure2 } from "./chart.js";
+import { renderDisposable, renderFigure1, renderFigure2, renderTaxChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
 import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
@@ -243,6 +244,7 @@ function render(): void {
     renderFigure1(result, figures),
     renderFigure2(result, figures),
     renderDisposable(result, figures),
+    renderTaxChart(result, figures),
     section(table2Title, wrapScroll(renderTable2(result, lang)), table2Actions),
   );
 

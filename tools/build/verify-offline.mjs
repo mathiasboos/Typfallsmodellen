@@ -209,7 +209,7 @@ console.log(`rows in Table 2 : ${table2Rows}`);
 console.log(`figures         : ${figures}`);
 console.log(`columns in Fig 2: ${stacked}`);
 if (table2Rows === 0) problems.push("Table 2 is empty");
-if (figures !== 3) problems.push(`${figures} figures rendered, expected 3`);
+if (figures !== 4) problems.push(`${figures} figures rendered, expected 4`);
 if (stacked !== WINDOW) problems.push(`Figur 2 has ${stacked} columns, expected ${WINDOW}`);
 
 // The default typfall has no occupational pension (scheme 1, "Saknar
@@ -240,6 +240,67 @@ if (table2Headers.some((text) => text.includes("Privat pensionssparande") || tex
 }
 if (!table2Headers.some((text) => text === "Lön" || text === "Earnings")) {
   problems.push("Table 2 is missing Lön, which is never zero before retirement");
+}
+if (!table2Headers.some((text) => text === "Kommunal skatt" || text === "Municipal tax")) {
+  problems.push("Table 2 is missing the municipal-tax column");
+}
+if (!table2Headers.some((text) => text === "Statlig skatt" || text === "State tax")) {
+  problems.push("Table 2 is missing the state-tax column");
+}
+
+/** One cell of Table 2, found by row and column position -- Table 2's cells
+ * carry no `data-key`/`data-col` the way Table 1's do, so position is all
+ * there is; the header row just found gives the column indices. */
+async function table2Cell(rowIndex, colIndex) {
+  const text = await tab
+    .locator(".table2 tbody tr")
+    .nth(rowIndex)
+    .locator("td")
+    .nth(colIndex)
+    .textContent();
+  if (text === null) return Number.NaN;
+  return Number(text.replace(/[^\d,-]/g, "").replace(",", "."));
+}
+
+// The split must reconcile with the gross/net columns Table 2 already shows --
+// checked against the page's own numbers, not a second fixture value, since
+// the fixture's sparse rows don't carry this split (see result.test.ts for the
+// engine-side version of the same check, against every row).
+const grossCol = table2Headers.findIndex((text) => text === "Inkomst brutto" || text === "Gross income");
+const municipalCol = table2Headers.findIndex((text) => text === "Kommunal skatt" || text === "Municipal tax");
+const stateCol = table2Headers.findIndex((text) => text === "Statlig skatt" || text === "State tax");
+const netCol = table2Headers.findIndex((text) => text === "Inkomst efter skatt" || text === "Income after tax");
+if (grossCol >= 0 && municipalCol >= 0 && stateCol >= 0 && netCol >= 0 && table2Rows > 0) {
+  const sampleRows = [...new Set([0, Math.floor(table2Rows / 2), table2Rows - 1])];
+  for (const rowIndex of sampleRows) {
+    const gross = await table2Cell(rowIndex, grossCol);
+    const municipal = await table2Cell(rowIndex, municipalCol);
+    const state = await table2Cell(rowIndex, stateCol);
+    const net = await table2Cell(rowIndex, netCol);
+    if (Math.abs(municipal + state - (gross - net)) > 1) {
+      problems.push(
+        `Table 2 row ${rowIndex}: municipal (${municipal}) + state (${state}) tax ` +
+          `does not reconcile with gross (${gross}) - net (${net})`,
+      );
+    }
+  }
+}
+
+// The tax-per-year chart: two series (municipal, state), always both visible
+// for this typfall, and the same age window Figur 2 covers.
+const taxChartLegend = await tab.locator("figure.figure").nth(3).locator(".legend li").allTextContents();
+console.log(`Tax chart legend: ${taxChartLegend.join(" | ")}`);
+if (taxChartLegend.length !== 2) {
+  problems.push(`Tax-per-year chart shows ${taxChartLegend.length} legend entries, expected 2`);
+}
+const taxChartColumns = await tab
+  .locator("figure.figure")
+  .nth(3)
+  .locator("svg rect.bar")
+  .evaluateAll((nodes) => new Set(nodes.map((node) => node.getAttribute("x"))).size);
+console.log(`columns in tax chart: ${taxChartColumns}`);
+if (taxChartColumns !== WINDOW) {
+  problems.push(`Tax-per-year chart has ${taxChartColumns} columns, expected ${WINDOW}`);
 }
 
 if (shots) {

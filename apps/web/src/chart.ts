@@ -21,6 +21,12 @@
  * port returns as `result.rows` -- including columns 16 and 17, the price and
  * wage-level factors, which exist so Figur 1's three series can be derived from
  * a single run.
+ *
+ * `renderTaxChart` below is not one of these three: it is not a workbook
+ * chart at all, the same kind of addition the KPI cards are. It reads columns
+ * 18 and 19, municipal and state tax, which this port itself splits out of
+ * `netto` (see `MvaluesRow.municipalTax`/`stateTax`) since the workbook
+ * computes and discards that split rather than ever showing it.
  */
 import type { MvaluesRow, TypfallResult } from "@typfallsmodellen/engine";
 
@@ -668,6 +674,71 @@ export function renderDisposable(result: TypfallResult, view: FigureView): HTMLE
     figure,
     rows.map((row, i) => ({ x: centre(i), heading: `${t("age", lang)} ${row.age} · ${row.year}`, row })),
     series,
+    lang,
+  );
+  return figure;
+}
+
+/**
+ * "Skatt per år" / "Tax per year": not a workbook figure -- see the header
+ * comment above. Kommunal and statlig skatt are computed the same way for
+ * every age, working or retired, so unlike a payslip-style breakdown that
+ * separates salary withholding from pension withholding, this shows the true
+ * two-part split across the whole window rather than inventing a third,
+ * merged category for the working years the engine doesn't actually have.
+ */
+export function renderTaxChart(result: TypfallResult, view: FigureView): HTMLElement {
+  const { lang } = view;
+  const per = scale(view);
+  const rows = aroundRetirement(result, view.par);
+
+  const bands: readonly Series[] = [
+    {
+      key: "municipal-tax",
+      name: (l) => (l === "sv" ? "Kommunal skatt" : "Municipal tax"),
+      colour: "--fig-municipal-tax",
+      mark: "fill",
+      get: (r) => r.municipalTax / per,
+    },
+    {
+      key: "state-tax",
+      name: (l) => (l === "sv" ? "Statlig skatt" : "State tax"),
+      colour: "--fig-state-tax",
+      mark: "fill",
+      get: (r) => r.stateTax / per,
+    },
+  ];
+
+  // No "(SEK)" suffix, matching every other figure here -- the kronor-
+  // formatted y-axis ticks already say what unit this is.
+  const title = lang === "sv" ? "Skatt per år" : "Tax per year";
+  const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
+  const note =
+    lang === "sv"
+      ? "Statlig skatt inkluderar public service-avgiften och eventuell kapitalskatt."
+      : "State tax includes the public-service fee and any capital-gains tax.";
+
+  const svg = newSvg(title);
+  const { centre, width, step } = columns(rows.length);
+  const max = Math.max(
+    ...rows.map((row) => bands.reduce((sum, s) => sum + Math.max(s.get(row), 0), 0)),
+    1,
+  );
+  const axis = vertical(max);
+  const y = axis.y;
+
+  gridlines(svg, axis, lang);
+  shadeRetirement(svg, retirementEdge(rows, view.par, centre, step));
+  stack(svg, rows, bands, y, centre, width);
+  ageTicks(svg, rows, centre);
+
+  const legendSeries = visibleSeries(rows, bands);
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang), [note]);
+  hover(
+    svg,
+    figure,
+    rows.map((row, i) => ({ x: centre(i), heading: `${t("age", lang)} ${row.age} · ${row.year}`, row })),
+    bands,
     lang,
   );
   return figure;

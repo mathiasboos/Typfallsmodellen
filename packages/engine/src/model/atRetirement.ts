@@ -54,7 +54,13 @@ function utgYear(year: number, rulesFromUtg: number): number {
 }
 
 /** Tax on the pension at the retirement age (VBA_go.bas 2607-2666). */
-function taxAtRetirement(run: Run): { netto: number; grundavdrag: number; kapskatt: number } {
+function taxAtRetirement(run: Run): {
+  netto: number;
+  grundavdrag: number;
+  kapskatt: number;
+  municipalTax: number;
+  stateTax: number;
+} {
   const { v, s, p, context } = run;
   const par = vbaInt(p.par);
   const year = v.year.get(par);
@@ -124,12 +130,16 @@ function taxAtRetirement(run: Run): { netto: number; grundavdrag: number; kapska
 
   // NOTE: `kapital` is added to the gross here but `SAavdrag` is not subtracted
   // from the tax, though it was in the loop. Kept as written.
-  const netto =
-    s.brutto.get(par) +
-    context.kapital -
-    wsMax(kinkskatt + kyrkskatt + statskatt + pensionavgift - pensredukt - jobbavdrag - faavdrag, 0);
+  const tax = wsMax(kinkskatt + kyrkskatt + statskatt + pensionavgift - pensredukt - jobbavdrag - faavdrag, 0);
+  const netto = s.brutto.get(par) + context.kapital - tax;
 
-  return { netto, grundavdrag, kapskatt };
+  // Same split as the loop's own `taxes()` -- see the comment there. Needed
+  // here too so the retirement-transition row's municipal/state figures stay
+  // consistent with the `netto`/`brutto` this recomputation also overwrites.
+  const stateTax = statskatt;
+  const municipalTax = tax - stateTax;
+
+  return { netto, grundavdrag, kapskatt, municipalTax, stateTax };
 }
 
 /** Housing supplement and aldreforsorjningsstod at retirement (VBA_go.bas 2684-2752). */
@@ -270,8 +280,10 @@ export function recomputeAtRetirement(run: Run): AtRetirement {
   const { s, p } = run;
   const par = vbaInt(p.par);
 
-  const { netto, grundavdrag, kapskatt } = taxAtRetirement(run);
+  const { netto, grundavdrag, kapskatt, municipalTax, stateTax } = taxAtRetirement(run);
   s.netto.set(par, netto);
+  s.municipalTax.set(par, municipalTax);
+  s.stateTax.set(par, stateTax);
 
   const { bidrag, bidragovr } = benefitsAtRetirement(run, grundavdrag, kapskatt);
   s.bidrag.set(par, bidrag);

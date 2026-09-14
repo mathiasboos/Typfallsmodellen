@@ -71,6 +71,10 @@ export interface Table2Row {
   /** Garantipension and inkomstpensionstillägg together. */
   readonly guaranteeAndSupplement: number;
   readonly gross: number;
+  /** Kommunal inkomstskatt and kyrkoskatt, net of the credits capped against it. */
+  readonly municipalTax: number;
+  /** Statlig inkomstskatt, the public-service fee, and any capital-gains tax. */
+  readonly stateTax: number;
   readonly net: number;
   readonly benefits: number;
   /** Private saving paid out of an ISK or KF, which is not taxed as income. */
@@ -429,6 +433,8 @@ export function buildTable2(run: Run): Table2Row[] {
       occupationalAndPrivate: (row.tjp + row.ips) / delat,
       guaranteeAndSupplement: (row.garp + row.ptillagg) / delat,
       gross: row.brutto / delat,
+      municipalTax: row.municipalTax / delat,
+      stateTax: row.stateTax / delat,
       net: row.netto / delat,
       benefits: row.bidrag / delat,
       privateAfterTax: row.pps / delat,
