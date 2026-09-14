@@ -434,6 +434,69 @@ await tab.locator('[data-action="reset-advanced"]').click();
 await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
 await tab.waitForTimeout(50);
 
+// ---- Provenance and paper ------------------------------------------------
+//
+// The page computes a pension forecast and looks authoritative, so it has to
+// say whose model it is; and people print a forecast to take to a meeting, so
+// paper is a real output rather than an afterthought.
+
+const notice = tab.locator('[data-role="disclaimer"]');
+const noticeText = (await notice.count()) > 0 ? ((await notice.textContent()) ?? "") : "";
+if (!/inofficiell|unofficial/i.test(noticeText)) {
+  problems.push("the page does not say it is an unofficial version");
+}
+if (!noticeText.includes("Pensionsmyndigheten")) {
+  problems.push("the disclaimer does not name Pensionsmyndigheten");
+}
+if (!noticeText.includes("typfallsmodellen@pensionsmyndigheten.se")) {
+  problems.push("the disclaimer does not give the agency's address for model questions");
+}
+
+const closedOnScreen = await tab.locator("details:not([open])").count();
+await tab.emulateMedia({ media: "print" });
+await tab.waitForTimeout(120);
+
+/** One computed style under the print stylesheet. */
+async function printed(selector, property) {
+  const target = tab.locator(selector).first();
+  if ((await target.count()) === 0) return undefined;
+  return target.evaluate((node, p) => getComputedStyle(node)[p], property);
+}
+
+for (const [label, selector, property, want] of [
+  ["the language chips", ".langs", "display", "none"],
+  ["the mode toggle", ".mode-row", "display", "none"],
+  ["the CSV button", ".export-btn", "display", "none"],
+  ["the disclaimer", '[data-role="disclaimer"]', "display", "block"],
+  ["the table scroller", ".scroll", "overflowX", "visible"],
+  ["the input column", ".input-column", "position", "static"],
+  // A dark-theme page would otherwise print as a black rectangle.
+  ["the page ground", "body", "backgroundColor", "rgb(255, 255, 255)"],
+]) {
+  const got = await printed(selector, property);
+  if (got !== want) problems.push(`in print, ${label} has ${property} ${got}, expected ${want}`);
+}
+
+// Every disclosure opens for print -- a collapsed <details> on paper withholds
+// what it covers from a reader who cannot click it. CSS cannot do this, so the
+// check is that the box actually lays out, not merely that `display` computes.
+const closedInPrint = await tab.locator("details:not([open])").count();
+if (closedInPrint !== 0) {
+  problems.push(`${closedInPrint} disclosure(s) would print collapsed`);
+}
+const disclosureBox = await tab.locator(".field-note-body").first().boundingBox();
+if (!disclosureBox || disclosureBox.height === 0) {
+  problems.push("a disclosure's body lays out zero-height under print");
+}
+console.log(`print           : ${closedOnScreen} disclosures opened, controls hidden, light ground`);
+
+await tab.emulateMedia({ media: "screen" });
+await tab.waitForTimeout(120);
+const closedAfter = await tab.locator("details:not([open])").count();
+if (closedAfter !== closedOnScreen) {
+  problems.push(`printing left ${closedAfter} disclosures closed, expected ${closedOnScreen} as before`);
+}
+
 if (shots) {
   mkdirSync(shots, { recursive: true });
   await tab.screenshot({ path: join(shots, "sv.png"), fullPage: true });

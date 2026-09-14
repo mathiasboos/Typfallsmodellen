@@ -177,6 +177,8 @@ function renderHeading(): void {
       ? `Alla beräkningar sker i din webbläsare; ingenting skickas någonstans.`
       : `Everything is computed in your browser; nothing is sent anywhere.`;
 
+  const notice = disclaimer(view.lang);
+
   const langs = document.createElement("div");
   langs.className = "langs";
   langs.setAttribute("role", "group");
@@ -197,7 +199,45 @@ function renderHeading(): void {
     langs.append(button);
   }
 
-  header.replaceChildren(title, sub, langs);
+  header.replaceChildren(title, sub, notice, langs);
+}
+
+/**
+ * That this is not Pensionsmyndigheten's own tool, on the page rather than only
+ * in the README.
+ *
+ * The site computes a pension forecast and looks like it knows what it is
+ * talking about, which is exactly why it has to say whose model it is and what
+ * a forecast is worth. The agency's own address is here because a question
+ * about the model belongs with the people who wrote it, not with this port.
+ */
+function disclaimer(l: Lang): HTMLElement {
+  const box = document.createElement("aside");
+  box.className = "disclaimer";
+  box.dataset.role = "disclaimer";
+
+  const strong = document.createElement("strong");
+  strong.textContent = l === "sv" ? "Inofficiell version." : "Unofficial version.";
+
+  const rest = document.createElement("span");
+  rest.textContent =
+    l === "sv"
+      ? " Den här sidan är inte utvecklad av, kopplad till eller godkänd av " +
+        "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. " +
+        "Resultatet är en prognos under de antaganden du anger – inte ett besked om din " +
+        "pension. Frågor om själva modellen går till "
+      : " This page is not built by, affiliated with or endorsed by Pensionsmyndigheten, " +
+        "the Swedish Pensions Agency. The model, its data and its user manual are theirs. " +
+        "What it shows is a forecast under the assumptions you enter – not a statement " +
+        "about your pension. Questions about the model itself go to ";
+
+  const mail = document.createElement("a");
+  mail.href = "mailto:typfallsmodellen@pensionsmyndigheten.se";
+  mail.textContent = "typfallsmodellen@pensionsmyndigheten.se";
+
+  const stop = document.createTextNode(".");
+  box.append(strong, rest, mail, stop);
+  return box;
 }
 
 /**
@@ -379,6 +419,40 @@ function wrapScroll(table: HTMLElement): HTMLElement {
 const inputs = document.createElement("div");
 inputs.className = "input-column";
 inputs.append(modeBox, form.element, advancedBox);
+
+/**
+ * Print every disclosure open, and put them back afterwards.
+ *
+ * On paper a collapsed `<details>` is a heading that withholds what it covers:
+ * the price assumptions, the advanced settings the figures were computed
+ * under, the salary path that was typed. The reader cannot click it.
+ *
+ * This is script rather than a print rule because CSS cannot reach it -- a
+ * closed `<details>` hides its content through an internal slot, so
+ * `display: block` on the child computes correctly and still lays out a
+ * zero-height box. Firefox and Chromium fire `beforeprint`/`afterprint`;
+ * Safari only changes the `print` media query, so both are wired.
+ */
+function openForPrint(): void {
+  let reclose: HTMLDetailsElement[] = [];
+
+  const open = () => {
+    reclose = [...document.querySelectorAll("details")].filter((d) => !d.open);
+    for (const d of reclose) d.open = true;
+  };
+  const restore = () => {
+    for (const d of reclose) d.open = false;
+    reclose = [];
+  };
+
+  window.addEventListener("beforeprint", open);
+  window.addEventListener("afterprint", restore);
+
+  const printing = window.matchMedia("print");
+  printing.addEventListener("change", (e) => (e.matches ? open() : restore()));
+}
+
+openForPrint();
 
 const layout = document.createElement("div");
 layout.className = "layout";

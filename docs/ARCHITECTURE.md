@@ -212,6 +212,31 @@ the form says. The month/year switch is `rng_Chart_Earning_factor` on the `Model
 than a division in the view, since `buildTable2` already divides by it — the same rule as
 everywhere else here: where the workbook has an opinion, the port does not add a second one.
 
+### Saying whose model it is
+
+The page carries an `Inofficiell version` notice under its subtitle, in both languages, naming
+Pensionsmyndigheten as the model's owner and giving their address for questions about it. This is
+not decoration: the site computes a pension forecast and looks like it knows what it is talking
+about, and it is published at a URL anyone can reach. The notice also says what the output is — a
+forecast under the assumptions entered, not a statement about anyone's pension. It is styled in the
+beige surface rather than the red `.warnings` box on purpose; dressing it as an error would teach
+people to dismiss it.
+
+### Print
+
+People take a pension forecast to a meeting, so paper is a real output. The print rules force a
+light ground whatever the screen theme is (a dark page would otherwise print as a black rectangle),
+collapse the layout to one column, and drop the controls that only work on a screen — the language
+chips, the mode toggle, the CSV buttons, the year/month switch.
+
+Every `<details>` prints open, because a collapsed disclosure on paper is a heading that withholds
+what it covers from a reader who cannot click it. That part is script, not CSS: a closed `<details>`
+hides its content through an internal slot that `display: block` on the child does not reach, so the
+rule computes correctly and still lays out a zero-height box. `openForPrint` in main.ts opens them
+on `beforeprint` and re-closes them on `afterprint`, with a `matchMedia("print")` listener beside it
+for Safari, which fires neither. The offline check asserts the laid-out height rather than the
+computed `display`, which is what caught the difference.
+
 ### Normalt and Avancerat
 
 The page keeps the workbook's two modes, chosen by the toggle above the input panel. The state is

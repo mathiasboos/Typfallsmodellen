@@ -1,5 +1,7 @@
 # Typfallsmodellen på webben
 
+[![CI](https://github.com/mathiasboos/Typfallsmodellen/actions/workflows/ci.yml/badge.svg)](https://github.com/mathiasboos/Typfallsmodellen/actions/workflows/ci.yml)
+
 A web version of Pensionsmyndigheten's **Typfallsmodellen** — the model that computes the full
 Swedish pension outcome for a hypothetical individual (a *typfall*): inkomstpension,
 premiepension, tilläggspension, garantipension, inkomstpensionstillägg, occupational pension
@@ -36,7 +38,11 @@ npm install
 npm run build -w @typfallsmodellen/web
 ```
 
-That writes **`apps/web/dist/typfallsmodellen.html`** — one self-contained file, about 800 kB.
+That writes **`apps/web/dist/typfallsmodellen.html`** — one self-contained file, about 850 kB.
+The same file is published two ways: at
+[mathiasboos.github.io/Typfallsmodellen](https://mathiasboos.github.io/Typfallsmodellen), and as an
+asset on each [release](https://github.com/mathiasboos/Typfallsmodellen/releases), which is how the
+original is distributed — something you save and keep.
 Open it in any browser: double-click it, email it, put it on a stick. No installation, no server,
 no network. Everything is computed in the browser and nothing is sent anywhere, which is not a
 privacy claim to take on trust — `npm run verify:offline` opens the built file in Chromium with
@@ -54,7 +60,7 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | 2. Golden-file harness vs. Excel | done | 299 typfall out of the real model, twelve output columns, every cell exact — `npm run compare` |
 | 3. Normal-mode website | done | the Start sheet: eight typed input cells, Table 1's four columns, Table 2, Figur 1, Figur 2 and the disposable income chart, Swedish and English — one offline HTML file |
 | 4. Advanced mode | done | the workbook's second mode: twenty-five of the `Adv_settings` in the manual's own groups, and the Indata_lista wage vector as an editable grid |
-| 5. Polish, CI, deploy | next | |
+| 5. Polish, CI, deploy | done | every check above runs on each push; the site publishes to GitHub Pages and each tag attaches the file to a release |
 
 ### Verified so far
 
@@ -94,6 +100,28 @@ the report.
 `reference/fixtures/default-run.json` holds the engine's own output for the shipped typfall. It is
 a regression snapshot, not a check against the workbook: it makes an unintended change to any rule
 show up as a diff.
+
+## Continuous integration and publishing
+
+`.github/workflows/ci.yml` runs everything the tables above claim — typecheck, the 566 unit and
+property tests, the four re-derivation checks, the golden file against Excel, the build, and the
+offline check in a real Chromium — on every push and pull request. The claims are the point of this
+repository, and a claim nothing re-runs is a claim about the day someone last ran it by hand. The
+whole run is a couple of minutes, so nothing is held back for a nightly job.
+
+The four `check:*` scripts are pure-stdlib Python, so the runner's own interpreter is enough. Only
+the full extraction needs `pyxlsb` and LibreOffice, and that is a once-a-year job run by hand.
+Playwright is installed for the offline step alone rather than declared as a dependency — the same
+thing the instructions above tell a human to do.
+
+`.github/workflows/deploy.yml` builds from source, re-runs the offline check, and then publishes:
+GitHub Pages from `main`, and a release asset on a `v*` tag. Publishing a page that reaches for the
+network is the one thing this project must never do, so the check runs again on the way out rather
+than trusting the artifact.
+
+> Two settings have no API and were done by hand: **Settings → Pages → Source** set to *GitHub
+> Actions*, and the repository's default branch. Deploy fails at the `pages` job until the first is
+> set.
 
 ## Regenerating the data
 
