@@ -114,6 +114,11 @@ export const L = {
   // Årslön field and its `rng_Riktålder` checkbox one-for-one.
   monthlySalary: "435", // Månadslön
   riktalderCheckbox: "chkRecPensAge", // Riktålder (a control caption, not a SysLang row)
+
+  // The Table 2 scale toggle, moved into its header on request. Distinct rows
+  // from `perMonth` (45, "Per månad"), which still heads Table 1's column C.
+  yearlyView: "464", //     Årsvis
+  monthlyView: "463", //    Månadsvis
 } as const;
 
 export type LabelName = keyof typeof L;

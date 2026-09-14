@@ -131,8 +131,7 @@ body {
 .masthead h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.01em; }
 .subtitle { margin: 6px 0 12px; color: var(--text-secondary); max-width: 62ch; }
 
-.langs, .toggle { display: flex; gap: 6px; flex-wrap: wrap; }
-.toggle { margin-bottom: 4px; }
+.langs { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .chip {
   font: inherit;
@@ -187,7 +186,12 @@ body {
   gap: 8px;
   flex-wrap: wrap;
 }
-.export-btn {
+/* Shared by the CSV export button and Table 2's Årsvis/Månadsvis toggle --
+   both live in a gold header, so they read against `currentColor` (black)
+   rather than the page's own button tokens. */
+.panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-toggle { display: flex; gap: 6px; }
+.panel-btn, .export-btn {
   font: inherit;
   font-size: 0.75rem;
   font-weight: 600;
@@ -199,7 +203,15 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
-.export-btn:hover { background: rgb(0 0 0 / 10%); }
+.panel-btn:hover, .export-btn:hover { background: rgb(0 0 0 / 10%); }
+/* The selected scale reads as a filled pill, inverting the banner's own
+   black-on-gold rather than reaching for the page's green accent, which
+   would not read against gold. */
+.panel-btn.active {
+  background: var(--banner-ink);
+  color: var(--banner);
+  border-color: var(--banner-ink);
+}
 
 .results { display: grid; gap: 20px; min-width: 0; }
 /* A grid item's automatic minimum is its content, so without this a wide table

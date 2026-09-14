@@ -1,10 +1,11 @@
 /**
  * Table 1 and Table 2, as the Start sheet lays them out.
  *
- * Table 1 is the summary at retirement: four columns per line, A) to D), with
- * the sheet's own row order. Every heading, row label and footnote below is
+ * Table 1 is the summary at retirement: four columns per line, with the
+ * sheet's own row order. Every heading, row label and footnote below is
  * cell-for-cell what the Start sheet composes -- `A23` is the corner cell,
- * `C23:F23` the four column heads, `A24:A45` the rows, `A37`, `A38` and `F37`
+ * `C23:F23` the four column heads (the sheet leads each with a letter, A) to
+ * D), dropped here on request), `A24:A45` the rows, `A37`, `A38` and `F37`
  * the notes underneath -- read out of the workbook with the formula reader in
  * tools/extract/formulas.py.
  *
@@ -62,34 +63,35 @@ const TABLE1_LINES: readonly Line[] = [
   { kind: "row", key: Table1Key.DisposableAtRetirement, label: "disposable", strong: true },
 ];
 
-/** The four columns, as `C23:F23` composes their headings. */
+/**
+ * The four columns, as `C23:F23` composes their headings.
+ *
+ * The sheet leads each with a letter -- "A) Löpande priser, kronor" -- which
+ * is dropped here on request; `name` is what still identifies a column
+ * (`data-col`, and the CSV export's own header) now that the letter doesn't.
+ */
 const TABLE1_COLUMNS: readonly {
   readonly name: string;
-  readonly letter: string;
   readonly head: (lang: Lang) => string;
   readonly text: (row: Table1Row, lang: Lang) => string;
 }[] = [
   {
     name: "nominal",
-    letter: "A",
     head: (l) => t("currentPricesKronor", l),
     text: (r, l) => kronor(r.nominal, l),
   },
   {
     name: "adjusted",
-    letter: "B",
     head: (l) => `${t("fixedPrices", l)}, ${t("kronor", l)}`,
     text: (r, l) => kronor(r.adjusted, l),
   },
   {
     name: "monthly",
-    letter: "C",
     head: (l) => `${t("perMonth", l)}, ${t("kronor", l)}`,
     text: (r, l) => kronor(r.monthly, l),
   },
   {
     name: "share",
-    letter: "D",
     head: (l) => t("shareOfFinalSalaryShort", l),
     text: (r, l) => percent(r.shareOfFinalSalary, l),
   },
@@ -141,7 +143,7 @@ export function renderTable1(
   head.append(
     headCell(`${t("pensionWord", lang)} ${t("at", lang)} ${view.par} ${t("yearsAge", lang)}`),
   );
-  for (const column of TABLE1_COLUMNS) head.append(headCell(`${column.letter}) ${column.head(lang)}`));
+  for (const column of TABLE1_COLUMNS) head.append(headCell(column.head(lang)));
 
   const body = table.createTBody();
   for (const line of TABLE1_LINES) {
@@ -286,7 +288,7 @@ export function table1ToCsv(result: TypfallResult, lang: Lang, view: Table1View)
     csvLine(
       [
         `${t("pensionWord", lang)} ${t("at", lang)} ${view.par} ${t("yearsAge", lang)}`,
-        ...TABLE1_COLUMNS.map((c) => `${c.letter}) ${c.head(lang)}`),
+        ...TABLE1_COLUMNS.map((c) => c.head(lang)),
       ],
       delimiter,
     ),

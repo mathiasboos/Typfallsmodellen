@@ -17,7 +17,7 @@ import type { FigureView } from "./chart.js";
 import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
-import type { Lang } from "./i18n.js";
+import type { Lang, LabelName } from "./i18n.js";
 import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
 import type { Table1View } from "./tables.js";
 import "./styles.css";
@@ -103,21 +103,28 @@ function renderHeading(): void {
   header.replaceChildren(title, sub, langs);
 }
 
-function scaleSwitch(): HTMLElement {
+/**
+ * Årsvis / Månadsvis -- Table 2 and the three figures' month/year scale.
+ *
+ * Moved into Table 2's own header on request, in place of a standalone toggle
+ * that used to sit above Table 1 and no longer relates to anything there
+ * (Table 1 shows all four of the sheet's columns at once, its own scale).
+ */
+function scaleToggle(): HTMLElement {
   const box = document.createElement("div");
-  box.className = "toggle";
+  box.className = "panel-toggle";
   box.setAttribute("role", "group");
   box.setAttribute("aria-label", t("show", view.lang));
 
-  const choices: readonly { monthly: boolean; text: string }[] = [
-    { monthly: true, text: t("perMonth", view.lang) },
-    { monthly: false, text: `${t("kronor", view.lang)} / ${t("years", view.lang)}` },
+  const choices: readonly { monthly: boolean; label: LabelName }[] = [
+    { monthly: false, label: "yearlyView" },
+    { monthly: true, label: "monthlyView" },
   ];
   for (const choice of choices) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = choice.text;
-    button.className = choice.monthly === view.monthly ? "chip active" : "chip";
+    button.textContent = t(choice.label, view.lang);
+    button.className = choice.monthly === view.monthly ? "panel-btn active" : "panel-btn";
     button.addEventListener("click", () => {
       view = { ...view, monthly: choice.monthly };
       render();
@@ -214,8 +221,16 @@ function render(): void {
     lastPensionRight: context.lastPensionRight > 0,
   };
 
+  const table2Actions = document.createElement("div");
+  table2Actions.className = "panel-actions";
+  table2Actions.append(
+    scaleToggle(),
+    exportButton(lang, lang === "sv" ? "tabell2.csv" : "table2.csv", () =>
+      table2ToCsv(result, lang),
+    ),
+  );
+
   results.append(
-    scaleSwitch(),
     section(
       table1Title,
       wrapScroll(renderTable1(result, lang, table1View)),
@@ -226,13 +241,7 @@ function render(): void {
     renderFigure1(result, figures),
     renderFigure2(result, figures),
     renderDisposable(result, figures),
-    section(
-      table2Title,
-      wrapScroll(renderTable2(result, lang)),
-      exportButton(lang, lang === "sv" ? "tabell2.csv" : "table2.csv", () =>
-        table2ToCsv(result, lang),
-      ),
-    ),
+    section(table2Title, wrapScroll(renderTable2(result, lang)), table2Actions),
   );
 
   const foot = document.createElement("p");
