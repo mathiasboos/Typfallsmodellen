@@ -128,12 +128,27 @@ where they come from, which is what keeps it free of a runtime.
 The figures are inline SVG.
 
 It renders the Start sheet as the sheet lays it out: seven cells you type numbers into, a
-riktålder checkbox, Table 1 with the four columns `C23:F23` heads — A) löpande priser, B) fasta
-priser, C) per månad, D) som andel av slutlön — its rows in `A24:A45`'s order and its two notes
-under the gross total, then Figur 1, Figur 2 and the disposable income chart, then Table 2. Every
-heading, row label, legend entry and footnote is a `SysLang` row the workbook itself looks up for
-that cell, so a year that renumbers the sheet is caught by `checkLabels` rather than silently
-relabelling the page.
+riktålder checkbox, Table 1 with the four columns `C23:F23` heads — löpande priser, fasta priser,
+per månad, som andel av slutlön; the sheet leads each with a letter, A) to D), dropped here on
+request — its rows in `A24:A45`'s order and its two notes under the gross total, then Figur 1,
+Figur 2 and the disposable income chart, then Table 2. Every heading, row label, legend entry and
+footnote is a `SysLang` row the workbook itself looks up for that cell, so a year that renumbers
+the sheet is caught by `checkLabels` rather than silently relabelling the page.
+
+**Three KPI cards sit above Table 1**, none of them a workbook feature: pension at retirement,
+replacement rate at retirement, and the average pension over the years it's expected to be paid
+(`apps/web/src/kpis.ts`). Every value is a number Table 1 or the per-age matrix already computes,
+not a second calculation — the first two read `Table1Key.TotalGross`'s own `monthly` and
+`shareOfFinalSalary` fields outright, deliberately *not* re-derived from `result.rows` at the
+retirement age, which disagrees with Table 1's figure (`closeRetirementYear` rebuilds the
+retirement year's gross for Table 1 after that age's row has already been written to `rows`). The
+third averages `rows[i].brutto` over whole ages from retirement to `lifeIncome.throughAge` — the
+same span `lifeIncome` sums over, but as a plain mean rather than a sum discounted at
+`context.discountRate`, which would answer a different question. `computeKpis` is kept separate
+from the DOM-building `renderKpis` specifically so this arithmetic has a unit test
+(`apps/web/test/kpis.test.ts`) despite `apps/web` having no DOM in its test environment; the
+rendered cards themselves are checked, like every other rendering function here, against the real
+built page by `verify:offline`.
 
 Two of the form's fields are not the Start sheet's own, chosen this way on request rather than by
 following `mdlIndataInputOutput.bas` one-for-one:

@@ -18,6 +18,7 @@ import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
+import { renderKpis } from "./kpis.js";
 import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
 import type { Table1View } from "./tables.js";
 import "./styles.css";
@@ -215,6 +216,7 @@ function render(): void {
   results.replaceChildren();
   const warned = warnings(result);
   if (warned) results.append(warned);
+  results.append(renderKpis(result, lang, par));
   const table1View: Table1View = {
     par,
     finalSalaryYears: context.finalSalaryYears,

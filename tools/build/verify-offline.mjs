@@ -150,6 +150,51 @@ for (const { key, want } of expected) {
   );
 }
 
+/**
+ * The three KPI cards above Table 1.
+ *
+ * The first two read straight off the same `totBrutto` row Table 1 was just
+ * checked against, so they are checked exactly, against `expected`'s own
+ * rounding rather than re-deriving it. The third averages over the whole
+ * retirement span, which this fixture only samples every few years (no
+ * `throughAge` in it at all, in fact) -- there is no cheap exact figure to
+ * check it against here, so it gets a sanity range instead: finite, positive,
+ * and not wildly off the retirement-year figure beside it.
+ */
+async function kpiValue(index) {
+  const text = await tab.locator(".kpi-card").nth(index).locator(".kpi-value").textContent();
+  if (text === null) return Number.NaN;
+  return Number(text.replace(/[^\d,-]/g, "").replace(",", "."));
+}
+
+const kpiCards = await tab.locator(".kpi-card").count();
+console.log(`KPI cards       : ${kpiCards}`);
+if (kpiCards !== 3) problems.push(`${kpiCards} KPI cards rendered, expected 3`);
+
+if (kpiCards === 3) {
+  const totBruttoWant = expected.find((e) => e.key === "totBrutto")?.want;
+  const [, , wantMonthly, wantShare] = totBruttoWant ?? [];
+
+  const gotMonthly = await kpiValue(0);
+  const gotShare = await kpiValue(1);
+  const gotAverage = await kpiValue(2);
+  console.log(`KPI 1 pension at retirement : ${gotMonthly}`);
+  console.log(`KPI 2 replacement rate      : ${gotShare}%`);
+  console.log(`KPI 3 average through retirement: ${gotAverage}`);
+
+  if (gotMonthly !== wantMonthly) {
+    problems.push(`KPI "pension at retirement": the page shows ${gotMonthly}, the engine says ${wantMonthly}`);
+  }
+  if (gotShare !== wantShare) {
+    problems.push(`KPI "replacement rate": the page shows ${gotShare}%, the engine says ${wantShare}%`);
+  }
+  if (!(gotAverage > 0 && gotAverage < wantMonthly * 2)) {
+    problems.push(
+      `KPI "average pension": ${gotAverage} is outside the sane range (0, ${wantMonthly * 2})`,
+    );
+  }
+}
+
 const table2Rows = await tab.locator(".table2 tbody tr").count();
 const figures = await tab.locator("figure.figure").count();
 // Figur 2 is the second figure; its stack must cover the whole `A2:A22` window,

@@ -57,6 +57,7 @@ export const L = {
   totalGross: "34", //      Total pension brutto
   totalPublic: "35", //     Total allmän pension
   kronor: "37", //          kronor
+  kr: "476", //             kr
   show: "38", //            Visa
   years: "39", //           år
   occupationalShort: "40", // Tjänstepension

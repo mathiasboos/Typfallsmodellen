@@ -218,6 +218,39 @@ body {
    or a figure widens the whole page instead of scrolling inside its own box. */
 .results > * { min-width: 0; }
 
+/* The three headline figures above Table 1. One accent stripe marks them as a
+   group rather than colour-coding each by a good/bad judgement none of the
+   three actually has. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.kpi-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.kpi-label {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.kpi-value {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.kpi-note { margin: 0; font-size: 0.78rem; color: var(--text-muted); }
+.kpi-unit { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
+
 /* The input block: a label and the cell you type into, one variable per row. */
 .inputs { display: grid; gap: 10px; position: sticky; top: 16px; }
 @media (max-width: 860px) { .inputs { position: static; } }
