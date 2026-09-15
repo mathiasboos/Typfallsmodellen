@@ -636,10 +636,21 @@ export function createAdvancedPanel(
         field(control.element, label);
         restores.push(() => control.setValue(initial));
       } else if (setting.control.kind === "percent") {
-        const control = percentControl(initial, (v) => {
-          if (setting.key === "begravningsavgift") churchExplicit = true;
-          onChange(setting.set(v));
-        });
+        // These two get three decimal places, not the usual one: both can be
+        // filled from a picked, cited rate (a municipality's own published
+        // rate, Tranås's 0.285%) rather than typed, and the field showing a
+        // coarser number than the one it just picked is exactly the mismatch
+        // an early reviewer caught, comparing this field's "1.3" against its
+        // own hint's "1,32 %" underneath it.
+        const precise = setting.key === "kommunalskatt" || setting.key === "begravningsavgift";
+        const control = percentControl(
+          initial,
+          (v) => {
+            if (setting.key === "begravningsavgift") churchExplicit = true;
+            onChange(setting.set(v));
+          },
+          precise ? { maxDecimals: 3 } : undefined,
+        );
         control.element.dataset.setting = setting.key;
 
         if (setting.key === "kommunalskatt") {

@@ -384,11 +384,20 @@ const kommunSelect = await setting("kommunalskatt-municipality");
 await kommunSelect.selectOption({ label: "Danderyd" });
 await tab.waitForTimeout(50);
 const kommunalskattField = tab.locator('[data-setting="kommunalskatt"]');
-const kommunalskattValue = Number(await kommunalskattField.inputValue());
+const kommunalskattValue = await kommunalskattField.inputValue();
 console.log(`kommun select   : Danderyd -> ${kommunalskattValue}%`);
-// Danderyd's rate is well under the ~32.4% historical average this replaces.
-if (!(kommunalskattValue > 25 && kommunalskattValue < 32)) {
-  problems.push(`picking Danderyd set kommunalskatt to ${kommunalskattValue}%, expected roughly 30.6%`);
+// The exact published rate, read from the same source the app itself reads
+// rather than retyped here -- a field showing a rounder number than the one
+// it was just told to show is exactly the mismatch a reviewer caught between
+// this field and its own hint text underneath it (1.3 next to "~1,32 %").
+const kommunalskattSource = Number(
+  readFileSync(join(repo, "apps/web/src/kommunalskatt.ts"), "utf8").match(/"Danderyd":\s*([\d.]+)/)?.[1],
+);
+if (kommunalskattValue !== String(kommunalskattSource)) {
+  problems.push(
+    `picking Danderyd set kommunalskatt to "${kommunalskattValue}", expected the exact published ` +
+      `rate "${kommunalskattSource}"`,
+  );
 }
 const municipalAfterPick = await table2Cell(table2Rows - 1, municipalCol);
 if (!(municipalAfterPick < municipalBefore)) {
@@ -403,16 +412,23 @@ if (!(municipalAfterPick < municipalBefore)) {
 // should have auto-filled with the burial-only rate instead.
 const begravningsavgiftField = tab.locator('[data-setting="begravningsavgift"]');
 const churchSelect = tab.locator('[data-setting="begravningsavgift-select"]');
-const autoFilled = Number(await begravningsavgiftField.inputValue());
+const autoFilled = await begravningsavgiftField.inputValue();
 const autoChoice = await churchSelect.inputValue();
-console.log(`church/burial   : auto-filled to ${autoFilled}% (${autoChoice}), expected ~${(expectedBurialOnly * 100).toFixed(2)}%`);
-if (autoFilled <= 0) {
+// Exact strings, not a tolerance -- this field carries three decimal places
+// specifically so a picked rate shows exactly, matching the reference figure
+// its own hint text quotes underneath it. A reviewer caught this field
+// showing "1.3" next to a hint reading "~1,32 %"; the fix was giving the
+// field the same precision, and checking the exact string is what would
+// catch a regression back to the coarser one.
+const expectedBurialOnlyStr = String(Math.round(expectedBurialOnly * 100_000) / 1000);
+console.log(`church/burial   : auto-filled to ${autoFilled}% (${autoChoice}), expected ${expectedBurialOnlyStr}%`);
+if (autoFilled === "0") {
   problems.push("picking a municipality left the church/burial field at 0 instead of auto-filling it");
 }
-if (Math.abs(autoFilled / 100 - expectedBurialOnly) > 0.001) {
+if (autoFilled !== expectedBurialOnlyStr) {
   problems.push(
-    `the auto-filled church/burial rate is ${autoFilled}%, expected the burial-only average ` +
-      `${(expectedBurialOnly * 100).toFixed(2)}%`,
+    `the auto-filled church/burial rate is "${autoFilled}", expected the exact burial-only average ` +
+      `"${expectedBurialOnlyStr}"`,
   );
 }
 if (autoChoice !== "rest") {
@@ -424,12 +440,11 @@ if (autoChoice !== "rest") {
 // from the same K_skatt data the app's own module reads.
 await churchSelect.selectOption({ value: "member" });
 await tab.waitForTimeout(50);
-const memberFilled = Number(await begravningsavgiftField.inputValue());
-console.log(`church member   : ${memberFilled}%, expected ~${(expectedChurchMember * 100).toFixed(2)}%`);
-if (Math.abs(memberFilled / 100 - expectedChurchMember) > 0.001) {
-  problems.push(
-    `picking "member" set the rate to ${memberFilled}%, expected ${(expectedChurchMember * 100).toFixed(2)}%`,
-  );
+const memberFilled = await begravningsavgiftField.inputValue();
+const expectedChurchMemberStr = String(Math.round(expectedChurchMember * 100_000) / 1000);
+console.log(`church member   : ${memberFilled}%, expected ${expectedChurchMemberStr}%`);
+if (memberFilled !== expectedChurchMemberStr) {
+  problems.push(`picking "member" set the rate to "${memberFilled}", expected "${expectedChurchMemberStr}"`);
 }
 
 // Aterstall undoes both selects, not just the numbers they filled.

@@ -31,6 +31,20 @@ export interface PercentField {
   setValue(v: number): void;
 }
 
+export interface PercentOptions {
+  /**
+   * How many decimal digits `setValue` may show, trimmed of trailing zeros --
+   * not padded out to this width, so a round number still reads "35", not
+   * "35.000". Defaults to 1, which is every field before this option existed:
+   * inflation, growth and return are all round-ish numbers a single digit
+   * already describes exactly. A rate read from an outside source can need
+   * more -- Tranås's own burial-fee rate is 0.285%, and rounding a picked
+   * municipality's real published rate to one decimal (Danderyd's 30.58%
+   * becoming "30.6") would show a different number than the one it names.
+   */
+  readonly maxDecimals?: number;
+}
+
 export interface Bounds {
   readonly min: number;
   readonly max: number;
@@ -46,7 +60,7 @@ export interface FieldSet {
    */
   field(control: HTMLElement, relabel: (l: Lang) => FieldText, className?: string): Relabel;
   number(value: number, bounds: Bounds, apply: (v: number) => void): NumberField;
-  percent(value: number, apply: (v: number) => void): PercentField;
+  percent(value: number, apply: (v: number) => void, options?: PercentOptions): PercentField;
   check(checked: boolean, apply: (v: boolean) => void): HTMLInputElement;
   select(
     choices: readonly { value: number; label: (l: Lang) => string }[],
@@ -117,13 +131,17 @@ export function fieldSet(container: HTMLElement, relabels: Relabel[], lang: Lang
     return { element: el, setValue };
   };
 
-  const percent: FieldSet["percent"] = (value, apply) => {
+  const percent: FieldSet["percent"] = (value, apply, options = {}) => {
+    const maxDecimals = options.maxDecimals ?? 1;
+    const scale = 10 ** maxDecimals;
     const el = document.createElement("input");
     el.type = "number";
-    el.step = "0.1";
+    el.step = String(1 / scale);
     el.className = "percent";
+    // `maxDecimals: 1` reduces to `Math.round(v * 1000) / 10` exactly -- the
+    // formula every field used before this option existed, unchanged.
     const setValue = (v: number) => {
-      el.value = String(Math.round(v * 1000) / 10);
+      el.value = String(Math.round(v * 100 * scale) / scale);
     };
     setValue(value);
     el.addEventListener("change", () => {
