@@ -21,11 +21,17 @@
  * port returns as `result.rows` -- including columns 16 and 17, the price and
  * wage-level factors, which exist so Figur 1's three series can be derived from
  * a single run.
+ *
+ * `renderTaxChart` below is not one of these three: it is not a workbook
+ * chart at all, the same kind of addition the KPI cards are. It reads columns
+ * 18 and 19, municipal and state tax, which this port itself splits out of
+ * `netto` (see `MvaluesRow.municipalTax`/`stateTax`) since the workbook
+ * computes and discards that split rather than ever showing it.
  */
 import type { MvaluesRow, TypfallResult } from "@typfallsmodellen/engine";
 
 import { kronor } from "./format.js";
-import { t } from "./i18n.js";
+import { dropHeadingNumber, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -323,8 +329,9 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
     },
   ];
 
+  // "Figur 1." is dropped on request; the rest of the sheet's own heading stays.
   const title =
-    `${t("figure1", lang)}-${view.par} ${t("andPensionFrom", lang)} ` +
+    `${dropHeadingNumber(t("figure1", lang))}-${view.par} ${t("andPensionFrom", lang)} ` +
     `${view.par} ${t("yearsAge", lang)}`;
   const svg = newSvg(title);
 
@@ -375,10 +382,44 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
 
 // ------------------------------------------------- the two column charts ---
 
-/** `A2:A22`: the ten years either side of the retirement age, and it. */
+/**
+ * `A2:A22` on the sheet is ten years either side of retirement; widened here
+ * on request to five years before retirement through age 100, so the working
+ * years get less room and the retirement years more.
+ */
 function aroundRetirement(result: TypfallResult, par: number): readonly MvaluesRow[] {
-  const from = Math.trunc(par) - 10;
-  return result.rows.filter((row) => row.age >= from && row.age <= from + 20);
+  const from = Math.trunc(par) - 5;
+  return result.rows.filter((row) => row.age >= from && row.age <= 100);
+}
+
+/**
+ * Age ticks along a column chart's x-axis: every fifth age once the window is
+ * wide enough that one label per column would collide, but always the first
+ * and last column so the reader can see exactly where the chart starts and
+ * ends.
+ */
+function ageTicks(
+  svg: SVGSVGElement,
+  rows: readonly MvaluesRow[],
+  centre: (i: number) => number,
+): void {
+  const step = rows.length > 25 ? 5 : 1;
+  rows.forEach((row, i) => {
+    const edge = i === 0 || i === rows.length - 1;
+    if (!edge && row.age % step !== 0) return;
+    svg.append(label(String(row.age), centre(i), PLOT.bottom + 16, "tick tick-x"));
+  });
+}
+
+/**
+ * Drops a series from the legend when it never has a value in the rows being
+ * drawn -- on request, for a typfall with no occupational pension or no
+ * garantipension, say. The stacked band or line itself is still drawn
+ * (harmlessly invisible at zero); this only trims the legend, not the
+ * chart's own arithmetic.
+ */
+function visibleSeries(rows: readonly MvaluesRow[], series: readonly Series[]): readonly Series[] {
+  return series.filter((item) => rows.some((row) => item.get(row) > 0));
 }
 
 /** Where each column sits, and how wide it is. */
@@ -457,34 +498,6 @@ function overlay(
 }
 
 /**
- * `Data_till_Start!C`: the salary the run would have paid had work continued.
- *
- * The cell reads `IF(age < Int(par), NA(), IF(par < age, C(previous), B(previous)))`
- * times an index ratio taken at `par` over the one at this age -- so it starts
- * from the last full salary and then follows the wage level. Written here as
- * that one ratio rather than as the sheet's row-by-row carry, which multiplies
- * the ratio in again at every step.
- */
-function continuedWork(
-  rows: readonly MvaluesRow[],
-  all: readonly MvaluesRow[],
-  view: FigureView,
-): (row: MvaluesRow) => number {
-  const par = Math.trunc(view.par);
-  const before = all.find((r) => r.age === par - 1);
-  const atPar = all.find((r) => r.age === par);
-  const base = before?.income ?? 0;
-  return (row) => {
-    if (row.age < par) return 0;
-    const ratio =
-      view.priceBasis === 1 && atPar !== undefined && row.indexFactor > 0
-        ? atPar.indexFactor / row.indexFactor
-        : 1;
-    return (base * ratio) / scale(view);
-  };
-}
-
-/**
  * Figur 2: what the income is made of, year by year around retirement.
  *
  * The stack is `Data_till_Start` columns B, D, G, E, H in the order the chart
@@ -493,12 +506,15 @@ function continuedWork(
  * Tjänstepension. The sheet's separate Tilläggspension column, F, is left out
  * on purpose: D already contains it, so stacking both would count ATP twice for
  * everyone born before 1954.
+ *
+ * "Lön vid fortsatt arbete" (`Data_till_Start!C`, the salary the run would
+ * have paid had work continued) was drawn as a fourth overlay here; removed
+ * on request, series and legend both.
  */
 export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElement {
   const { lang } = view;
   const per = scale(view);
   const rows = aroundRetirement(result, view.par);
-  const continued = continuedWork(rows, result.rows, view);
 
   const bands: readonly Series[] = [
     {
@@ -541,13 +557,6 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   ];
   const lines: readonly Series[] = [
     {
-      key: "continued",
-      name: (l) => t("continuedWork", l),
-      colour: "--fig-continued",
-      mark: "line",
-      get: continued,
-    },
-    {
       key: "after-tax",
       name: (l) => t("incomeAfterTax", l),
       colour: "--fig-after-tax",
@@ -558,7 +567,11 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
 
   const first = rows[0]?.age ?? view.par;
   const lastAge = rows[rows.length - 1]?.age ?? first;
-  const title = t("figure2", lang).replace(/\d+\s*-\s*\d+/, `${first} - ${lastAge}`);
+  // "Figur 2." is dropped on request, same as Figur 1 and Table 2.
+  const title = dropHeadingNumber(t("figure2", lang)).replace(
+    /\d+\s*-\s*\d+/,
+    `${first} - ${lastAge}`,
+  );
   const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
 
   const svg = newSvg(title);
@@ -575,12 +588,12 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   shadeRetirement(svg, retirementEdge(rows, view.par, centre, step));
   svg.append(label(t("earningsAndPension", lang), PLOT.left - 56, PLOT.top - 10, "axis-title"));
   stack(svg, rows, bands, y, centre, width);
-  overlay(svg, rows, lines[0]!, y, centre, Math.trunc(view.par));
-  overlay(svg, rows, lines[1]!, y, centre);
-  rows.forEach((row, i) => svg.append(label(String(row.age), centre(i), PLOT.bottom + 16, "tick tick-x")));
+  overlay(svg, rows, lines[0]!, y, centre);
+  ageTicks(svg, rows, centre);
 
   const series = [...bands, ...lines];
-  const figure = frame(title, subtitle, svg, legend([...bands].reverse().concat(lines), lang));
+  const legendSeries = visibleSeries(rows, [...bands].reverse().concat(lines));
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang));
   hover(
     svg,
     figure,
@@ -650,16 +663,82 @@ export function renderDisposable(result: TypfallResult, view: FigureView): HTMLE
         class: "marker",
       }),
     );
-    svg.append(label(String(row.age), cx, PLOT.bottom + 16, "tick tick-x"));
   });
+  ageTicks(svg, rows, centre);
 
   const series = [...bands, line];
-  const figure = frame(title, undefined, svg, legend([bands[1]!, bands[0]!, line], lang));
+  const legendSeries = visibleSeries(rows, [bands[1]!, bands[0]!, line]);
+  const figure = frame(title, undefined, svg, legend(legendSeries, lang));
   hover(
     svg,
     figure,
     rows.map((row, i) => ({ x: centre(i), heading: `${t("age", lang)} ${row.age} · ${row.year}`, row })),
     series,
+    lang,
+  );
+  return figure;
+}
+
+/**
+ * "Skatt per år" / "Tax per year": not a workbook figure -- see the header
+ * comment above. Kommunal and statlig skatt are computed the same way for
+ * every age, working or retired, so unlike a payslip-style breakdown that
+ * separates salary withholding from pension withholding, this shows the true
+ * two-part split across the whole window rather than inventing a third,
+ * merged category for the working years the engine doesn't actually have.
+ */
+export function renderTaxChart(result: TypfallResult, view: FigureView): HTMLElement {
+  const { lang } = view;
+  const per = scale(view);
+  const rows = aroundRetirement(result, view.par);
+
+  const bands: readonly Series[] = [
+    {
+      key: "municipal-tax",
+      name: (l) => (l === "sv" ? "Kommunal skatt" : "Municipal tax"),
+      colour: "--fig-municipal-tax",
+      mark: "fill",
+      get: (r) => r.municipalTax / per,
+    },
+    {
+      key: "state-tax",
+      name: (l) => (l === "sv" ? "Statlig skatt" : "State tax"),
+      colour: "--fig-state-tax",
+      mark: "fill",
+      get: (r) => r.stateTax / per,
+    },
+  ];
+
+  // No "(SEK)" suffix, matching every other figure here -- the kronor-
+  // formatted y-axis ticks already say what unit this is.
+  const title = lang === "sv" ? "Skatt per år" : "Tax per year";
+  const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
+  const note =
+    lang === "sv"
+      ? "Statlig skatt inkluderar public service-avgiften och eventuell kapitalskatt."
+      : "State tax includes the public-service fee and any capital-gains tax.";
+
+  const svg = newSvg(title);
+  const { centre, width, step } = columns(rows.length);
+  const max = Math.max(
+    ...rows.map((row) => bands.reduce((sum, s) => sum + Math.max(s.get(row), 0), 0)),
+    1,
+  );
+  const axis = vertical(max);
+  const y = axis.y;
+
+  gridlines(svg, axis, lang);
+  shadeRetirement(svg, retirementEdge(rows, view.par, centre, step));
+  stack(svg, rows, bands, y, centre, width);
+  ageTicks(svg, rows, centre);
+
+  const legendSeries = visibleSeries(rows, bands);
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang), [note]);
+  hover(
+    svg,
+    figure,
+    rows.map((row, i) => ({ x: centre(i), heading: `${t("age", lang)} ${row.age} · ${row.year}`, row })),
+    bands,
     lang,
   );
   return figure;

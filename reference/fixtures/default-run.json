@@ -149,7 +149,9 @@
    "pps": 0,
    "indDisp": 0,
    "kpiFactor": 13.186,
-   "indexFactor": 26.0627
+   "indexFactor": 26.0627,
+   "municipalTax": 0,
+   "stateTax": 0
   },
   {
    "year": 1969,
@@ -168,7 +170,9 @@
    "pps": 0,
    "indDisp": 0,
    "kpiFactor": 10.7994,
-   "indexFactor": 18.632
+   "indexFactor": 18.632,
+   "municipalTax": 0,
+   "stateTax": 0
   },
   {
    "year": 1974,
@@ -187,7 +191,9 @@
    "pps": 0,
    "indDisp": 0,
    "kpiFactor": 7.5527,
-   "indexFactor": 13.1167
+   "indexFactor": 13.1167,
+   "municipalTax": 0,
+   "stateTax": 0
   },
   {
    "year": 1979,
@@ -206,7 +212,9 @@
    "pps": 0,
    "indDisp": 0,
    "kpiFactor": 4.7543,
-   "indexFactor": 7.5941
+   "indexFactor": 7.5941,
+   "municipalTax": 0,
+   "stateTax": 0
   },
   {
    "year": 1984,
@@ -225,7 +233,9 @@
    "pps": 0,
    "indDisp": 193452,
    "kpiFactor": 2.9191,
-   "indexFactor": 5.0269
+   "indexFactor": 5.0269,
+   "municipalTax": 74824,
+   "stateTax": 0
   },
   {
    "year": 1989,
@@ -244,7 +254,9 @@
    "pps": 0,
    "indDisp": 208804,
    "kpiFactor": 2.2224,
-   "indexFactor": 3.5124
+   "indexFactor": 3.5124,
+   "municipalTax": 83507,
+   "stateTax": 0
   },
   {
    "year": 1994,
@@ -263,7 +275,9 @@
    "pps": 0,
    "indDisp": 221729,
    "kpiFactor": 1.6798,
-   "indexFactor": 2.4712
+   "indexFactor": 2.4712,
+   "municipalTax": 92317,
+   "stateTax": 0
   },
   {
    "year": 1999,
@@ -282,7 +296,9 @@
    "pps": 0,
    "indDisp": 220776,
    "kpiFactor": 1.617,
-   "indexFactor": 2.2023
+   "indexFactor": 2.2023,
+   "municipalTax": 118441,
+   "stateTax": 0
   },
   {
    "year": 2004,
@@ -301,7 +317,9 @@
    "pps": 0,
    "indDisp": 254878,
    "kpiFactor": 1.4974,
-   "indexFactor": 1.9044
+   "indexFactor": 1.9044,
+   "municipalTax": 108373,
+   "stateTax": 0
   },
   {
    "year": 2009,
@@ -320,7 +338,9 @@
    "pps": 0,
    "indDisp": 313737,
    "kpiFactor": 1.3979,
-   "indexFactor": 1.5814
+   "indexFactor": 1.5814,
+   "municipalTax": 94641,
+   "stateTax": 0
   },
   {
    "year": 2014,
@@ -339,7 +359,9 @@
    "pps": 0,
    "indDisp": 334794,
    "kpiFactor": 1.3333,
-   "indexFactor": 1.4153
+   "indexFactor": 1.4153,
+   "municipalTax": 100452,
+   "stateTax": 0
   },
   {
    "year": 2019,
@@ -358,7 +380,9 @@
    "pps": 0,
    "indDisp": 353482,
    "kpiFactor": 1.2505,
-   "indexFactor": 1.2516
+   "indexFactor": 1.2516,
+   "municipalTax": 106417,
+   "stateTax": 1684
   },
   {
    "year": 2023,
@@ -377,7 +401,9 @@
    "pps": 0,
    "indDisp": 340817,
    "kpiFactor": 1.0354,
-   "indexFactor": 1.0842
+   "indexFactor": 1.0842,
+   "municipalTax": 99038,
+   "stateTax": 1346
   },
   {
    "year": 2024,
@@ -396,7 +422,9 @@
    "pps": 0,
    "indDisp": 344254,
    "kpiFactor": 1.0068,
-   "indexFactor": 1.0567
+   "indexFactor": 1.0567,
+   "municipalTax": 94703,
+   "stateTax": 1227
   },
   {
    "year": 2025,
@@ -415,7 +443,9 @@
    "pps": 0,
    "indDisp": 204951,
    "kpiFactor": 1,
-   "indexFactor": 1
+   "indexFactor": 1,
+   "municipalTax": 64064,
+   "stateTax": 1249
   },
   {
    "year": 2026,
@@ -434,7 +464,9 @@
    "pps": 0,
    "indDisp": 232439,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 39365,
+   "stateTax": 1184
   },
   {
    "year": 2027,
@@ -453,7 +485,9 @@
    "pps": 0,
    "indDisp": 232106,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 39014,
+   "stateTax": 1184
   },
   {
    "year": 2029,
@@ -472,7 +506,9 @@
    "pps": 0,
    "indDisp": 231419,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 38345,
+   "stateTax": 1184
   },
   {
    "year": 2034,
@@ -491,7 +527,9 @@
    "pps": 0,
    "indDisp": 229881,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 36686,
+   "stateTax": 1141
   },
   {
    "year": 2039,
@@ -510,7 +548,9 @@
    "pps": 0,
    "indDisp": 228358,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 35091,
+   "stateTax": 1091
   },
   {
    "year": 2044,
@@ -529,7 +569,9 @@
    "pps": 0,
    "indDisp": 226737,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 33370,
+   "stateTax": 1037
   },
   {
    "year": 2049,
@@ -548,7 +590,9 @@
    "pps": 0,
    "indDisp": 225017,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 31361,
+   "stateTax": 974
   },
   {
    "year": 2054,
@@ -567,7 +611,9 @@
    "pps": 0,
    "indDisp": 223038,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 29033,
+   "stateTax": 901
   },
   {
    "year": 2059,
@@ -586,7 +632,9 @@
    "pps": 0,
    "indDisp": 220070,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 25907,
+   "stateTax": 803
   },
   {
    "year": 2064,
@@ -605,7 +653,9 @@
    "pps": 0,
    "indDisp": 217336,
    "kpiFactor": 1,
-   "indexFactor": 0.9656
+   "indexFactor": 0.9656,
+   "municipalTax": 23706,
+   "stateTax": 734
   }
  ]
 }

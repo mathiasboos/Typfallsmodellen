@@ -231,6 +231,16 @@ export function taxes(run: Run, age: number, utgyear: number, skyear: number): T
   );
   s.netto.set(age, s.brutto.get(age) - tax);
 
+  // Split for Table 2's columns and the tax-per-year chart -- not a workbook
+  // figure. `stateTax` is `statskatt` untouched by the credits above, which
+  // are all capped against `kinkskatt` (the four `kinkskatt - ... < ...`
+  // checks earlier in this function); `municipalTax` is whatever is left of
+  // `tax` once it is taken out, so the two always sum to `tax` itself.
+  const stateTax = statskatt;
+  const municipalTax = tax - stateTax;
+  s.municipalTax.set(age, municipalTax);
+  s.stateTax.set(age, stateTax);
+
   // Still in scope when the loop ends, and read by the recomputation at the
   // retirement age. See `RunState.leftovers`.
   s.leftovers.gage = gage;
@@ -455,6 +465,8 @@ export function recordRow(run: Run, age: number): void {
     indDisp: r(s.indDisp.get(age)),
     kpiFactor: rf(v.kpi.get(wsMax(v.startage, refAge)) / v.kpi.get(age)),
     indexFactor: rf(v.iindex.get(wsMax(v.startage, refAge)) / v.iindex.get(age)),
+    municipalTax: r(s.municipalTax.get(age)),
+    stateTax: r(s.stateTax.get(age)),
   };
   s.rows.push(row);
 }

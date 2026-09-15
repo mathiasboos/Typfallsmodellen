@@ -21,6 +21,10 @@ export const LANGS: readonly Lang[] = ["sv", "en"];
 
 type Entry = Partial<Record<Lang, string>>;
 const LABELS = i18n.labels as Record<string, Entry>;
+// Keyed by identifier rather than SysLang row -- these are Start-sheet control
+// captions (checkbox and button text), extracted separately from the numbered
+// labels but looked up the same way below.
+const CAPTIONS = i18n.captions as Record<string, Entry>;
 
 /** Label key → the SysLang row it came from, with that row's Swedish text. */
 export const L = {
@@ -40,7 +44,9 @@ export const L = {
   occupational: "19", //    Välj tjänstepension
   currentPrices: "21", //   Löpande priser
   fixedPrices: "22", //     Fasta priser (2025)
-  table1: "24", //          Tabell 1. Specificerat resultat över slutlön och pensionsinkomster
+  // table1 (SysLang row 24, "Tabell 1. Specificerat resultat över slutlön och
+  // pensionsinkomster") is not used: Table 1's title was replaced outright with
+  // "Pensionsinkomst" on request, in main.ts, rather than composed from it.
   table2: "49", //          Tabell 2. Månadsinkomster från 56 ålder
   year: "27", //            År
   pension: "28", //         Pension
@@ -51,6 +57,7 @@ export const L = {
   totalGross: "34", //      Total pension brutto
   totalPublic: "35", //     Total allmän pension
   kronor: "37", //          kronor
+  kr: "476", //             kr
   show: "38", //            Visa
   years: "39", //           år
   occupationalShort: "40", // Tjänstepension
@@ -98,10 +105,22 @@ export const L = {
   todayWageLevel: "465", // Dagens (2025) lönenivå
   earningsAndPension: "335", // Lön och pension
   salaryChart: "422", //    Lön
-  continuedWork: "328", //  Lön vid fortsatt arbete
+  // continuedWork (328, "Lön vid fortsatt arbete") is not used: the series it
+  // named was removed from Figur 2 on request, legend and all.
   occupationalChart: "332", // Tjänstepension
   grossIncomeChart: "333", // Bruttoinkomst
   netIncomeChart: "334", // Nettoinkomst
+
+  // A monthly rather than annual salary field, and the riktålder checkbox --
+  // both requested directly rather than following the Start sheet's own
+  // Årslön field and its `rng_Riktålder` checkbox one-for-one.
+  monthlySalary: "435", // Månadslön
+  riktalderCheckbox: "chkRecPensAge", // Riktålder (a control caption, not a SysLang row)
+
+  // The Table 2 scale toggle, moved into its header on request. Distinct rows
+  // from `perMonth` (45, "Per månad"), which still heads Table 1's column C.
+  yearlyView: "464", //     Årsvis
+  monthlyView: "463", //    Månadsvis
 } as const;
 
 export type LabelName = keyof typeof L;
@@ -125,9 +144,10 @@ const EXPECTED_SV: Partial<Record<LabelName, string>> = {
   privateSavingIsk: "Privat pensionssparande (ISK / KF)",
   todayWageLevel: "Dagens (2025) lönenivå",
   earningsAndPension: "Lön och pension",
-  continuedWork: "Lön vid fortsatt arbete",
   grossIncomeChart: "Bruttoinkomst",
   netIncomeChart: "Nettoinkomst",
+  monthlySalary: "Månadslön",
+  riktalderCheckbox: "Riktålder",
 };
 
 /**
@@ -140,7 +160,7 @@ const EXPECTED_SV: Partial<Record<LabelName, string>> = {
 export function checkLabels(): string[] {
   const wrong: string[] = [];
   for (const [name, sv] of Object.entries(EXPECTED_SV) as [LabelName, string][]) {
-    const got = LABELS[L[name]]?.sv;
+    const got = LABELS[L[name]]?.sv ?? CAPTIONS[L[name]]?.sv;
     if (got !== sv) wrong.push(`${name} (key ${L[name]}): expected "${sv}", found "${got ?? ""}"`);
   }
   return wrong;
@@ -154,6 +174,15 @@ export function checkLabels(): string[] {
  * mode's labels are all translated; the fallback is for the ones Phase 4 reaches.
  */
 export function t(name: LabelName, lang: Lang): string {
-  const entry = LABELS[L[name]];
+  const entry = LABELS[L[name]] ?? CAPTIONS[L[name]];
   return entry?.[lang] || entry?.sv || "";
+}
+
+/**
+ * Strips the sheet's own "Tabell 2.", "Figur 1.", "Table 1.", "Chart 2." lead-in
+ * off a heading, on request: Table 2 and both figures keep the rest of the
+ * SysLang text, just not the number the sheet gives itself.
+ */
+export function dropHeadingNumber(text: string): string {
+  return text.replace(/^(Tabell|Tabel|Table|Figur|Figure|Chart)\s*\d+\.?\s*/i, "");
 }

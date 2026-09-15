@@ -1,52 +1,78 @@
 /*
  * One stylesheet, no framework.
  *
- * The figures wear the workbook's own colours, because mimicking its charts is
- * the point of them. Those colours were run through the data-visualisation
- * guidance's validator (`scripts/validate_palette.js`): the CVD separation and
- * normal-vision checks pass -- the five stacked bands stay distinguishable --
- * while the lightness band and chroma floor do not, since Excel's pastels sit
- * lighter and greyer than the guidance's bands. That is the trade made on
- * purpose, and it comes with the relief the validator demands: a 2px surface
- * gap between bands, a legend on every figure, a hover readout, and Table 2
- * underneath carrying every plotted number in text.
+ * The palette is SEB's, read out of SEB_colors_2026.pptx -- the theme block
+ * names it "SEB 2025" and the slide lists every step by name. Nothing here is
+ * sampled by eye: each value below is one of those hexes.
  *
- * The banner over each block is the workbook's; the agency's wordmark, which
- * sits inside its plot areas, is deliberately not reproduced.
+ *   Dark green  #005D35  #358157  #99BEAE  #CCDFD7   (100 / 80 / 60 / 20 %)
+ *   Green       #48B866  #6DC685  #B6E3C2  #DAF1E0
+ *   Beige       #D3C5A6  #DCD1B8  #EDE8DB  #F6F3ED
+ *   Blue        #4885C5  #6D9DD1  #B6CEE8  #DAE7F3
+ *   Gold        #FBC111  #FCCD41  #FDE6A0  #FEF3CF
+ *   Red         #FF5B30  #FF7E5D  #FFA088  #FFE0D8
+ *   Grounds     white + black text, #003824 "SEB Senior" + white text
+ *   Greys       #7F7F7F  #AFAFAF  #DFDFDF  #EFEFEF
+ *
+ * The figure steps were chosen with the data-visualisation guidance's validator
+ * rather than by eye, in the order the bands stack:
+ *
+ *   light stack  blue, dark green, gold, green, beige     CVD 10.0, normal 19.1
+ *   dark stack   on #003824                               CVD  9.5, normal 18.4
+ *   light trio   blue, dark green, red                    CVD 14.5, normal 24.5
+ *   dark trio    blue 80%, green 60%, red                 CVD 20.4, normal 22.7
+ *   tax pair     gold, red (light and dark, on #003824)   CVD 15.4, normal 22.7
+ *
+ * Two candidates were thrown out by it: pale 60% tints next to beige in the
+ * dark stack (normal-vision 7.9, a hard fail), and red 80% next to green 80% in
+ * the dark trio (deutan 5.3). What fails in every variant is the lightness band
+ * and the chroma floor -- SEB's accents run from very dark to near-neutral,
+ * which is what a brand palette is -- so the relief the validator asks for in
+ * exchange is present: a 2px surface gap between stacked bands, a separate dash
+ * pattern per line, a legend and hover readout on every figure, and Table 2
+ * carrying every plotted number in text.
+ *
+ * Greys lighter than #7F7F7F fill and rule; they never carry text (#AFAFAF on
+ * white is 2.2:1). The banner is the workbook's title bar in SEB Gold; the
+ * agency's wordmark is not reproduced, and neither is anyone else's.
  */
 :root {
   color-scheme: light;
-  --surface: #fcfcfb;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f4f3f0;
-  --border: #e3e2dd;
-  --rule: #b9b8b1;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --grid: #ececea;
-  --axis: #c3c2b7;
-  --accent: #2a78d6;
-  --danger: #c00000;
-  --banner: #ffc000;
-  --banner-ink: #111111;
-  --retired: #e7e6e6;
+  --surface-sunken: #f6f3ed;
+  --border: #dfdfdf;
+  --rule: #afafaf;
+  --text-primary: #000000;
+  --text-secondary: #005d35;
+  --text-muted: #7f7f7f;
+  --grid: #efefef;
+  --axis: #afafaf;
+  --accent: #005d35;
+  --danger: #ff5b30;
+  --danger-tint: #ffe0d8;
+  --danger-ink: #000000;
+  --banner: #fbc111;
+  --banner-ink: #000000;
+  --retired: #efefef;
 
-  /* Figur 2's stack, its two overlays, Figur 1's three views, and the
-     disposable income chart -- each the hue the workbook draws it in. */
-  --fig-salary: #2e75b6;
-  --fig-income-pension: #2e8b57;
-  --fig-guarantee: #ed9f1e;
-  --fig-premium: #2fd0d8;
-  --fig-occupational: #9dc3e6;
-  --fig-continued: #2e75b6;
-  --fig-after-tax: #1f3864;
-  --fig-current: #f4b183;
-  --fig-fixed: #ed7d31;
-  --fig-wage-level: #c00000;
-  --fig-net: #e36c0a;
-  --fig-gross: #f8cbad;
-  --fig-disposable: #111111;
+  /* Figur 2's stack, its two overlays, Figur 1's three price views, and the
+     disposable income chart. Each series keeps its hue across both themes;
+     only the step changes. */
+  --fig-salary: #4885c5;
+  --fig-income-pension: #005d35;
+  --fig-guarantee: #fbc111;
+  --fig-premium: #48b866;
+  --fig-occupational: #d3c5a6;
+  --fig-after-tax: #000000;
+  --fig-current: #4885c5;
+  --fig-fixed: #005d35;
+  --fig-wage-level: #ff5b30;
+  --fig-net: #005d35;
+  --fig-gross: #ccdfd7;
+  --fig-municipal-tax: #fbc111;
+  --fig-state-tax: #ff5b30;
+  --fig-disposable: #000000;
 
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -55,35 +81,40 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface: #1a1a19;
-    --surface-raised: #222221;
-    --surface-sunken: #2a2a28;
-    --border: #383835;
-    --rule: #4a4a46;
+    /* Black ground, SEB Senior panels: the deck's own dark pairing. */
+    --surface: #000000;
+    --surface-raised: #003824;
+    --surface-sunken: #005d35;
+    --border: #005d35;
+    --rule: #7f7f7f;
     --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --grid: #2a2a28;
-    --axis: #383835;
-    --accent: #3987e5;
-    --danger: #ff8a7a;
-    --banner: #d9a300;
-    --banner-ink: #17170f;
-    --retired: #2e2e2b;
+    --text-secondary: #d3c5a6;
+    --text-muted: #afafaf;
+    --grid: #005d35;
+    --axis: #7f7f7f;
+    --accent: #48b866;
+    --danger: #ff7e5d;
+    --danger-tint: #003824;
+    --danger-ink: #ff7e5d;
+    --retired: #000000;
 
-    /* The same hues, stepped for a dark surface: every one clears 3:1 there. */
-    --fig-salary: #4a90d9;
-    --fig-income-pension: #35a06a;
-    --fig-after-tax: #7f9fd4;
-    --fig-current: #f7c49e;
-    --fig-fixed: #f28c46;
-    --fig-wage-level: #ff7b6b;
-    --fig-net: #f07d26;
-    --fig-disposable: #f2f2f0;
+    --fig-salary: #6d9dd1;
+    --fig-income-pension: #6dc685;
+    --fig-after-tax: #ffffff;
+    --fig-current: #6d9dd1;
+    --fig-fixed: #b6e3c2;
+    --fig-net: #358157;
+    --fig-gross: #99beae;
+    --fig-disposable: #ffffff;
   }
 }
 
 * { box-sizing: border-box; }
+
+/* `hidden` has to win over the `display` any class below sets, or an element
+   toggled with `el.hidden` stays on screen. The UA stylesheet's own rule is a
+   bare `[hidden]`, which every one of those classes outranks. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -106,8 +137,24 @@ body {
 .masthead h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.01em; }
 .subtitle { margin: 6px 0 12px; color: var(--text-secondary); max-width: 62ch; }
 
-.langs, .toggle { display: flex; gap: 6px; flex-wrap: wrap; }
-.toggle { margin-bottom: 4px; }
+/* Whose model this is, and what a forecast is worth. Beige rather than the
+   warning red the `.warnings` box uses: nothing is wrong, and dressing it as an
+   error would teach people to dismiss it. */
+.disclaimer {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  max-width: 88ch;
+  background: var(--surface-sunken);
+  border-left: 3px solid var(--banner);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.disclaimer strong { color: var(--text-secondary); }
+.disclaimer a { color: var(--text-secondary); }
+
+.langs { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .chip {
   font: inherit;
@@ -153,15 +200,164 @@ body {
   font-weight: 700;
   border-radius: var(--radius) var(--radius) 0 0;
 }
+/* Only the panel heading carries an action (the CSV export button); the
+   figure captions stay plain text, so the flex layout is scoped to it alone. */
+.panel > h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Shared by the CSV export button and Table 2's Årsvis/Månadsvis toggle --
+   both live in a gold header, so they read against `currentColor` (black)
+   rather than the page's own button tokens. */
+.panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-toggle { display: flex; gap: 6px; }
+.panel-btn, .export-btn {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.panel-btn:hover, .export-btn:hover { background: rgb(0 0 0 / 10%); }
+/* The selected scale reads as a filled pill, inverting the banner's own
+   black-on-gold rather than reaching for the page's green accent, which
+   would not read against gold. */
+.panel-btn.active {
+  background: var(--banner-ink);
+  color: var(--banner);
+  border-color: var(--banner-ink);
+}
 
 .results { display: grid; gap: 20px; min-width: 0; }
 /* A grid item's automatic minimum is its content, so without this a wide table
    or a figure widens the whole page instead of scrolling inside its own box. */
 .results > * { min-width: 0; }
 
+/* The three headline figures above Table 1. One accent stripe marks them as a
+   group rather than colour-coding each by a good/bad judgement none of the
+   three actually has. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.kpi-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.kpi-label {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.kpi-value {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.kpi-note { margin: 0; font-size: 0.78rem; color: var(--text-muted); }
+.kpi-unit { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
+
 /* The input block: a label and the cell you type into, one variable per row. */
-.inputs { display: grid; gap: 10px; position: sticky; top: 16px; }
-@media (max-width: 860px) { .inputs { position: static; } }
+/* The whole left column sticks, not just the form: advanced mode adds two
+   panels below it that have to travel with it. `max-height`/`overflow` so a
+   long advanced panel scrolls inside the column instead of running off the
+   bottom of a short viewport. */
+.input-column {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.inputs { display: grid; gap: 10px; }
+
+.mode-row { display: flex; }
+.mode-toggle { flex: 1; }
+.mode-toggle .panel-btn { flex: 1; text-align: center; }
+
+.advanced-box { display: grid; gap: 8px; }
+
+.adv-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+.adv-group > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.adv-group > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.adv-group[open] > summary { margin-bottom: 8px; }
+.adv-body { display: grid; gap: 10px; }
+.adv-actions { margin-top: 2px; }
+
+/* One row per age from 15 to the last worked one -- about fifty, so it gets
+   its own scroller rather than stretching the column. */
+.adv-grid-scroll { overflow-y: auto; overflow-x: auto; max-height: 40vh; }
+/*
+ * Fixed rather than the table's own default auto layout.
+ *
+ * With auto layout, `table-layout` grows a column to whatever its widest cell
+ * asks for and only THEN clamps the table to `width: 100%` -- so a table whose
+ * min-content is wider than its sidebar, as this one's four columns are,
+ * renders past the sidebar's edge and forces a horizontal scrollbar on every
+ * desktop view, not just a narrow one. Fixed layout takes its column widths
+ * from the header row below instead and never grows past `width: 100%`, so
+ * the four columns share exactly the sidebar's own width.
+ */
+.adv-grid { table-layout: fixed; }
+.adv-grid thead th:nth-child(1), .adv-grid td:nth-child(1) { width: 22%; }  /* År */
+.adv-grid thead th:nth-child(2), .adv-grid td:nth-child(2) { width: 18%; }  /* Ålder -- its own header, "Ålder", is the widest thing in the column */
+.adv-grid thead th:nth-child(3), .adv-grid td:nth-child(3),
+.adv-grid thead th:nth-child(4), .adv-grid td:nth-child(4) { width: 30%; } /* Inkomst, Varav lön */
+.adv-grid th, .adv-grid td { padding: 2px 4px; font-size: 0.75rem; }
+.adv-grid thead th { position: sticky; top: 0; z-index: 1; }
+.adv-grid td > input {
+  width: 100%;
+  padding: 2px 4px;
+  font: inherit;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.adv-grid td > input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The spinner buttons a number input draws are decorative here -- every cell
+   is already clamped by salaryPath.ts's own change handler -- and at a fixed
+   column width they would cost the same digits they take space from. */
+.adv-grid td > input::-webkit-outer-spin-button,
+.adv-grid td > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.adv-grid td > input[type="number"] { -moz-appearance: textfield; }
+@media (max-width: 860px) {
+  /* Stacked on one column, a sticky input panel with its own scroller would
+     pin half the screen and hide the results behind it. */
+  .input-column { position: static; max-height: none; overflow-y: visible; }
+  .adv-grid-scroll { max-height: 60vh; }
+}
 
 .field {
   display: grid;
@@ -172,6 +368,11 @@ body {
 }
 .field-label { grid-column: 1; grid-row: 1; font-size: 0.85rem; color: var(--text-secondary); }
 .field-hint { grid-column: 1; grid-row: 2; font-size: 0.72rem; color: var(--text-muted); }
+/* A field-hint that is also a link (SCB's list, a parish finder) --
+   .field-hint's own muted colour would make it indistinguishable from plain
+   text. */
+.field-link { color: var(--text-secondary); text-decoration: none; }
+.field-link:hover { text-decoration: underline; }
 .field > input, .field > select {
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -188,8 +389,14 @@ body {
 }
 .field > input:focus, .field > select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* A select with no room for a second column (the occupational-pension and
+   advanced-mode dropdowns). Its own row layout, not the default two-column
+   one: `.field-hint` is grid-row 2 in the base rule, and a field-wide select
+   sharing that row is why "Typ av sparande" and "Historisk avkastning"
+   rendered their hint text on top of the box instead of below it. */
 .field-wide { grid-template-columns: minmax(0, 1fr); }
 .field-wide > select { grid-column: 1; grid-row: 2; text-align: left; }
+.field-wide > .field-hint { grid-row: 3; }
 
 .field-check { grid-template-columns: auto minmax(0, 1fr); }
 .field-check > input {
@@ -201,6 +408,13 @@ body {
 }
 .field-check > .field-label { grid-column: 2; grid-row: 1; }
 .field-check > .field-hint { grid-column: 2; grid-row: 2; }
+
+.field-note { font-size: 0.85rem; color: var(--text-secondary); }
+.field-note > summary { cursor: pointer; }
+.field-note > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field-note-body { margin-top: 6px; font-size: 0.78rem; color: var(--text-muted); }
+.field-note-body p { margin: 0 0 8px; }
+.field-note-body p:last-child { margin-bottom: 0; }
 
 .scroll { overflow-x: auto; }
 
@@ -231,14 +445,27 @@ body {
 .table tr.strong td { font-weight: 700; border-top: 1px solid var(--rule); }
 .table tbody tr:last-child td { border-bottom: none; }
 
+/* Table 2 has up to twelve columns and fifty-odd rows; a smaller, tighter
+   grid is what keeps it inside the panel width instead of forcing a
+   horizontal scroll (still there, on .scroll, for whatever doesn't fit --
+   a phone, or a run where every column has a value). */
+.table2 th, .table2 td { padding: 3px 6px; font-size: 0.78rem; }
+.table2 thead th { font-size: 0.72rem; }
+
 /* Table 1's own furniture: the sheet's blank line, its two red notes, and the
-   heading column D's lower block is measured against. */
-/* The sheet right-aligns Table 1's row labels against their figures. The labels
-   are the one column allowed to wrap, so the table stays narrow on a phone. */
+   heading column D's lower block is measured against. The row labels are
+   right-aligned against their figures, and are the one column allowed to
+   wrap, so the table stays narrow on a phone. */
 .table1 tbody tr:not(.note) td:first-child { text-align: right; white-space: normal; min-width: 14ch; }
 .table1 tr.spacer td { height: 12px; padding: 0; border-right: none; }
-.table1 tr.note td { border-right: none; }
-.table1 .note-text { color: var(--danger); font-size: 0.76rem; white-space: normal; }
+.table1 tr.note td { border-right: none; background: var(--danger-tint); }
+.table1 .note-text {
+  color: var(--danger-ink);
+  font-size: 0.76rem;
+  white-space: normal;
+  border-left: 3px solid var(--danger);
+  padding-left: 8px;
+}
 .table1 .col-note {
   color: var(--text-secondary);
   font-size: 0.76rem;
@@ -278,7 +505,6 @@ body {
 .line-current { stroke-dasharray: 2 3; }
 .line-wage-level { stroke-dasharray: 8 4; }
 .line-fixed { stroke-width: 3; }
-.line-continued { stroke-dasharray: 8 4; }
 .line-after-tax { stroke-dasharray: 6 3; }
 /* A 2px surface gap keeps stacked bands separable without relying on hue. */
 .bar { stroke: var(--surface-raised); stroke-width: 2; }
@@ -341,3 +567,81 @@ body {
 .warnings p { margin: 4px 0; font-size: 0.88rem; }
 
 .footnote { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
+
+/*
+ * Print.
+ *
+ * People take a pension forecast to a meeting, so paper is a real output and
+ * not an afterthought. What changes: the two-column layout becomes one, the
+ * input panel stops sticking and prints as the record of what was asked, and
+ * the controls that only work on a screen -- the language chips, the mode
+ * toggle, the CSV buttons, the year/month switch -- come out.
+ *
+ * The colours are forced to a light ground whatever the screen theme is: a
+ * dark-theme page would otherwise print as a black rectangle, and the SEB
+ * greens are chosen against white in the first place.
+ */
+@media print {
+  :root {
+    color-scheme: light;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #f6f3ed;
+    --border: #afafaf;
+    --rule: #7f7f7f;
+    --text-primary: #000000;
+    --text-secondary: #005d35;
+    --text-muted: #3f3f3f;
+    --grid: #dfdfdf;
+    --axis: #7f7f7f;
+    --retired: #efefef;
+    --banner: #fbc111;
+    --banner-ink: #000000;
+  }
+
+  body { font-size: 10pt; }
+  #app { max-width: none; padding: 0; }
+
+  /* Screen-only controls. */
+  .langs,
+  .mode-row,
+  .panel-actions,
+  .panel-toggle,
+  .export-btn,
+  .adv-actions,
+  .tooltip { display: none !important; }
+
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .input-column { position: static; max-height: none; overflow: visible; }
+
+  /* Every disclosure prints open -- a collapsed <details> on paper is a line of
+     text that silently withholds the settings the figures were computed under.
+     CSS cannot do it: a closed <details> hides its content through an internal
+     slot that `display` on the child does not reach, which a print-media check
+     caught as a zero-height box. `openForPrint` in main.ts opens them instead,
+     and this only takes the twisty off the paper. */
+  details { break-inside: avoid; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+
+  /* Both scrollers have to spill onto the page rather than clip. */
+  .scroll,
+  .adv-grid-scroll { overflow: visible !important; max-height: none !important; }
+  .adv-grid td > input {
+    border: none;
+    padding: 0;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .panel, .figure, .kpi-card { break-inside: avoid; border-color: var(--rule); }
+  .kpi-row { break-inside: avoid; }
+  .table { font-size: 8.5pt; }
+  .table2 th, .table2 td { font-size: 7.5pt; }
+
+  /* The forecast's provenance follows it onto the paper. */
+  .disclaimer { break-inside: avoid; border-left-width: 2px; }
+
+  a { text-decoration: none; color: inherit; }
+}

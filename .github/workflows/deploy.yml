@@ -1,0 +1,108 @@
+# Publishes the built file two ways.
+#
+# GitHub Pages, from main, so there is a URL to send someone; and a release
+# asset on a tag, so there is a dated copy of the file itself. The second is
+# how the original is distributed -- a workbook you save and keep -- and it is
+# the one that still works when this repository does not.
+#
+# Both build from source in the job rather than trusting an artifact from
+# elsewhere, and both run the offline check before publishing: a page that
+# reaches for the network is the one thing this project must never ship, and
+# the check is cheap enough to repeat.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the single file
+        run: npm run build -w @typfallsmodellen/web
+
+      - name: Install Chromium for the offline check
+        run: |
+          npm i -D --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Offline check, in a real browser
+        run: npm run verify:offline
+
+      # Pages serves index.html; the file keeps its own name beside it so the
+      # download link on the page and the release asset are the same name.
+      - name: Lay out the site
+        run: |
+          mkdir -p site
+          cp apps/web/dist/typfallsmodellen.html site/index.html
+          cp apps/web/dist/typfallsmodellen.html site/typfallsmodellen.html
+          # Jekyll would otherwise try to process the directory.
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: typfallsmodellen-html
+          path: apps/web/dist/typfallsmodellen.html
+          if-no-files-found: error
+
+  # Needs Settings -> Pages -> Source set to "GitHub Actions" once, by hand;
+  # there is no API for that.
+  pages:
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: typfallsmodellen-html
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: typfallsmodellen.html
+          generate_release_notes: true
+          body: |
+            One self-contained HTML file. Save it and open it in any browser —
+            no installation, no server, no network. Everything is computed in
+            the page and nothing is sent anywhere.
+
+            Unofficial. Not affiliated with or endorsed by Pensionsmyndigheten.
