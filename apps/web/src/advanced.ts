@@ -35,6 +35,14 @@ import type { ModelContext } from "@typfallsmodellen/engine";
 import { fieldSet } from "./controls.js";
 import type { Relabel } from "./controls.js";
 import type { Lang } from "./i18n.js";
+import {
+  BURIAL_ONLY_RATE,
+  CHURCH_MEMBER_RATE,
+  KOMMUNALSKATT,
+  KOMMUNALSKATT_YEAR,
+  STOCKHOLM_BURIAL_RATE,
+  TRANAS_BURIAL_RATE,
+} from "./kommunalskatt.js";
 
 type Text = (l: Lang) => string;
 
@@ -279,7 +287,10 @@ export const GROUPS: readonly Group[] = [
         row: 40,
         control: percent,
         label: text("Begravningsavgift och samfundsavgift", "Burial fee and religious community fee"),
-        hint: text("gäller när kommunalskatten anges", "applies when a municipal rate is given"),
+        hint: text(
+          `medlem ~${pct(CHURCH_MEMBER_RATE.rate)} %, ej medlem ~${pct(BURIAL_ONLY_RATE.rate)} % (${CHURCH_MEMBER_RATE.year})`,
+          `member ~${pct(CHURCH_MEMBER_RATE.rate)}%, non-member ~${pct(BURIAL_ONLY_RATE.rate)}% (${CHURCH_MEMBER_RATE.year})`,
+        ),
         get: (c) => c.begravningsavgift,
         set: (begravningsavgift) => ({ begravningsavgift }),
       },
@@ -419,6 +430,150 @@ export const GROUPS: readonly Group[] = [
 /** Every exposed setting, flattened -- what the tests walk. */
 export const SETTINGS: readonly Setting[] = GROUPS.flatMap((g) => g.settings);
 
+/**
+ * A companion `<select>` beside a Setting's own percent field -- not through
+ * `fieldSet.select()`, which assumes every option *is* a valid `ModelContext`
+ * value that stays selected as that value. These two exist only to fire a
+ * one-shot fill into the percent field below them: switching municipality is
+ * a fresh choice every time, not a value the model itself keeps track of, so
+ * there is nothing for the select's own selected option to persist.
+ */
+function pct(v: number): string {
+  return (v * 100).toLocaleString("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+}
+
+/**
+ * "Kommunal skattesats": picking a municipality writes its exact
+ * `KOMMUNALSKATT_YEAR` rate into the percent field below -- the field itself
+ * is still what the run reads, so the number shown is always the one used,
+ * the same rule a linked control follows in form.ts (the riktålder checkbox
+ * does the same to the retirement-age field).
+ *
+ * Not from the workbook: see kommunalskatt.ts's own header for the source.
+ */
+function municipalitySelect(
+  lang: Lang,
+  onPick: (fraction: number) => void,
+): { element: HTMLElement; relabel: Relabel; select: HTMLSelectElement } {
+  const wrap = document.createElement("div");
+  wrap.className = "field field-wide adv-fill";
+
+  const select = document.createElement("select");
+  select.dataset.setting = "kommunalskatt-municipality";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  select.append(placeholder);
+  for (const name of Object.keys(KOMMUNALSKATT).sort((a, b) => a.localeCompare(b, "sv"))) {
+    const option = document.createElement("option");
+    option.value = String(KOMMUNALSKATT[name]);
+    option.textContent = name;
+    select.append(option);
+  }
+  select.addEventListener("change", () => {
+    const rate = Number(select.value);
+    if (select.value !== "" && Number.isFinite(rate)) onPick(rate / 100);
+  });
+
+  const link = document.createElement("a");
+  link.href =
+    "https://www.scb.se/hitta-statistik/statistik-efter-amne/offentlig-ekonomi/finanser-for-den-kommunala-sektorn/kommunalskatterna/pong/tabell-och-diagram/totala-kommunala-skattesatser-2026-kommunvis/";
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.className = "field-hint field-link";
+
+  const relabel = (l: Lang) => {
+    // Short: a long placeholder truncates inside a native <select> at this
+    // sidebar's width, with no ellipsis or way to read the rest without
+    // opening it -- the year belongs on the link below instead, which has a
+    // whole line to itself.
+    placeholder.textContent = l === "sv" ? "— Välj kommun —" : "— Choose a municipality —";
+    link.textContent = l === "sv" ? `SCB:s lista (${KOMMUNALSKATT_YEAR}) ↗` : `SCB's list (${KOMMUNALSKATT_YEAR}) ↗`;
+  };
+  relabel(lang);
+
+  wrap.append(select, link);
+  return { element: wrap, relabel, select };
+}
+
+/** Which option `churchBurialSelect` last picked -- `""` is "own rate", the
+ * only choice that leaves the percent field alone rather than filling it. */
+type ChurchChoice = "member" | "stockholm" | "tranas" | "rest" | "";
+
+/**
+ * "Begravningsavgift": covers both the church-fee and burial-fee halves of
+ * the manual request, because `context.begravningsavgift` is one number --
+ * Adv_settings row 40, "Begravningsavgiften samt avgiften till kyrkan/
+ * trossamfundet" -- not two, and taxAndBenefits.ts reads it as a single
+ * `kyrkskatt` line. Two of these five options reuse data the workbook's own
+ * K_skatt sheet already extracts (`kyrkoavgift`, `begravningsavgift` in
+ * kommunalskatt.ts); the Stockholm/Tranås figures are cited external facts
+ * (Skatteverket), the same way `returnBasis`'s PPM/AP7 choices already are.
+ */
+function churchBurialSelect(
+  lang: Lang,
+  onPick: (fraction: number, choice: ChurchChoice) => void,
+): { element: HTMLElement; relabel: Relabel; select: HTMLSelectElement } {
+  const wrap = document.createElement("div");
+  wrap.className = "field field-wide adv-fill";
+
+  const options: readonly { readonly choice: ChurchChoice; readonly rate: number | null }[] = [
+    { choice: "member", rate: CHURCH_MEMBER_RATE.rate },
+    { choice: "stockholm", rate: STOCKHOLM_BURIAL_RATE },
+    { choice: "tranas", rate: TRANAS_BURIAL_RATE },
+    { choice: "rest", rate: BURIAL_ONLY_RATE.rate },
+    { choice: "", rate: null },
+  ];
+  const select = document.createElement("select");
+  select.dataset.setting = "begravningsavgift-select";
+  const optionEls = options.map(({ choice }) => {
+    const el = document.createElement("option");
+    el.value = choice;
+    select.append(el);
+    return el;
+  });
+  select.addEventListener("change", () => {
+    const picked = options.find((o) => o.choice === select.value);
+    if (picked?.rate !== null && picked?.rate !== undefined) onPick(picked.rate, picked.choice);
+  });
+
+  const link = document.createElement("a");
+  link.href = "https://www.svenskakyrkan.se/medlem/kyrkoavgiften";
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.className = "field-hint field-link";
+
+  const relabel = (l: Lang) => {
+    // Short, same reason municipalitySelect's placeholder is: a long option
+    // truncates inside a native <select> at this sidebar's width with no way
+    // to read the rest short of opening it. The exact figures a label would
+    // have carried are one line down instead, in the field's own hint text
+    // (see the "begravningsavgift" Setting's `hint` below) and in the number
+    // the pick itself fills in.
+    const labels: Record<ChurchChoice, string> =
+      l === "sv"
+        ? {
+            member: "Medlem i Svenska kyrkan/annat trossamfund",
+            stockholm: "Inte medlem, Stockholms stad",
+            tranas: "Inte medlem, Tranås kommun",
+            rest: "Inte medlem, övriga Sverige",
+            "": "— Egen sats —",
+          }
+        : {
+            member: "Member of the Church of Sweden/another faith community",
+            stockholm: "Not a member, City of Stockholm",
+            tranas: "Not a member, Tranås municipality",
+            rest: "Not a member, rest of Sweden",
+            "": "— Own rate —",
+          };
+    for (const [i, el] of optionEls.entries()) el.textContent = labels[options[i]!.choice];
+    link.textContent = l === "sv" ? "Hitta din församling ↗" : "Find your parish ↗";
+  };
+  relabel(lang);
+
+  wrap.append(select, link);
+  return { element: wrap, relabel, select };
+}
+
 export interface AdvancedHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
@@ -459,6 +614,14 @@ export function createAdvancedPanel(
 
     const { field, number, percent: percentControl, check, select } = fieldSet(body, relabels, lang);
 
+    // Filled in when the "tax" group reaches `begravningsavgift`, below --
+    // `kommunalskatt` comes first in that group's own settings array and
+    // needs to call into it on a user's *later* pick, once the whole loop (and
+    // so this closure) has run, which is why a `let` assigned out of order
+    // here is safe rather than a forward-reference bug.
+    let applyChurchAutoDefault: () => void = () => {};
+    let churchExplicit = false;
+
     for (const setting of group.settings) {
       const initial = setting.get(normal);
       const label = (l: Lang) => ({
@@ -473,12 +636,55 @@ export function createAdvancedPanel(
         field(control.element, label);
         restores.push(() => control.setValue(initial));
       } else if (setting.control.kind === "percent") {
-        const control = percentControl(initial, (v) => onChange(setting.set(v)));
-        control.dataset.setting = setting.key;
-        field(control, label);
-        restores.push(() => {
-          control.value = String(Math.round(initial * 1000) / 10);
+        const control = percentControl(initial, (v) => {
+          if (setting.key === "begravningsavgift") churchExplicit = true;
+          onChange(setting.set(v));
         });
+        control.element.dataset.setting = setting.key;
+
+        if (setting.key === "kommunalskatt") {
+          // Picking a municipality flips `historicalTaxRate` off in setup.ts,
+          // which stops `begravavg` from following the historical-average
+          // series it was reading and starts reading this panel's own
+          // `begravningsavgift` field instead -- silently 0 unless something
+          // has set it. Rather than let a one-click municipality picker trip
+          // that footgun, an untouched church/burial field is auto-filled
+          // with this port's own honest default for it: the same population
+          // average `historicalTaxRate` would have used anyway.
+          const municipality = municipalitySelect(lang, (fraction) => {
+            control.setValue(fraction);
+            onChange(setting.set(fraction));
+            if (!churchExplicit) applyChurchAutoDefault();
+          });
+          relabels.push(municipality.relabel);
+          body.append(municipality.element);
+          restores.push(() => {
+            municipality.select.value = "";
+          });
+        }
+        if (setting.key === "begravningsavgift") {
+          const church = churchBurialSelect(lang, (fraction, choice) => {
+            churchExplicit = true;
+            church.select.value = choice;
+            control.setValue(fraction);
+            onChange(setting.set(fraction));
+          });
+          relabels.push(church.relabel);
+          body.append(church.element);
+          applyChurchAutoDefault = () => {
+            churchExplicit = true;
+            church.select.value = "rest";
+            control.setValue(BURIAL_ONLY_RATE.rate);
+            onChange(setting.set(BURIAL_ONLY_RATE.rate));
+          };
+          restores.push(() => {
+            church.select.value = "";
+            churchExplicit = false;
+          });
+        }
+
+        field(control.element, label);
+        restores.push(() => control.setValue(initial));
       } else if (setting.control.kind === "check") {
         const control = check(initial === 1, (on) => onChange(setting.set(on ? 1 : 0)));
         control.dataset.setting = setting.key;

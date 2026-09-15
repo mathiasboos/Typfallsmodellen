@@ -368,6 +368,11 @@ body {
 }
 .field-label { grid-column: 1; grid-row: 1; font-size: 0.85rem; color: var(--text-secondary); }
 .field-hint { grid-column: 1; grid-row: 2; font-size: 0.72rem; color: var(--text-muted); }
+/* A field-hint that is also a link (SCB's list, a parish finder) --
+   .field-hint's own muted colour would make it indistinguishable from plain
+   text. */
+.field-link { color: var(--text-secondary); text-decoration: none; }
+.field-link:hover { text-decoration: underline; }
 .field > input, .field > select {
   grid-column: 2;
   grid-row: 1 / span 2;

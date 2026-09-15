@@ -24,6 +24,13 @@ export interface NumberField {
   setValue(v: number): void;
 }
 
+/** The same, for a percent field -- `setValue` takes the fraction the field
+ * represents (0.324), not the percentage it displays (32.4), matching `apply`. */
+export interface PercentField {
+  readonly element: HTMLInputElement;
+  setValue(v: number): void;
+}
+
 export interface Bounds {
   readonly min: number;
   readonly max: number;
@@ -39,7 +46,7 @@ export interface FieldSet {
    */
   field(control: HTMLElement, relabel: (l: Lang) => FieldText, className?: string): Relabel;
   number(value: number, bounds: Bounds, apply: (v: number) => void): NumberField;
-  percent(value: number, apply: (v: number) => void): HTMLInputElement;
+  percent(value: number, apply: (v: number) => void): PercentField;
   check(checked: boolean, apply: (v: boolean) => void): HTMLInputElement;
   select(
     choices: readonly { value: number; label: (l: Lang) => string }[],
@@ -113,14 +120,17 @@ export function fieldSet(container: HTMLElement, relabels: Relabel[], lang: Lang
   const percent: FieldSet["percent"] = (value, apply) => {
     const el = document.createElement("input");
     el.type = "number";
-    el.value = String(Math.round(value * 1000) / 10);
     el.step = "0.1";
     el.className = "percent";
+    const setValue = (v: number) => {
+      el.value = String(Math.round(v * 1000) / 10);
+    };
+    setValue(value);
     el.addEventListener("change", () => {
       const v = Number(el.value);
       if (Number.isFinite(v)) apply(v / 100);
     });
-    return el;
+    return { element: el, setValue };
   };
 
   const check: FieldSet["check"] = (checked, apply) => {

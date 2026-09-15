@@ -182,17 +182,17 @@ export function createForm(
   field(marriedBox, (l) => ({ label: t("married", l) }), "field field-check");
 
   field(
-    percent(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation })),
+    percent(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation })).element,
     (l) => ({ label: t("inflation", l), hint: "%" }),
   );
 
   field(
-    percent(initial.realGrowth, (realGrowth) => onChange({ realGrowth })),
+    percent(initial.realGrowth, (realGrowth) => onChange({ realGrowth })).element,
     (l) => ({ label: t("realGrowth", l), hint: "%" }),
   );
 
   field(
-    percent(initial.realReturn, (realReturn) => onChange({ realReturn })),
+    percent(initial.realReturn, (realReturn) => onChange({ realReturn })).element,
     (l) => ({ label: t("realReturn", l), hint: "%" }),
   );
 

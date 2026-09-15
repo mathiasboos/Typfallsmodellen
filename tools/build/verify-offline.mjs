@@ -365,6 +365,85 @@ if (municipalReset !== municipalBefore) {
   );
 }
 
+// A named municipality: a concrete rate, computed independently here rather
+// than trusted from the app's own module, so a wrong copy of the SCB table
+// would show up as a mismatch rather than the check agreeing with itself.
+const municipalTaxData = JSON.parse(readFileSync(join(repo, "packages/data/municipal-tax.json"), "utf8"));
+function latestSeriesRate(name) {
+  const series = municipalTaxData.series[name];
+  let lastNonNull = series.values.length - 1;
+  while (lastNonNull >= 0 && series.values[lastNonNull] === null) lastNonNull -= 1;
+  const claimedIndex = (series.lastActualYear ?? municipalTaxData.firstYear + lastNonNull) - municipalTaxData.firstYear;
+  const index = Math.min(claimedIndex, lastNonNull);
+  return series.values[index] / 100;
+}
+const expectedBurialOnly = latestSeriesRate("begravningsavgift");
+const expectedChurchMember = latestSeriesRate("kyrkoavgift");
+
+const kommunSelect = await setting("kommunalskatt-municipality");
+await kommunSelect.selectOption({ label: "Danderyd" });
+await tab.waitForTimeout(50);
+const kommunalskattField = tab.locator('[data-setting="kommunalskatt"]');
+const kommunalskattValue = Number(await kommunalskattField.inputValue());
+console.log(`kommun select   : Danderyd -> ${kommunalskattValue}%`);
+// Danderyd's rate is well under the ~32.4% historical average this replaces.
+if (!(kommunalskattValue > 25 && kommunalskattValue < 32)) {
+  problems.push(`picking Danderyd set kommunalskatt to ${kommunalskattValue}%, expected roughly 30.6%`);
+}
+const municipalAfterPick = await table2Cell(table2Rows - 1, municipalCol);
+if (!(municipalAfterPick < municipalBefore)) {
+  problems.push(
+    `picking a lower-tax municipality did not lower the municipal tax (${municipalBefore} -> ${municipalAfterPick})`,
+  );
+}
+
+// The footgun this closes: picking a municipality flips the model off the
+// historical-average church/burial rate and onto this panel's own field,
+// which defaults to 0 -- silently zeroing it unless something fills it. It
+// should have auto-filled with the burial-only rate instead.
+const begravningsavgiftField = tab.locator('[data-setting="begravningsavgift"]');
+const churchSelect = tab.locator('[data-setting="begravningsavgift-select"]');
+const autoFilled = Number(await begravningsavgiftField.inputValue());
+const autoChoice = await churchSelect.inputValue();
+console.log(`church/burial   : auto-filled to ${autoFilled}% (${autoChoice}), expected ~${(expectedBurialOnly * 100).toFixed(2)}%`);
+if (autoFilled <= 0) {
+  problems.push("picking a municipality left the church/burial field at 0 instead of auto-filling it");
+}
+if (Math.abs(autoFilled / 100 - expectedBurialOnly) > 0.001) {
+  problems.push(
+    `the auto-filled church/burial rate is ${autoFilled}%, expected the burial-only average ` +
+      `${(expectedBurialOnly * 100).toFixed(2)}%`,
+  );
+}
+if (autoChoice !== "rest") {
+  problems.push(`the church/burial select reads "${autoChoice}" after auto-fill, expected "rest"`);
+}
+
+// Explicitly picking "member" overrides the auto-fill with the combined
+// church+burial rate -- a materially larger number, computed independently
+// from the same K_skatt data the app's own module reads.
+await churchSelect.selectOption({ value: "member" });
+await tab.waitForTimeout(50);
+const memberFilled = Number(await begravningsavgiftField.inputValue());
+console.log(`church member   : ${memberFilled}%, expected ~${(expectedChurchMember * 100).toFixed(2)}%`);
+if (Math.abs(memberFilled / 100 - expectedChurchMember) > 0.001) {
+  problems.push(
+    `picking "member" set the rate to ${memberFilled}%, expected ${(expectedChurchMember * 100).toFixed(2)}%`,
+  );
+}
+
+// Aterstall undoes both selects, not just the numbers they filled.
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const kommunSelectAfterReset = await kommunSelect.inputValue();
+const churchSelectAfterReset = await churchSelect.inputValue();
+if (kommunSelectAfterReset !== "") {
+  problems.push(`the reset button left the municipality select at "${kommunSelectAfterReset}", expected blank`);
+}
+if (churchSelectAfterReset !== "") {
+  problems.push(`the reset button left the church/burial select at "${churchSelectAfterReset}", expected "own rate"`);
+}
+
 // Housing supplement: the shipped typfall draws none, and a rent high enough
 // has to bring some in. `Bidrag` is Table 2's benefits column.
 const benefitsCol = table2Headers.findIndex(

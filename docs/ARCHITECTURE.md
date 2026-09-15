@@ -272,3 +272,39 @@ me". Amounts are rounded to whole kronor, shown and used, which costs 0.02 kr pe
 final salary and keeps the rule that the form never shows a number the run did not use. Once a
 vector is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from a
 second run with `ownIncome` removed.
+
+### Two ways of filling in `kommunalskatt` and `begravningsavgift`
+
+`apps/web/src/kommunalskatt.ts` gives the two tax-basis settings a friendlier starting point than a
+bare percent box: a per-municipality dropdown for `kommunalskatt`, and a member/non-member selector
+for `begravningsavgift` with a link to find your own parish. The two halves come from opposite ends
+of the "is this from the workbook" question, and the file's own header is explicit about which is
+which.
+
+The **municipality table** (290 names, `KOMMUNALSKATT`) is new data — `packages/data/municipal-
+tax.json` is a national *average*, not a per-municipality list, so there is nothing in this repo to
+extract it from. It is copied verbatim from a reference calculator the user supplied, which cites
+SCB's own published table, and is documented the same way the tax-per-year chart or the KPI cards
+are: not from the workbook, cited, and dated (`KOMMUNALSKATT_YEAR`) so a future update is a wholesale
+replacement rather than a patch.
+
+The **church/burial selector** needed no new data at all. `context.begravningsavgift` is Adv_settings
+row 40's own single field — "Begravningsavgiften samt avgiften till kyrkan/trossamfundet" — matching
+`taxAndBenefits.ts`'s one `kyrkskatt` line; the reference calculator that prompted this models church
+fee and burial fee as two taxes it sums, which this engine's single field does not support without
+changing it. It turns out unnecessary: `packages/data/municipal-tax.json` (`K_skatt`) already carries
+both halves as separate historical series — `begravningsavgift` (burial fee alone) and `kyrkoavgift`
+("church fee including burial fee") — and the engine has always extracted the second without ever
+reading it. `kommunalskatt.ts`'s `CHURCH_MEMBER_RATE`/`BURIAL_ONLY_RATE` read the latest real (not
+mechanically projected) year of each, so the selector's two population-average options are exactly
+this engine's own data, just given a UI path that was never built. Stockholm's and Tranås's own
+burial-fee regimes are the one part that is a cited external fact rather than extracted data — the
+same class of addition `returnBasis`'s PPM/AP7 choices already are.
+
+**The footgun this closes.** Setting `kommunalskatt` away from 0 flips `historicalTaxRate` off in
+`setup.ts`, which stops `begravavg` from following the historical-average series and starts reading
+`context.begravningsavgift` directly — silently 0 unless something has also set it, a trap that
+predates this change and is far easier to hit with a one-click municipality picker. Picking a
+municipality while the church/burial field is still untouched auto-fills it with the burial-only
+average instead — this port's own honest default for "not a member, and nothing else chosen either",
+which is exactly what the historical-average path it just left would have used anyway.
