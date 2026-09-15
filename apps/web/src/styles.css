@@ -316,12 +316,27 @@ body {
 
 /* One row per age from 15 to the last worked one -- about fifty, so it gets
    its own scroller rather than stretching the column. */
-.adv-grid-scroll { overflow-y: auto; max-height: 40vh; }
+.adv-grid-scroll { overflow-y: auto; overflow-x: auto; max-height: 40vh; }
+/*
+ * Fixed rather than the table's own default auto layout.
+ *
+ * With auto layout, `table-layout` grows a column to whatever its widest cell
+ * asks for and only THEN clamps the table to `width: 100%` -- so a table whose
+ * min-content is wider than its sidebar, as this one's four columns are,
+ * renders past the sidebar's edge and forces a horizontal scrollbar on every
+ * desktop view, not just a narrow one. Fixed layout takes its column widths
+ * from the header row below instead and never grows past `width: 100%`, so
+ * the four columns share exactly the sidebar's own width.
+ */
+.adv-grid { table-layout: fixed; }
+.adv-grid thead th:nth-child(1), .adv-grid td:nth-child(1) { width: 22%; }  /* År */
+.adv-grid thead th:nth-child(2), .adv-grid td:nth-child(2) { width: 18%; }  /* Ålder -- its own header, "Ålder", is the widest thing in the column */
+.adv-grid thead th:nth-child(3), .adv-grid td:nth-child(3),
+.adv-grid thead th:nth-child(4), .adv-grid td:nth-child(4) { width: 30%; } /* Inkomst, Varav lön */
 .adv-grid th, .adv-grid td { padding: 2px 4px; font-size: 0.75rem; }
 .adv-grid thead th { position: sticky; top: 0; z-index: 1; }
 .adv-grid td > input {
   width: 100%;
-  min-width: 7ch;
   padding: 2px 4px;
   font: inherit;
   text-align: right;
@@ -331,6 +346,12 @@ body {
   border-radius: 4px;
 }
 .adv-grid td > input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The spinner buttons a number input draws are decorative here -- every cell
+   is already clamped by salaryPath.ts's own change handler -- and at a fixed
+   column width they would cost the same digits they take space from. */
+.adv-grid td > input::-webkit-outer-spin-button,
+.adv-grid td > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.adv-grid td > input[type="number"] { -moz-appearance: textfield; }
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would
      pin half the screen and hide the results behind it. */
@@ -363,8 +384,14 @@ body {
 }
 .field > input:focus, .field > select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* A select with no room for a second column (the occupational-pension and
+   advanced-mode dropdowns). Its own row layout, not the default two-column
+   one: `.field-hint` is grid-row 2 in the base rule, and a field-wide select
+   sharing that row is why "Typ av sparande" and "Historisk avkastning"
+   rendered their hint text on top of the box instead of below it. */
 .field-wide { grid-template-columns: minmax(0, 1fr); }
 .field-wide > select { grid-column: 1; grid-row: 2; text-align: left; }
+.field-wide > .field-hint { grid-row: 3; }
 
 .field-check { grid-template-columns: auto minmax(0, 1fr); }
 .field-check > input {
