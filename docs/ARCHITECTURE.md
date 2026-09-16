@@ -338,3 +338,29 @@ predates this change and is far easier to hit with a one-click municipality pick
 municipality while the church/burial field is still untouched auto-fills it with the burial-only
 average instead — this port's own honest default for "not a member, and nothing else chosen either",
 which is exactly what the historical-average path it just left would have used anyway.
+
+### Jämför scenarier
+
+`apps/web/src/compare.ts` is a second top-level view, toggled by a third `.panel-toggle` beside
+Normalt/Avancerat, that runs the baseline typfall alongside up to three variants side by side. It has
+no workbook equivalent — the same class of addition as the tax-per-year chart — but it adds almost no
+new machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` already calls it twice
+per render in Avancerat with no debounce), and `renderKpis`/`renderTable1` are pure functions of a
+result that take no more work to call four times than once, so each card is just another call to
+functions the single-scenario view already uses.
+
+A variant is **not** an inherit/override state machine — `undefined` fields, a placeholder empty
+state, and so on. `newVariant` copies the baseline's salary, retirement age and occupational scheme
+the moment a scenario is added; the three controls on that card then edit their own copy
+independently, and `applyScenario` lays those three fields over whatever the baseline currently is on
+every run. Everything else about the baseline — birth year, the economic assumptions, any advanced
+setting, a typed salary or PGB vector — keeps flowing into every scenario's run live, since only these
+three fields are ever "frozen" per card. This is simpler than a real inherit/override design and reads
+the same way to whoever is using it: a new scenario starts out identical to the baseline and diverges
+only where it is typed into.
+
+Two CSS fixes came out of measuring the built page rather than assuming: a flex item's default
+`min-width: auto` let the KPI row's own `minmax(200px, 1fr)` grid and Table 1's natural width widen
+each card past its intended 340px instead of scrolling inside it (`.compare-card { min-width: 0; }`,
+the same fix `.results` already needed for the same reason), and Table 1 itself needed the same
+`.scroll` wrapper `main.ts`'s own `wrapScroll` gives it in the single-scenario view.

@@ -382,6 +382,37 @@ body {
   .adv-grid-scroll { max-height: 60vh; }
 }
 
+/*
+ * compare.ts's scenario cards -- a horizontally scrolling row, the same way
+ * `.adv-grid-scroll` scrolls a tall grid instead of shrinking its columns.
+ * Each card is a plain `.panel` (no `h2`, so no gold banner) wide enough for
+ * Table 1 to stay readable, which is why the row scrolls instead of trying to
+ * fit three or four onto one screen.
+ */
+.compare-panel { display: grid; gap: 12px; }
+.compare-row { display: flex; align-items: start; gap: 16px; overflow-x: auto; padding-bottom: 4px; }
+/* `min-width: 0` twice, the same as `.results` -- a flex item's automatic
+   minimum is its content's, so without it the KPI row's own 200px-per-card
+   grid and Table 1's own width would widen the card past 340px instead of
+   scrolling inside it. */
+.compare-card { flex: 0 0 340px; min-width: 0; display: grid; gap: 12px; }
+.compare-card-results > * { min-width: 0; }
+.compare-card-head { display: flex; align-items: center; gap: 8px; }
+.compare-card-label {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  padding: 4px 6px;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.compare-card-baseline .compare-card-head { padding: 4px 0; }
+.compare-card-controls { display: grid; gap: 10px; }
+.compare-card-results { display: grid; gap: 12px; }
+
 .field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px;

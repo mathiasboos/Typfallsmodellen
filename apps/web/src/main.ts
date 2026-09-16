@@ -22,11 +22,12 @@ import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodelle
 import { createAdvancedPanel } from "./advanced.js";
 import { renderDisposable, renderFigure1, renderFigure2, renderTaxChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
+import { createComparePanel } from "./compare.js";
 import { loadDeathProbabilities } from "./deaths.js";
 import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
-import { renderKpis } from "./kpis.js";
+import { renderKpis, retirementAge } from "./kpis.js";
 import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
 import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
@@ -41,6 +42,9 @@ interface View {
 
 /** The workbook's two radio circles: `Normalt` and `Avancerat`. */
 type Mode = "normal" | "advanced";
+
+/** Not a workbook mode -- a second top-level view alongside the forecast. */
+type Screen = "single" | "compare";
 
 const deaths = loadDeathProbabilities();
 
@@ -71,20 +75,10 @@ function runInput(): TypfallInput {
   return mode === "advanced" ? { ...input, ...advancedInput } : input;
 }
 
-/**
- * The retirement age the run used, which is not always the one asked for.
- *
- * `startsetup` raises a retirement age below the cohort's earliest and says so
- * in a warning; every heading that names the age reads it back from there.
- */
-function retirementAge(input: TypfallInput, result: TypfallResult): number {
-  const corrected = result.warnings.find((w) => w.field === "ParYear");
-  return typeof corrected?.used === "number" ? corrected.used : input.retirementAge;
-}
-
 let input: TypfallInput = defaultInput();
 let view: View = { lang: "sv", monthly: true };
 let mode: Mode = "normal";
+let screen: Screen = "single";
 /** Adv_settings, as overrides on top of the workbook's own normal values. */
 let advanced: Partial<ModelContext> = {};
 /** The Start-sheet side of advanced mode: today just the own wage vector. */
@@ -124,6 +118,8 @@ const pgbGrid = createPgbGrid(view.lang, (pgb) => {
   advancedInput = next;
   render();
 });
+
+const comparePanel = createComparePanel(view.lang, input, () => render());
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");
@@ -175,6 +171,31 @@ function modeToggle(): HTMLElement {
   return box;
 }
 
+/** Prognos / Jämför scenarier -- not a workbook toggle, so plain per-language
+ * literals, the same way `modeToggle`'s own labels are. */
+function screenToggle(): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "panel-toggle screen-toggle";
+  box.setAttribute("role", "group");
+  const choices: readonly { screen: Screen; label: (l: Lang) => string }[] = [
+    { screen: "single", label: (l) => (l === "sv" ? "Prognos" : "Forecast") },
+    { screen: "compare", label: (l) => (l === "sv" ? "Jämför scenarier" : "Compare scenarios") },
+  ];
+  for (const choice of choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.screen = choice.screen;
+    button.textContent = choice.label(view.lang);
+    button.className = choice.screen === screen ? "panel-btn active" : "panel-btn";
+    button.addEventListener("click", () => {
+      screen = choice.screen;
+      render();
+    });
+    box.append(button);
+  }
+  return box;
+}
+
 const modeBox = document.createElement("div");
 modeBox.className = "mode-row";
 
@@ -207,6 +228,7 @@ function renderHeading(): void {
       advancedPanel.relabel(lang);
       salaryPath.relabel(lang);
       pgbGrid.relabel(lang);
+      comparePanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -361,6 +383,15 @@ function render(): void {
     pgbGrid.setBaseline(input.born);
   }
 
+  results.replaceChildren();
+  results.append(screenToggle());
+
+  if (screen === "compare") {
+    results.append(comparePanel.element);
+    comparePanel.renderResults(typfall, context, deaths, lang);
+    return;
+  }
+
   const figures: FigureView = {
     lang,
     par,
@@ -382,7 +413,6 @@ function render(): void {
   // Table 2 and the figures trim theirs.
   const table1Title = lang === "sv" ? "Pensionsinkomst" : "Pension income";
 
-  results.replaceChildren();
   const warned = warnings(result);
   if (warned) results.append(warned);
   results.append(renderKpis(result, lang, par));

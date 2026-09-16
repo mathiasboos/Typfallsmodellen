@@ -13,11 +13,23 @@
  * built page instead, by `tools/build/verify-offline.mjs`.
  */
 import { Table1Key } from "@typfallsmodellen/engine";
-import type { TypfallResult } from "@typfallsmodellen/engine";
+import type { TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
 import { kronor, percent } from "./format.js";
 import { t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
+
+/**
+ * The retirement age the run used, which is not always the one asked for.
+ *
+ * `startsetup` raises a retirement age below the cohort's earliest and says so
+ * in a warning; every heading that names the age, and the KPI cards below,
+ * read it back from there rather than from the input.
+ */
+export function retirementAge(input: TypfallInput, result: TypfallResult): number {
+  const corrected = result.warnings.find((w) => w.field === "ParYear");
+  return typeof corrected?.used === "number" ? corrected.used : input.retirementAge;
+}
 
 export interface KpiValues {
   /** `Table1Key.TotalGross`'s own monthly figure -- not re-derived from

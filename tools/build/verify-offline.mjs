@@ -566,6 +566,105 @@ await tab.locator('[data-action="reset-advanced"]').click();
 await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
 await tab.waitForTimeout(50);
 
+// ---- Jamfor scenarier -----------------------------------------------------
+//
+// A second top-level view, not a workbook mode: the baseline plus up to three
+// variants, each overriding only salary, retirement age and occupational
+// scheme. The point of each check, as with Avancerat above, is that a
+// variant's own controls reach its own run and nothing else's.
+
+const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
+if (screenButtons !== 2) {
+  problems.push(`screen toggle has ${screenButtons} buttons, expected 2 (Prognos / Jämför scenarier)`);
+}
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="compare"]').click();
+await tab.waitForTimeout(50);
+
+const compareCards = await tab.locator(".compare-card").count();
+console.log(`compare cards   : ${compareCards}`);
+if (compareCards !== 2) {
+  problems.push(`the compare tab shows ${compareCards} cards, expected 2 (baseline + one scenario)`);
+}
+
+async function kpiValueIn(card, index) {
+  const text = await card.locator(".kpi-card").nth(index).locator(".kpi-value").textContent();
+  if (text === null) return Number.NaN;
+  return Number(text.replace(/[^\d,-]/g, "").replace(",", "."));
+}
+
+const baselineCard = tab.locator('.compare-card[data-scenario="baseline"]');
+const scenario1Card = tab.locator(".compare-card").nth(1);
+
+const baselinePension = await kpiValueIn(baselineCard, 0);
+const scenario1PensionBefore = await kpiValueIn(scenario1Card, 0);
+console.log(`compare baseline: ${baselinePension}, scenario 1 before: ${scenario1PensionBefore}`);
+if (scenario1PensionBefore !== baselinePension) {
+  problems.push(
+    `a freshly added scenario shows ${scenario1PensionBefore}, expected to start identical to the ` +
+      `baseline's ${baselinePension}`,
+  );
+}
+
+// Raising the scenario's own salary well above the baseline's must move only
+// that card, not the baseline beside it.
+const scenario1Salary = scenario1Card.locator(".compare-card-controls input").first();
+await scenario1Salary.fill("80000");
+await scenario1Salary.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const scenario1PensionAfter = await kpiValueIn(scenario1Card, 0);
+const baselinePensionAfter = await kpiValueIn(baselineCard, 0);
+console.log(`scenario salary raised: pension ${scenario1PensionBefore} -> ${scenario1PensionAfter}`);
+if (!(scenario1PensionAfter > scenario1PensionBefore)) {
+  problems.push(
+    `raising a scenario's own salary did not raise its pension (${scenario1PensionBefore} -> ` +
+      `${scenario1PensionAfter})`,
+  );
+}
+if (baselinePensionAfter !== baselinePension) {
+  problems.push(
+    `raising a scenario's salary changed the baseline's own pension (${baselinePension} -> ` +
+      `${baselinePensionAfter})`,
+  );
+}
+
+// Add up to the cap -- baseline plus three variants -- then confirm add disables.
+await tab.locator('[data-action="add-scenario"]').click();
+await tab.waitForTimeout(50);
+await tab.locator('[data-action="add-scenario"]').click();
+await tab.waitForTimeout(50);
+const cardsAtCap = await tab.locator(".compare-card").count();
+const addDisabled = await tab.locator('[data-action="add-scenario"]').isDisabled();
+console.log(`cards at cap    : ${cardsAtCap}, add disabled: ${addDisabled}`);
+if (cardsAtCap !== 4) {
+  problems.push(`adding scenarios up to the cap left ${cardsAtCap} cards, expected 4`);
+}
+if (!addDisabled) {
+  problems.push("the add-scenario button is not disabled at the four-card cap");
+}
+
+// Remove down to the floor -- baseline plus one variant -- then confirm
+// remove disables rather than leaving zero scenarios to compare.
+const removeButton = tab.locator('.compare-card:not([data-scenario="baseline"]) [data-action="remove-scenario"]');
+await removeButton.first().click();
+await tab.waitForTimeout(50);
+await removeButton.first().click();
+await tab.waitForTimeout(50);
+const cardsAtFloor = await tab.locator(".compare-card").count();
+const removeDisabled = await removeButton.first().isDisabled();
+console.log(`cards at floor  : ${cardsAtFloor}, remove disabled: ${removeDisabled}`);
+if (cardsAtFloor !== 2) {
+  problems.push(`removing scenarios down to the floor left ${cardsAtFloor} cards, expected 2`);
+}
+if (!removeDisabled) {
+  problems.push("the remove-scenario button is not disabled with only one scenario left");
+}
+
+// Back to the single-scenario view for the screenshots, and to leave the
+// page as found.
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
 // ---- Provenance and paper ------------------------------------------------
 //
 // The page computes a pension forecast and looks authoritative, so it has to
