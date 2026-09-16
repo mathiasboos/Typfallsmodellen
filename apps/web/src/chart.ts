@@ -33,6 +33,7 @@ import type { MvaluesRow, TypfallResult } from "@typfallsmodellen/engine";
 import { kronor } from "./format.js";
 import { dropHeadingNumber, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
+import type { ScenarioColumn } from "./tables.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -66,6 +67,14 @@ interface Series {
   /** A custom property in styles.css, so light and dark are separate steps. */
   readonly colour: string;
   readonly mark: "fill" | "line";
+  /** Whether a "line" mark's own legend swatch reads as dashed. Every figure
+   * before `renderCompareChart` draws its actual dash pattern from a CSS
+   * class keyed on `key` (`.line-current`, `.line-wage-level`) and always
+   * showed a dashed legend key regardless -- true even for "fixed", whose
+   * line is solid. Left at its default (dashed) everywhere that already
+   * relies on it; `renderCompareChart`'s own lines are genuinely solid, so
+   * its series set this to `false` rather than adding a fourth mismatch. */
+  readonly dashed?: boolean;
   readonly get: (row: MvaluesRow) => number;
 }
 
@@ -147,13 +156,19 @@ function shadeRetirement(svg: SVGSVGElement, from: number): void {
   );
 }
 
+/** A "line" mark's own swatch class -- dashed unless the series says its
+ * plotted line is genuinely solid (`dashed: false`). */
+function lineSwatchClass(item: Series): string {
+  return item.dashed === false ? "swatch swatch-line-solid" : "swatch swatch-line";
+}
+
 function legend(series: readonly Series[], lang: Lang): HTMLElement {
   const box = document.createElement("ul");
   box.className = "legend";
   for (const item of series) {
     const li = document.createElement("li");
     const swatch = document.createElement("span");
-    swatch.className = item.mark === "line" ? "swatch swatch-line" : "swatch";
+    swatch.className = item.mark === "line" ? lineSwatchClass(item) : "swatch";
     if (item.mark === "line") swatch.style.borderTopColor = `var(${item.colour})`;
     else swatch.style.background = `var(${item.colour})`;
     const text = document.createElement("span");
@@ -209,7 +224,7 @@ function hover(
       const row = document.createElement("div");
       row.className = "tooltip-row";
       const swatch = document.createElement("span");
-      swatch.className = item.mark === "line" ? "swatch swatch-line" : "swatch";
+      swatch.className = item.mark === "line" ? lineSwatchClass(item) : "swatch";
       if (item.mark === "line") swatch.style.borderTopColor = `var(${item.colour})`;
       else swatch.style.background = `var(${item.colour})`;
       const name = document.createElement("span");
@@ -378,6 +393,73 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
     lang,
   );
   return figure;
+}
+
+// -------------------------------------------------- Jamfor scenarier chart ---
+
+/**
+ * One solid line per scenario -- built for `compare.ts`. Styled like Figur 1
+ * but comparing scenarios rather than price bases, so it needs only one of
+ * Figur 1's three price views: fixed prices (the same formula its own
+ * "fixed prices" series uses), since the point here is comparing scenarios on
+ * equal footing, not comparing price bases against each other.
+ *
+ * No hover/crosshair, unlike every other figure here. `hover()`'s own `Point`
+ * carries one shared `MvaluesRow` that every series' `get` reads -- true
+ * across Figur 1's three price views, since they come from the same run, but
+ * false here, where each scenario is its own separate run with its own rows.
+ * Reusing it would need `hover()` itself rewritten to look a row up per
+ * series rather than share one; the comparison table this chart sits beside
+ * already gives the exact numbers, so this first cut ships the lines, legend
+ * and axes without a tooltip rather than forcing a mismatched abstraction.
+ *
+ * The age range comes from the first scenario's own rows: `born` and
+ * `startWorkAge` are shared baseline fields no scenario overrides, so every
+ * scenario's row range is the same age span in practice.
+ */
+export function renderCompareChart(columns: readonly ScenarioColumn[], view: FigureView): HTMLElement {
+  const { lang } = view;
+  const per = scale(view);
+
+  const value = (row: MvaluesRow) => (nominal(row.brutto, row, view.priceBasis) * row.kpiFactor) / per;
+
+  const series: readonly Series[] = columns.map((column) => ({
+    key: column.label,
+    name: () => column.label,
+    colour: column.colour,
+    mark: "line",
+    dashed: false,
+    get: value,
+  }));
+
+  const title =
+    lang === "sv" ? "Löneinkomst och pension, per scenario" : "Earnings and pension, by scenario";
+  const svg = newSvg(title);
+
+  const rows = columns[0]?.result.rows ?? [];
+  const first = rows[0]?.age ?? 0;
+  const last = rows[rows.length - 1]?.age ?? first + 1;
+  const x = (age: number) =>
+    PLOT.left + ((age - first) / Math.max(last - first, 1)) * (PLOT.right - PLOT.left);
+  const max = Math.max(...columns.flatMap((column) => column.result.rows.map(value)), 1);
+  const axis = vertical(max);
+  const y = axis.y;
+
+  gridlines(svg, axis, lang);
+  for (let age = Math.ceil(first / 5) * 5; age <= last; age += 5) {
+    svg.append(label(String(age), x(age), PLOT.bottom + 16, "tick tick-x"));
+    if (age % 10 === 0) {
+      const row = rows.find((r) => r.age === age);
+      if (row) svg.append(label(String(row.year), x(age), PLOT.bottom + 31, "tick tick-x tick-year"));
+    }
+  }
+
+  columns.forEach((column, i) => {
+    const points = column.result.rows.map((row) => `${x(row.age)},${y(series[i]!.get(row))}`).join(" ");
+    svg.append(el("polyline", { points, fill: "none", stroke: `var(${column.colour})`, class: "line" }));
+  });
+
+  return frame(title, undefined, svg, legend(series, lang));
 }
 
 // ------------------------------------------------- the two column charts ---

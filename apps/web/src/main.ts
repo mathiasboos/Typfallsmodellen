@@ -388,7 +388,7 @@ function render(): void {
 
   if (screen === "compare") {
     results.append(comparePanel.element);
-    comparePanel.renderResults(typfall, context, deaths, lang);
+    comparePanel.renderResults(typfall, context, deaths, lang, view.monthly);
     return;
   }
 

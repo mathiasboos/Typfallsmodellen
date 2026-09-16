@@ -66,7 +66,7 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | 3. Normal-mode website | done | the Start sheet: eight typed input cells, Table 1's four columns, Table 2, Figur 1, Figur 2 and the disposable income chart, Swedish and English — one offline HTML file |
 | 4. Advanced mode | done | the workbook's second mode: twenty-five of the `Adv_settings` in the manual's own groups, the Indata_lista wage vector as an editable grid, and the PGB sheet's manual pension-qualifying amounts as a second grid |
 | 5. Polish, CI, deploy | done | every check above runs on each push; the site publishes to GitHub Pages and each tag attaches the file to a release |
-| 6. Compare scenarios *(not from the workbook)* | done | a second top-level view: the baseline typfall alongside up to three variants, each with its own salary, retirement age and occupational pension |
+| 6. Compare scenarios *(not from the workbook)* | done | a second top-level view: the baseline typfall alongside up to three variants, each with its own salary, retirement age and occupational pension, lined up in one shared comparison table and an overlay chart |
 
 ### Verified so far
 
@@ -80,7 +80,7 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | **Every Table 1 figure, end to end** | **299 typfall the real model computed, all twelve output columns** | **3 588 of 3 588 cells exact** |
 | The built HTML file, opened from disk with the network cut | all four Table 1 columns read back out of Chromium, against the engine's own snapshot | no outbound requests, no page errors, values exact — `npm run verify:offline` |
 | Advanced mode, driven in the same browser | a municipal rate, a rent, ten zeroed salary years, and a manual PGB entry, each read back out of the rendered tables | every setting moves the model, and `Använd normala inställningar` puts it back |
-| Compare scenarios, driven in the same browser | a scenario's own salary raised well above the baseline's, and the add/remove scenario limits | only that scenario's own result moves, the baseline stays put, and the card count stays between one and four |
+| Compare scenarios, driven in the same browser | a scenario's own salary raised well above the baseline's, the add/remove scenario limits, and the comparison table's own replacement-rate row | only that scenario's own column in the table and line in the chart move, the baseline stays put, the card/column/line count stays between one and four, and no replacement-rate cell ever reaches 100% |
 | VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |

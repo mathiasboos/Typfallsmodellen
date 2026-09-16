@@ -6,9 +6,9 @@
  * the same class of addition as the tax-per-year chart. What it reuses is
  * everything downstream of a `TypfallInput`: `run()` itself (confirmed cheap,
  * well under a millisecond, the same reasoning `main.ts` already gives for
- * running it twice per render in Avancerat), and `renderKpis`/`renderTable1`,
- * which are pure functions of a result and take no more work to call four
- * times than once.
+ * running it twice per render in Avancerat), and `renderCompareTable`/
+ * `renderCompareChart` (`tables.ts`/`chart.ts`), which take no more work to
+ * run against four scenarios than one.
  *
  * A variant is not a diff against the baseline in the sense of "undefined
  * means inherit" -- it is a plain copy of the baseline's salary, retirement
@@ -19,6 +19,12 @@
  * where it is typed into. Every other field -- birth year, inflation, any
  * advanced setting, a typed salary vector -- keeps coming from the live
  * baseline on every run, so only these three are ever "frozen" per scenario.
+ *
+ * Results used to live inside each scenario's own card (a KPI row plus a full
+ * Table 1) until a reviewer found that layout hard to actually compare row by
+ * row and hand-built a spreadsheet mockup of what they wanted instead: one
+ * table, every row lined up across scenarios, plus an overlay chart. Both now
+ * live in one shared section below the cards, which are input-only.
  */
 import { options } from "@typfallsmodellen/data";
 import { RETIREMENT_AGES, run } from "@typfallsmodellen/engine";
@@ -29,16 +35,28 @@ import type {
   TypfallInput,
 } from "@typfallsmodellen/engine";
 
+import { renderCompareChart } from "./chart.js";
+import type { FigureView } from "./chart.js";
 import { fieldSet, span } from "./controls.js";
 import type { Lang } from "./i18n.js";
 import { t } from "./i18n.js";
-import { renderKpis, retirementAge } from "./kpis.js";
-import { renderTable1 } from "./tables.js";
-import type { Table1View } from "./tables.js";
+import { retirementAge } from "./kpis.js";
+import { renderCompareTable } from "./tables.js";
+import type { ScenarioColumn } from "./tables.js";
 
 const RETIREMENT = span(RETIREMENT_AGES);
 const SCHEMES = options.choices.occupationalPension as readonly { value: number; label: string }[];
 const MAX_VARIANTS = 3;
+
+/**
+ * One colour per card position, not per `id` -- so a card's own accent, its
+ * line in the chart and its column in the table always agree even as
+ * variants are added or removed, at the cost of a variant's colour shifting
+ * if an earlier one is removed. Validated (`dataviz` skill, `validate_palette.
+ * js`) against both this app's chart surfaces (`--surface-raised`, light
+ * `#ffffff` and dark `#003824`) as a fixed-order categorical set.
+ */
+const SCENARIO_COLOURS = ["--fig-scenario-0", "--fig-scenario-1", "--fig-scenario-2", "--fig-scenario-3"] as const;
 
 export interface ScenarioOverride {
   readonly id: string;
@@ -71,11 +89,24 @@ function newVariant(id: string, label: string, baseline: TypfallInput): Scenario
 export interface CompareHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
-  /** Rebuilds every scenario's KPI row and Table 1 against the live baseline. */
-  renderResults(baseline: TypfallInput, context: ModelContext, deaths: DeathProbabilities, lang: Lang): void;
+  /** Rebuilds the comparison chart and table against the live baseline. */
+  renderResults(
+    baseline: TypfallInput,
+    context: ModelContext,
+    deaths: DeathProbabilities,
+    lang: Lang,
+    perMonth: boolean,
+  ): void;
 }
 
 const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
+
+function swatch(colour: string): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "compare-swatch";
+  el.style.background = `var(${colour})`;
+  return el;
+}
 
 export function createComparePanel(
   lang: Lang,
@@ -111,12 +142,15 @@ export function createComparePanel(
     onChange();
   });
 
-  element.append(intro, row, addButton);
+  const results = document.createElement("div");
+  results.className = "compare-results";
+
+  element.append(intro, row, addButton, results);
 
   let currentLang = lang;
 
-  /** One card's controls and result area, rebuilt whenever the variant list changes. */
-  function variantCard(variant: ScenarioOverride): HTMLElement {
+  /** One variant's controls, rebuilt whenever the variant list changes. */
+  function variantCard(variant: ScenarioOverride, colour: string): HTMLElement {
     const card = document.createElement("section");
     card.className = "panel compare-card";
     card.dataset.scenario = variant.id;
@@ -144,7 +178,7 @@ export function createComparePanel(
       build();
       onChange();
     });
-    head.append(labelInput, remove);
+    head.append(swatch(colour), labelInput, remove);
 
     const controls = document.createElement("div");
     controls.className = "compare-card-controls";
@@ -180,10 +214,7 @@ export function createComparePanel(
     });
     field(schemeSelect, (l) => ({ label: t("occupational", l) }), "field field-wide");
 
-    const results = document.createElement("div");
-    results.className = "compare-card-results";
-
-    card.append(head, controls, results);
+    card.append(head, controls);
     return card;
   }
 
@@ -195,17 +226,18 @@ export function createComparePanel(
     head.className = "compare-card-head";
     const heading = document.createElement("strong");
     heading.textContent = say(currentLang, "Utgångsläge", "Baseline");
-    head.append(heading);
-    const results = document.createElement("div");
-    results.className = "compare-card-results";
-    card.append(head, results);
+    head.append(swatch(SCENARIO_COLOURS[0]), heading);
+    card.append(head);
     return card;
   }
 
   /** Rebuilds the row of cards from scratch -- add/remove change how many
    * there are, so there is no cheaper update than redrawing all of them. */
   function build(): void {
-    row.replaceChildren(baselineCard(), ...variants.map(variantCard));
+    row.replaceChildren(
+      baselineCard(),
+      ...variants.map((variant, i) => variantCard(variant, SCENARIO_COLOURS[i + 1] ?? SCENARIO_COLOURS[0])),
+    );
     addButton.disabled = variants.length >= MAX_VARIANTS;
   }
   build();
@@ -229,34 +261,38 @@ export function createComparePanel(
       applyText(l);
       build();
     },
-    renderResults(baseline, context, deaths, runLang) {
+    renderResults(baseline, context, deaths, runLang, perMonth) {
       lastBaseline = baseline;
-      const cards = row.children;
 
-      const renderInto = (resultsEl: Element, typfall: TypfallInput) => {
-        const result = run(typfall, context, { deaths });
-        const par = retirementAge(typfall, result);
-        const table1View: Table1View = {
-          par,
-          finalSalaryYears: context.finalSalaryYears,
-          lastPensionRight: context.lastPensionRight > 0,
-        };
-        // Table 1 is wider than a card, the same way it is wider than a phone
-        // in the single-scenario view -- `.scroll` gives it its own scroller
-        // instead of widening the card (`main.ts`'s own `wrapScroll`).
-        const table1Box = document.createElement("div");
-        table1Box.className = "scroll";
-        table1Box.append(renderTable1(result, runLang, table1View));
-        resultsEl.replaceChildren(renderKpis(result, runLang, par), table1Box);
+      const columns: ScenarioColumn[] = [baseline, ...variants.map((v) => applyScenario(baseline, v))].map(
+        (typfall, i) => {
+          const result = run(typfall, context, { deaths });
+          return {
+            label: i === 0 ? say(runLang, "Utgångsläge", "Baseline") : variants[i - 1]!.label,
+            colour: SCENARIO_COLOURS[i] ?? SCENARIO_COLOURS[0],
+            result,
+            par: retirementAge(typfall, result),
+          };
+        },
+      );
+
+      const figureView: FigureView = {
+        lang: runLang,
+        par: columns[0]!.par,
+        perMonth,
+        priceBasis: context.priceBasis,
       };
 
-      const baselineResults = cards[0]?.querySelector(".compare-card-results");
-      if (baselineResults) renderInto(baselineResults, baseline);
+      const table = document.createElement("div");
+      table.className = "scroll";
+      table.append(
+        renderCompareTable(columns, runLang, {
+          finalSalaryYears: context.finalSalaryYears,
+          lastPensionRight: context.lastPensionRight > 0,
+        }),
+      );
 
-      for (const [index, variant] of variants.entries()) {
-        const resultsEl = cards[index + 1]?.querySelector(".compare-card-results");
-        if (resultsEl) renderInto(resultsEl, applyScenario(baseline, variant));
-      }
+      results.replaceChildren(renderCompareChart(columns, figureView), table);
     },
   };
 }

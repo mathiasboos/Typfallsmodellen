@@ -107,12 +107,29 @@ function card(kpi: Kpi): HTMLElement {
   return el;
 }
 
+/**
+ * The three KPI cards' own labels -- not SysLang text, so plain per-language
+ * literals like the rest of this file -- pulled out so `compare.ts`'s
+ * comparison table can put the same three rows in its own left-hand column
+ * without retyping them a second time.
+ */
+export function kpiLabels(lang: Lang): readonly [string, string, string] {
+  return [
+    lang === "sv" ? "Pension vid pensionering" : "Pension at retirement",
+    lang === "sv" ? "Kompensationsgrad vid pensionering" : "Replacement rate at retirement",
+    lang === "sv"
+      ? "Genomsnittlig pension under pensionstiden"
+      : "Average pension through retirement",
+  ];
+}
+
 export function renderKpis(result: TypfallResult, lang: Lang, par: number): HTMLElement {
   const v = computeKpis(result, par);
+  const [pensionLabel, replacementLabel, averageLabel] = kpiLabels(lang);
 
   const kpis: readonly Kpi[] = [
     {
-      label: lang === "sv" ? "Pension vid pensionering" : "Pension at retirement",
+      label: pensionLabel,
       value: kronor(v.monthlyAtRetirement, lang),
       unit: t("kr", lang),
       note:
@@ -121,16 +138,12 @@ export function renderKpis(result: TypfallResult, lang: Lang, par: number): HTML
           : `${t("totalGross", lang)}, ${t("perMonth", lang).toLowerCase()}, before tax`,
     },
     {
-      label:
-        lang === "sv" ? "Kompensationsgrad vid pensionering" : "Replacement rate at retirement",
+      label: replacementLabel,
       value: percent(v.replacementRate, lang),
       note: `${t("totalGross", lang)}, ${t("shareOfFinalSalaryShort", lang).toLowerCase()}`,
     },
     {
-      label:
-        lang === "sv"
-          ? "Genomsnittlig pension under pensionstiden"
-          : "Average pension through retirement",
+      label: averageLabel,
       value: kronor(v.averageMonthly, lang),
       unit: t("kr", lang),
       note:

@@ -74,6 +74,15 @@
   --fig-state-tax: #ff5b30;
   --fig-disposable: #000000;
 
+  /* compare.ts's scenario colours: a categorical set, fixed order, validated
+     (dataviz skill's validate_palette.js) against this app's own chart
+     surface (--surface-raised) in both themes, not the skill's generic
+     defaults -- this app's dark surface is a dark green, not near-black. */
+  --fig-scenario-0: #2a78d6;
+  --fig-scenario-1: #eb6834;
+  --fig-scenario-2: #1baf7a;
+  --fig-scenario-3: #eda100;
+
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -106,6 +115,11 @@
     --fig-net: #358157;
     --fig-gross: #99beae;
     --fig-disposable: #ffffff;
+
+    --fig-scenario-0: #3987e5;
+    --fig-scenario-1: #d95926;
+    --fig-scenario-2: #199e70;
+    --fig-scenario-3: #c98500;
   }
 }
 
@@ -385,18 +399,13 @@ body {
 /*
  * compare.ts's scenario cards -- a horizontally scrolling row, the same way
  * `.adv-grid-scroll` scrolls a tall grid instead of shrinking its columns.
- * Each card is a plain `.panel` (no `h2`, so no gold banner) wide enough for
- * Table 1 to stay readable, which is why the row scrolls instead of trying to
- * fit three or four onto one screen.
+ * Each card is a plain `.panel` (no `h2`, so no gold banner) and holds only
+ * that scenario's own input controls; results live below in `.compare-
+ * results` instead, one shared chart and table across every scenario.
  */
 .compare-panel { display: grid; gap: 12px; }
 .compare-row { display: flex; align-items: start; gap: 16px; overflow-x: auto; padding-bottom: 4px; }
-/* `min-width: 0` twice, the same as `.results` -- a flex item's automatic
-   minimum is its content's, so without it the KPI row's own 200px-per-card
-   grid and Table 1's own width would widen the card past 340px instead of
-   scrolling inside it. */
 .compare-card { flex: 0 0 340px; min-width: 0; display: grid; gap: 12px; }
-.compare-card-results > * { min-width: 0; }
 .compare-card-head { display: flex; align-items: center; gap: 8px; }
 .compare-card-label {
   flex: 1;
@@ -411,7 +420,21 @@ body {
 }
 .compare-card-baseline .compare-card-head { padding: 4px 0; }
 .compare-card-controls { display: grid; gap: 10px; }
-.compare-card-results { display: grid; gap: 12px; }
+
+.compare-results { display: grid; gap: 20px; min-width: 0; }
+.compare-results > * { min-width: 0; }
+
+/* The coloured square that ties a scenario's card, its chart line and its
+   table column together -- text stays in the usual ink tokens throughout;
+   only this square ever carries the scenario's own colour. */
+.compare-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.compare-table th .compare-swatch { margin-right: 6px; vertical-align: middle; }
 
 .field {
   display: grid;
@@ -585,6 +608,17 @@ body {
   border-radius: 0;
   border-top-width: 2px;
   border-top-style: dashed;
+  margin-top: 9px;
+}
+/* `renderCompareChart`'s lines are genuinely solid, unlike every other line
+   series here (each drawn dashed in its legend key by convention regardless
+   of its own actual dash pattern) -- so its key reads solid too. */
+.swatch-line-solid {
+  width: 18px;
+  height: 0;
+  border-radius: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
   margin-top: 9px;
 }
 

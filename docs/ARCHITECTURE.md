@@ -342,12 +342,10 @@ which is exactly what the historical-average path it just left would have used a
 ### Jämför scenarier
 
 `apps/web/src/compare.ts` is a second top-level view, toggled by a third `.panel-toggle` beside
-Normalt/Avancerat, that runs the baseline typfall alongside up to three variants side by side. It has
-no workbook equivalent — the same class of addition as the tax-per-year chart — but it adds almost no
-new machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` already calls it twice
-per render in Avancerat with no debounce), and `renderKpis`/`renderTable1` are pure functions of a
-result that take no more work to call four times than once, so each card is just another call to
-functions the single-scenario view already uses.
+Normalt/Avancerat, that runs the baseline typfall alongside up to three variants. It has no workbook
+equivalent — the same class of addition as the tax-per-year chart — but it adds almost no new
+machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` already calls it twice per
+render in Avancerat with no debounce), so running it up to four times per change costs nothing extra.
 
 A variant is **not** an inherit/override state machine — `undefined` fields, a placeholder empty
 state, and so on. `newVariant` copies the baseline's salary, retirement age and occupational scheme
@@ -359,8 +357,43 @@ three fields are ever "frozen" per card. This is simpler than a real inherit/ove
 the same way to whoever is using it: a new scenario starts out identical to the baseline and diverges
 only where it is typed into.
 
-Two CSS fixes came out of measuring the built page rather than assuming: a flex item's default
-`min-width: auto` let the KPI row's own `minmax(200px, 1fr)` grid and Table 1's natural width widen
-each card past its intended 340px instead of scrolling inside it (`.compare-card { min-width: 0; }`,
-the same fix `.results` already needed for the same reason), and Table 1 itself needed the same
-`.scroll` wrapper `main.ts`'s own `wrapScroll` gives it in the single-scenario view.
+**Results moved out of the cards, on request.** The first cut gave each scenario its own KPI row and
+full Table 1, stacked inside its own card. A reviewer found that hard to actually compare row by row
+and hand-built a spreadsheet mockup of what they wanted instead — one table, every row lined up across
+scenarios — plus a line chart. Both now live in one shared section below the cards, which are
+input-only:
+
+- `tables.ts`'s `renderCompareTable` reuses `TABLE1_LINES` (the row order and labels) and the
+  `"monthly"`/`"share"` entries of `TABLE1_COLUMNS` verbatim — the other two Table 1 columns (nominal,
+  price-adjusted) say less once salary itself is what is being varied, so the mockup dropped them and
+  this does too. The three KPI cards' own figures (`kpiLabels`, pulled out of `kpis.ts`'s `renderKpis`
+  so both share the same text) lead the table, each filled into whichever of its two sub-columns it
+  naturally has and blank in the other. Two row labels embed a number that can differ per scenario
+  (`finalSalary`'s age-range suffix, `iptFull`'s qualifying-years count) but the table has only one row
+  to show it in — both use the first column's own scenario for that text, a deliberate simplification:
+  the row's *numbers* are still each scenario's real ones regardless of which one the label happens to
+  be read against.
+- `chart.ts`'s `renderCompareChart` draws one solid line per scenario — at fixed prices, the same
+  formula Figur 1's own "fixed prices" series already uses, since the point here is comparing scenarios
+  on equal footing rather than comparing price bases. It skips the interactive hover Figur 1 has:
+  `hover()`'s own `Point` carries one shared row that every series reads, true across price bases
+  (same run) but false across scenarios (each its own run) — reusing it would need `hover()` itself
+  rewritten, and the table beside the chart already gives exact numbers.
+- Every scenario gets a stable colour **slot** by card position (baseline = 0, each variant in add
+  order = 1/2/3) — validated (the `dataviz` skill's `validate_palette.js`) as a fixed-order categorical
+  set against this app's own chart surface, `--surface-raised`, in both themes (its dark value is a
+  dark green, not the skill's generic near-black default, so the generic palette's own validation
+  doesn't transfer without checking). A small coloured square ties a card, its line in the chart and
+  its column in the table together.
+- A reviewer's own pasted mockup of this table once showed a replacement-rate figure over 100%, next
+  to the note "I paste an example" — read as an artifact of assembling that mockup by hand, not a live
+  bug, since nothing in `replacementRate`'s own arithmetic (a plain ratio) can produce that from a real
+  run. `verify-offline.mjs` asserts no cell in that row reaches 100% after raising a scenario's salary,
+  closing the loop on that question rather than leaving it merely asserted in a comment.
+
+Two CSS fixes came out of measuring the built page rather than assuming, both from the same cause: a
+flex item's or grid item's default `min-width: auto` lets its content's own width win over an intended
+smaller size. `.compare-card { min-width: 0; }` keeps each input card at its intended 340px regardless
+of a long select option; `.compare-results { min-width: 0; }` (and `> *`) gives the shared chart and
+table the same treatment `.results` already needed for the single-scenario view, so the wide table
+scrolls inside `.scroll` instead of widening the page.

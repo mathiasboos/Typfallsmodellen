@@ -20,6 +20,7 @@ import type { Table1Row, Table2Row, TypfallResult } from "@typfallsmodellen/engi
 import { kronor, percent } from "./format.js";
 import { t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
+import { computeKpis, kpiLabels } from "./kpis.js";
 
 /** What Table 1's headings and notes need beyond the result itself. */
 export interface Table1View {
@@ -207,6 +208,163 @@ function appendNotes(body: HTMLTableSectionElement, lang: Lang, view: Table1View
       tr.append(against);
     }
   });
+}
+
+/** One scenario's own column-pair in `renderCompareTable`. */
+export interface ScenarioColumn {
+  /** The scenario's own display name, e.g. "Baseline" or a typed label. */
+  readonly label: string;
+  /** A CSS custom-property name, shared with that scenario's card and its
+   * line in `renderCompareChart` -- one colour identifies it everywhere. */
+  readonly colour: string;
+  readonly result: TypfallResult;
+  /** This scenario's own retirement age, post-correction. */
+  readonly par: number;
+}
+
+/**
+ * `renderTable1`'s own rows, lined up against several scenarios at once
+ * instead of one -- built for `compare.ts`. Reuses `TABLE1_LINES`'s row order
+ * and labels verbatim, and only the "monthly"/"share" entries of
+ * `TABLE1_COLUMNS`: the nominal and price-adjusted columns say less once
+ * salary itself is the thing being varied, so they are dropped here.
+ *
+ * The three KPI cards' own figures lead the table, each in whichever of the
+ * two sub-columns it naturally has (a kronor amount or a percentage, never
+ * both) and blank in the other -- `kpis.ts`'s `computeKpis`, not a second
+ * calculation.
+ *
+ * Two row labels embed a number that can differ per scenario (`finalSalary`'s
+ * age-range suffix, `iptFull`'s qualifying-years suffix) but the table has
+ * only one row to show it in. Both use the *first* column's own scenario for
+ * that text -- a deliberate simplification, not a bug: the row's *numbers*
+ * are still each scenario's real ones regardless of which one the label text
+ * happens to be read against.
+ *
+ * The two footnotes under the gross total (`appendNotes`) still apply --
+ * `finalSalaryYears`/`lastPensionRight` come from the shared `ModelContext`,
+ * never overridden per scenario -- but span the whole table rather than
+ * repeating the "share of last year's income" side note under every
+ * scenario's own percentage column, which would need a genuinely different
+ * layout for what is disclosure text, not a number.
+ */
+export function renderCompareTable(
+  columns: readonly ScenarioColumn[],
+  lang: Lang,
+  shared: { readonly finalSalaryYears: number; readonly lastPensionRight: boolean },
+): HTMLElement {
+  const anchor = columns[0]!;
+  const anchorView: Table1View = { par: anchor.par, ...shared };
+  const totalCols = 1 + columns.length * 2;
+
+  const table = document.createElement("table");
+  table.className = "table table1 compare-table";
+
+  const head = table.createTHead();
+  const nameRow = head.insertRow();
+  nameRow.append(headCell(""));
+  for (const column of columns) {
+    const th = document.createElement("th");
+    th.colSpan = 2;
+    th.dataset.scenario = column.label;
+    const swatch = document.createElement("span");
+    swatch.className = "compare-swatch";
+    swatch.style.background = `var(${column.colour})`;
+    th.append(swatch, document.createTextNode(column.label));
+    nameRow.append(th);
+  }
+  const subRow = head.insertRow();
+  subRow.append(headCell(t("pensionWord", lang)));
+  for (let i = 0; i < columns.length; i += 1) {
+    subRow.append(
+      headCell(`${t("perMonth", lang)}, ${t("kronor", lang)}`),
+      headCell(t("shareOfFinalSalaryShort", lang)),
+    );
+  }
+
+  const body = table.createTBody();
+  const spacer = () => {
+    const tr = body.insertRow();
+    tr.className = "spacer";
+    const gap = cell("");
+    gap.colSpan = totalCols;
+    tr.append(gap);
+  };
+
+  const [pensionLabel, replacementLabel, averageLabel] = kpiLabels(lang);
+  const kpis = columns.map((column) => computeKpis(column.result, column.par));
+  const kpiRow = (
+    key: string,
+    rowLabel: string,
+    sub: "monthly" | "share",
+    get: (i: number) => number,
+  ) => {
+    const tr = body.insertRow();
+    // Not a `Table1Key` -- these three rows come from `computeKpis`, not
+    // `result.table1` -- but the same stable-attribute idea `TABLE1_LINES`'s
+    // own rows use below, so a check can find a value without reading its
+    // label in whichever language happens to be showing.
+    tr.dataset.key = key;
+    tr.append(cell(rowLabel));
+    columns.forEach((column, i) => {
+      const value = get(i);
+      const monthly = sub === "monthly" ? cell(kronor(value, lang), "num") : cell("", "num");
+      monthly.dataset.col = "monthly";
+      monthly.dataset.scenario = column.label;
+      const share = sub === "share" ? cell(percent(value, lang), "num") : cell("", "num");
+      share.dataset.col = "share";
+      share.dataset.scenario = column.label;
+      tr.append(monthly, share);
+    });
+  };
+  kpiRow("kpi-pension", pensionLabel, "monthly", (i) => kpis[i]!.monthlyAtRetirement);
+  kpiRow("kpi-replacement", replacementLabel, "share", (i) => kpis[i]!.replacementRate);
+  kpiRow("kpi-average", averageLabel, "monthly", (i) => kpis[i]!.averageMonthly);
+
+  spacer();
+
+  const byKey = columns.map((column) => new Map(column.result.table1.map((r) => [r.key, r])));
+  let notesShown = false;
+  for (const line of TABLE1_LINES) {
+    if (line.kind === "spacer") {
+      spacer();
+      continue;
+    }
+    if (line.kind === "notes") {
+      if (!notesShown) {
+        notesShown = true;
+        const lines = [
+          shared.lastPensionRight ? `${t("tableAboveShows", lang)} ${t("lastRightShort", lang)}` : "",
+          t("occupationalLifelong", lang),
+        ].filter((text) => text !== "");
+        for (const text of lines) {
+          const tr = body.insertRow();
+          tr.className = "note";
+          const td = cell(text, "note-text");
+          td.colSpan = totalCols;
+          tr.append(td);
+        }
+      }
+      continue;
+    }
+
+    const tr = body.insertRow();
+    tr.dataset.key = line.key;
+    if (line.strong) tr.className = "strong";
+    tr.append(cell(label(line.label, lang, anchor.result, anchorView)));
+    columns.forEach((column, i) => {
+      const row: Table1Row | undefined = byKey[i]!.get(line.key);
+      const monthly = cell(row ? kronor(row.monthly, lang) : "", "num");
+      monthly.dataset.col = "monthly";
+      monthly.dataset.scenario = column.label;
+      const share = cell(row ? percent(row.shareOfFinalSalary, lang) : "", "num");
+      share.dataset.col = "share";
+      share.dataset.scenario = column.label;
+      tr.append(monthly, share);
+    });
+  }
+
+  return table;
 }
 
 const TABLE2_COLUMNS: readonly { readonly head: (lang: Lang) => string; readonly get: (r: Table2Row) => number }[] = [
