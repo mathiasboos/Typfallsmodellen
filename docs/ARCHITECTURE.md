@@ -273,6 +273,36 @@ final salary and keeps the rule that the form never shows a number the run did n
 vector is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from a
 second run with `ownIncome` removed.
 
+### Pensionsgrundande belopp (PGB)
+
+`apps/web/src/pgb.ts` exposes `TypfallInput.pgbManual` — the PGB sheet's hand-typed sickness/activity
+compensation, conscription and study amounts, credited as pension rights the same way childcare years
+already are. Unlike every setting in `advanced.ts`, it is not an `Adv_settings`/`ModelContext` field at
+all: it lives on the Start-sheet side of the split, as a per-age array, so it could not be one more row
+in that file's descriptor table. It is also not new to the *engine* the way the municipality table
+above is — `earnPgb` (`packages/engine/src/model/mcalc.ts`) has read `pgbManual` since the port's
+earliest phases, cross-checked against the workbook's own `Brutto` sheet; only the web UI for it was
+ever missing.
+
+The grid's shape follows `salaryPath.ts`'s, with one real difference: there is no computed path to
+open with, since a default run has none of this (`pgbManual`'s own comment: "the shipped workbook has
+none, so childcare years are the only PGB a default run earns"), so every cell starts at zero and only
+the nonzero rows are ever handed to the engine — an all-zero row and an absent one are the same thing
+to `earnPgb`. The row range is a fixed 16 through 70 rather than tied to a computed wage path: `earnPgb`
+only ever reads a manual entry for `age > 15 && age <= riktalder`, and `context.riktage` — the only
+riktålder this port has today — defaults to 66 for every cohort ("cohort table pending"), so a fixed
+range needs no per-cohort logic the workbook does not model yet, and never has to reconcile typed
+values against a row list that moved.
+
+Three amount columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
+~45px-wide inputs, clipping a sixth digit that the salary grid's own ~62px inputs do not — so the
+table gets a `min-width` wider than the sidebar, scrolling horizontally the same way the grid already
+scrolls vertically, keeping every column's proportions and just rendering them bigger. Its longest
+header, "Sjuk-/aktivitetsersättning", is also one unbroken compound word with no space to wrap at,
+which measured as overflowing its fixed-width cell into the next one — `overflow-wrap: break-word` on
+`.adv-grid th` lets it wrap mid-word instead, harmlessly, since none of `salaryPath.ts`'s own shorter
+headers were ever close to their column's width.
+
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 
 `apps/web/src/kommunalskatt.ts` gives the two tax-basis settings a friendlier starting point than a

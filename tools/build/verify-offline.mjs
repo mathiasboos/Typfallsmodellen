@@ -325,9 +325,9 @@ await tab.waitForTimeout(50);
 
 const advGroups = await tab.locator(".advanced-box .adv-group").count();
 console.log(`advanced groups : ${advGroups}`);
-// Six settings groups plus the salary-path grid.
-if (advGroups !== 7) {
-  problems.push(`advanced mode shows ${advGroups} groups, expected 7`);
+// Six settings groups, plus the salary-path grid and the PGB grid.
+if (advGroups !== 8) {
+  problems.push(`advanced mode shows ${advGroups} groups, expected 8`);
 }
 
 /** Opens the group holding a setting and returns its control. */
@@ -486,21 +486,21 @@ if (benefitsCol === -1) {
 // The salary grid fills from the computed path rather than empty, and zeroing
 // a year has to cost pension. An empty grid would read as a lifetime of no
 // income, which is the failure this guards.
+//
+// Scoped to salaryPath.ts's own group: the PGB grid below shares the
+// `.adv-grid` class for its CSS, and is on screen at the same time, so an
+// unscoped `.adv-grid tbody tr` would count both tables' rows together.
+const salaryGrid = tab.locator('details[data-group="salary-path"] .adv-grid tbody tr');
 const ownIncome = await setting("ownIncome");
 await ownIncome.check();
 await tab.waitForTimeout(80);
-const gridRows = await tab.locator(".adv-grid tbody tr").count();
+const gridRows = await salaryGrid.count();
 console.log(`salary grid rows: ${gridRows}`);
 // Ages 15 up to the last worked one; retirement is at 66 for this typfall.
 if (gridRows < 40 || gridRows > 60) {
   problems.push(`the salary grid has ${gridRows} rows, expected about fifty`);
 }
-const firstIncome = await tab
-  .locator(".adv-grid tbody tr")
-  .last()
-  .locator("input")
-  .first()
-  .inputValue();
+const firstIncome = await salaryGrid.last().locator("input").first().inputValue();
 if (!(Number(firstIncome) > 0)) {
   problems.push(`the salary grid filled the last worked year with ${firstIncome}, expected an income`);
 }
@@ -508,7 +508,7 @@ if (!(Number(firstIncome) > 0)) {
 const grossBefore = await table2Cell(table2Rows - 1, grossCol);
 // Zero the last ten worked years -- a decade of leave.
 for (let i = 0; i < 10; i += 1) {
-  const cells = tab.locator(".adv-grid tbody tr").nth(gridRows - 1 - i).locator("input");
+  const cells = salaryGrid.nth(gridRows - 1 - i).locator("input");
   await cells.first().fill("0");
   await cells.first().dispatchEvent("change");
   await cells.last().fill("0");
@@ -521,6 +521,44 @@ if (!(grossAfter < grossBefore)) {
   problems.push(
     `zeroing ten years of salary did not lower the pension (${grossBefore} -> ${grossAfter})`,
   );
+}
+
+// PGB: a hand-typed sickness/activity-compensation amount at a working age
+// earns pension rights the same way ordinary income does. The shipped
+// workbook has none (`pgbManual`'s own comment: "childcare years are the
+// only PGB a default run earns"), so an untouched grid must not silently
+// change anything, and a filled-in one must.
+const pgbGroup = tab.locator('details[data-group="pgb"]');
+if (!(await pgbGroup.evaluate((node) => node.open))) {
+  await pgbGroup.locator("summary").click();
+}
+const pgbGrid = pgbGroup.locator(".pgb-grid tbody tr");
+const pgbRows = await pgbGrid.count();
+console.log(`pgb grid rows   : ${pgbRows}`);
+// Ages 16 through 70 -- see pgb.ts's own comment on that range.
+if (pgbRows !== 55) {
+  problems.push(`the PGB grid has ${pgbRows} rows, expected 55 (ages 16-70)`);
+}
+const pensionBeforePgb = await kpiValue(0);
+const pgbSaInput = pgbGrid.first().locator("td").nth(2).locator("input");
+await pgbSaInput.fill("200000");
+await pgbSaInput.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const pensionAfterPgb = await kpiValue(0);
+console.log(`pension w/ pgb  : ${pensionBeforePgb} -> ${pensionAfterPgb} kr after a sickness-comp entry`);
+if (!(pensionAfterPgb > pensionBeforePgb)) {
+  problems.push(
+    `entering a PGB sickness-compensation amount did not raise the pension (${pensionBeforePgb} -> ${pensionAfterPgb})`,
+  );
+}
+
+// Aterstall clears the grid back to zero, the same as every other
+// advanced-mode field.
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const pgbAfterReset = await pgbSaInput.inputValue();
+if (pgbAfterReset !== "0") {
+  problems.push(`the reset button left the PGB field at "${pgbAfterReset}", expected "0"`);
 }
 
 // Back to normal mode for the screenshots, and to leave the page as found.

@@ -335,6 +335,11 @@ body {
 .adv-grid thead th:nth-child(4), .adv-grid td:nth-child(4) { width: 30%; } /* Inkomst, Varav lön */
 .adv-grid th, .adv-grid td { padding: 2px 4px; font-size: 0.75rem; }
 .adv-grid thead th { position: sticky; top: 0; z-index: 1; }
+/* pgb.ts's three amount headers are longer, unbroken compound words (no space
+   to wrap at) that would otherwise overflow their fixed-width cell and bleed
+   into the next one -- salaryPath.ts's two-word headers never hit this, but
+   nothing stops a future long header from hitting it either. */
+.adv-grid th { overflow-wrap: break-word; }
 .adv-grid td > input {
   width: 100%;
   padding: 2px 4px;
@@ -352,6 +357,24 @@ body {
 .adv-grid td > input::-webkit-outer-spin-button,
 .adv-grid td > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .adv-grid td > input[type="number"] { -moz-appearance: textfield; }
+
+/*
+ * pgb.ts's grid has five columns, not salaryPath.ts's four -- three amount
+ * columns instead of two, in the same sidebar width. Splitting that width
+ * five ways at the same proportions left each amount input around 45px,
+ * measured to clip a sixth digit that salaryPath.ts's own 30%-wide, ~62px
+ * amount columns do not. Rather than shrink the type further, the table gets
+ * a min-width instead: percentages still add up to 100% of that width, so
+ * every column keeps the same proportions and just renders bigger, and the
+ * grid scrolls horizontally the same way `.adv-grid-scroll` already lets a
+ * tall grid scroll vertically.
+ */
+.pgb-grid { min-width: 380px; }
+.pgb-grid thead th:nth-child(1), .pgb-grid td:nth-child(1) { width: 16%; }  /* År */
+.pgb-grid thead th:nth-child(2), .pgb-grid td:nth-child(2) { width: 12%; }  /* Ålder */
+.pgb-grid thead th:nth-child(3), .pgb-grid td:nth-child(3),
+.pgb-grid thead th:nth-child(4), .pgb-grid td:nth-child(4),
+.pgb-grid thead th:nth-child(5), .pgb-grid td:nth-child(5) { width: 24%; } /* Sjuk-/aktivitetsersättning, Värnplikt, Studier */
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would
      pin half the screen and hide the results behind it. */

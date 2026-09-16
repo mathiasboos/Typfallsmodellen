@@ -27,6 +27,7 @@ import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis } from "./kpis.js";
+import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
 import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
 import type { Table1View } from "./tables.js";
@@ -109,7 +110,18 @@ const advancedPanel = createAdvancedPanel(view.lang, (patch) => {
 });
 
 const salaryPath = createSalaryPath(view.lang, (path) => {
-  advancedInput = path === undefined ? {} : { ownIncome: path };
+  const next = { ...advancedInput };
+  if (path === undefined) delete next.ownIncome;
+  else next.ownIncome = path;
+  advancedInput = next;
+  render();
+});
+
+const pgbGrid = createPgbGrid(view.lang, (pgb) => {
+  const next = { ...advancedInput };
+  if (pgb === undefined) delete next.pgbManual;
+  else next.pgbManual = pgb;
+  advancedInput = next;
   render();
 });
 
@@ -117,7 +129,7 @@ const salaryPath = createSalaryPath(view.lang, (path) => {
 const advancedBox = document.createElement("div");
 advancedBox.className = "advanced-box";
 advancedBox.hidden = true;
-advancedBox.append(advancedPanel.element, salaryPath.element);
+advancedBox.append(advancedPanel.element, salaryPath.element, pgbGrid.element);
 
 /**
  * `Använd normala inställningar` -- the button the Adv_settings sheet carries.
@@ -135,6 +147,7 @@ resetAdvanced.addEventListener("click", () => {
   advancedInput = {};
   advancedPanel.reset();
   salaryPath.reset();
+  pgbGrid.reset();
   render();
 });
 advancedBox.append(resetAdvanced);
@@ -193,6 +206,7 @@ function renderHeading(): void {
       form.relabel(lang);
       advancedPanel.relabel(lang);
       salaryPath.relabel(lang);
+      pgbGrid.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -344,6 +358,7 @@ function render(): void {
     const { ownIncome, ...withoutOwnIncome } = typfall;
     const baseline = ownIncome === undefined ? result : run(withoutOwnIncome, context, { deaths });
     salaryPath.setBaseline(baseline.wagePath, input.born);
+    pgbGrid.setBaseline(input.born);
   }
 
   const figures: FigureView = {
