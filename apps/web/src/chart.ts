@@ -21,12 +21,19 @@
  * port returns as `result.rows` -- including columns 16 and 17, the price and
  * wage-level factors, which exist so Figur 1's three series can be derived from
  * a single run.
+ *
+ * `renderTaxChart` below is not one of these three: it is not a workbook
+ * chart at all, the same kind of addition the KPI cards are. It reads columns
+ * 18 and 19, municipal and state tax, which this port itself splits out of
+ * `netto` (see `MvaluesRow.municipalTax`/`stateTax`) since the workbook
+ * computes and discards that split rather than ever showing it.
  */
 import type { MvaluesRow, TypfallResult } from "@typfallsmodellen/engine";
 
 import { kronor } from "./format.js";
-import { t } from "./i18n.js";
+import { dropHeadingNumber, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
+import type { ScenarioColumn } from "./tables.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -51,8 +58,10 @@ export interface FigureView {
   readonly priceBasis: number;
 }
 
-/** One plotted series: where its colour comes from and how it reads a row. */
-interface Series {
+/** What a series needs for its legend/tooltip key, regardless of what shape
+ * of row it reads -- `legend()` and `lineSwatchClass()` never call `get`, so
+ * they take this rather than the full generic `Series` below. */
+interface SeriesMeta {
   /** Stable across languages, so it can name a CSS class. */
   readonly key: string;
   /** Composed rather than a plain key: `Y8` concatenates two of the sheet's. */
@@ -60,7 +69,27 @@ interface Series {
   /** A custom property in styles.css, so light and dark are separate steps. */
   readonly colour: string;
   readonly mark: "fill" | "line";
-  readonly get: (row: MvaluesRow) => number;
+  /** Whether a "line" mark's own legend swatch reads as dashed. Every figure
+   * before `renderCompareChart` draws its actual dash pattern from a CSS
+   * class keyed on `key` (`.line-current`, `.line-wage-level`) and always
+   * showed a dashed legend key regardless -- true even for "fixed", whose
+   * line is solid. Left at its default (dashed) everywhere that already
+   * relies on it; `renderCompareChart`'s own lines are genuinely solid, so
+   * its series set this to `false` rather than adding a fourth mismatch. */
+  readonly dashed?: boolean;
+}
+
+/**
+ * One plotted series: where its colour comes from and how it reads a row.
+ *
+ * Generic over the row shape so `renderCompareChart`'s hover can share this
+ * with every other figure: its tooltip reads one row per *scenario* at a
+ * given age (`readonly MvaluesRow[]`) rather than the single shared
+ * `MvaluesRow` every other figure's series reads, since each scenario is its
+ * own separate run rather than a column of the same one.
+ */
+interface Series<T = MvaluesRow> extends SeriesMeta {
+  readonly get: (row: T) => number;
 }
 
 function el<K extends keyof SVGElementTagNameMap>(
@@ -141,13 +170,19 @@ function shadeRetirement(svg: SVGSVGElement, from: number): void {
   );
 }
 
-function legend(series: readonly Series[], lang: Lang): HTMLElement {
+/** A "line" mark's own swatch class -- dashed unless the series says its
+ * plotted line is genuinely solid (`dashed: false`). */
+function lineSwatchClass(item: SeriesMeta): string {
+  return item.dashed === false ? "swatch swatch-line-solid" : "swatch swatch-line";
+}
+
+function legend(series: readonly SeriesMeta[], lang: Lang): HTMLElement {
   const box = document.createElement("ul");
   box.className = "legend";
   for (const item of series) {
     const li = document.createElement("li");
     const swatch = document.createElement("span");
-    swatch.className = item.mark === "line" ? "swatch swatch-line" : "swatch";
+    swatch.className = item.mark === "line" ? lineSwatchClass(item) : "swatch";
     if (item.mark === "line") swatch.style.borderTopColor = `var(${item.colour})`;
     else swatch.style.background = `var(${item.colour})`;
     const text = document.createElement("span");
@@ -159,18 +194,18 @@ function legend(series: readonly Series[], lang: Lang): HTMLElement {
 }
 
 /** One column of the readout: an age, and every series' value at it. */
-interface Point {
+interface Point<T = MvaluesRow> {
   readonly x: number;
   readonly heading: string;
-  readonly row: MvaluesRow;
+  readonly row: T;
 }
 
 /** Crosshair and a readout of every series at the nearest age. */
-function hover(
+function hover<T>(
   svg: SVGSVGElement,
   figure: HTMLElement,
-  points: readonly Point[],
-  series: readonly Series[],
+  points: readonly Point<T>[],
+  series: readonly Series<T>[],
   lang: Lang,
 ): void {
   if (points.length === 0) return;
@@ -203,7 +238,7 @@ function hover(
       const row = document.createElement("div");
       row.className = "tooltip-row";
       const swatch = document.createElement("span");
-      swatch.className = item.mark === "line" ? "swatch swatch-line" : "swatch";
+      swatch.className = item.mark === "line" ? lineSwatchClass(item) : "swatch";
       if (item.mark === "line") swatch.style.borderTopColor = `var(${item.colour})`;
       else swatch.style.background = `var(${item.colour})`;
       const name = document.createElement("span");
@@ -323,8 +358,9 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
     },
   ];
 
+  // "Figur 1." is dropped on request; the rest of the sheet's own heading stays.
   const title =
-    `${t("figure1", lang)}-${view.par} ${t("andPensionFrom", lang)} ` +
+    `${dropHeadingNumber(t("figure1", lang))}-${view.par} ${t("andPensionFrom", lang)} ` +
     `${view.par} ${t("yearsAge", lang)}`;
   const svg = newSvg(title);
 
@@ -373,12 +409,142 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
   return figure;
 }
 
+// -------------------------------------------------- Jamfor scenarier chart ---
+
+/**
+ * One solid line per scenario -- built for `compare.ts`. Styled like Figur 1
+ * but comparing scenarios rather than price bases, so it needs only one of
+ * Figur 1's three price views: fixed prices (the same formula its own
+ * "fixed prices" series uses), since the point here is comparing scenarios on
+ * equal footing, not comparing price bases against each other.
+ *
+ * The age range comes from the first scenario's own rows: `born` and
+ * `startWorkAge` are shared baseline fields no scenario overrides, so every
+ * scenario's row range is the same age span in practice.
+ *
+ * The hover readout can't share `Figur1`'s own series array -- each column
+ * is its own separate run with its own rows, not one shared `MvaluesRow` per
+ * age -- so it builds a second, `Series<readonly MvaluesRow[]>` set for
+ * `hover()` alone: the drawing loop below still reads each column's own row
+ * directly, since every column's line uses the same `value` formula.
+ */
+export function renderCompareChart(columns: readonly ScenarioColumn[], view: FigureView): HTMLElement {
+  const { lang } = view;
+  const per = scale(view);
+
+  const value = (row: MvaluesRow) => (nominal(row.brutto, row, view.priceBasis) * row.kpiFactor) / per;
+
+  const series: readonly SeriesMeta[] = columns.map((column) => ({
+    key: column.label,
+    name: () => column.label,
+    colour: column.colour,
+    mark: "line",
+    dashed: false,
+  }));
+
+  const title =
+    lang === "sv" ? "Löneinkomst och pension, per scenario" : "Earnings and pension, by scenario";
+  const svg = newSvg(title);
+
+  const rows = columns[0]?.result.rows ?? [];
+  const first = rows[0]?.age ?? 0;
+  const last = rows[rows.length - 1]?.age ?? first + 1;
+  const x = (age: number) =>
+    PLOT.left + ((age - first) / Math.max(last - first, 1)) * (PLOT.right - PLOT.left);
+  const max = Math.max(...columns.flatMap((column) => column.result.rows.map(value)), 1);
+  const axis = vertical(max);
+  const y = axis.y;
+
+  gridlines(svg, axis, lang);
+  for (let age = Math.ceil(first / 5) * 5; age <= last; age += 5) {
+    svg.append(label(String(age), x(age), PLOT.bottom + 16, "tick tick-x"));
+    if (age % 10 === 0) {
+      const row = rows.find((r) => r.age === age);
+      if (row) svg.append(label(String(row.year), x(age), PLOT.bottom + 31, "tick tick-x tick-year"));
+    }
+  }
+
+  // One dashed reference line per distinct retirement age among the active
+  // scenarios -- usually just one, since a new variant starts out at the
+  // baseline's own retirement age until its own control is moved.
+  for (const par of new Set(columns.map((column) => column.par))) {
+    if (par < first || par > last) continue;
+    const cx = x(par);
+    svg.append(el("line", { x1: cx, x2: cx, y1: PLOT.top, y2: PLOT.bottom, class: "line-retirement" }));
+  }
+
+  columns.forEach((column) => {
+    const points = column.result.rows.map((row) => `${x(row.age)},${y(value(row))}`).join(" ");
+    svg.append(el("polyline", { points, fill: "none", stroke: `var(${column.colour})`, class: "line" }));
+  });
+
+  const figure = frame(title, undefined, svg, legend(series, lang), [
+    lang === "sv" ? "Streckad linje markerar pensionsåret." : "Dashed line marks the retirement year.",
+  ]);
+
+  const hoverSeries: readonly Series<readonly MvaluesRow[]>[] = columns.map((column, i) => ({
+    key: column.label,
+    name: () => column.label,
+    colour: column.colour,
+    mark: "line",
+    dashed: false,
+    get: (rowsAtAge) => value(rowsAtAge[i]!),
+  }));
+  hover(
+    svg,
+    figure,
+    rows.map((baseRow, j) => ({
+      x: x(baseRow.age),
+      heading: `${baseRow.year} · ${baseRow.age}`,
+      row: columns.map((column) => column.result.rows[j] ?? baseRow),
+    })),
+    hoverSeries,
+    lang,
+  );
+
+  return figure;
+}
+
 // ------------------------------------------------- the two column charts ---
 
-/** `A2:A22`: the ten years either side of the retirement age, and it. */
+/**
+ * `A2:A22` on the sheet is ten years either side of retirement; widened here
+ * on request to five years before retirement through age 100, so the working
+ * years get less room and the retirement years more.
+ */
 function aroundRetirement(result: TypfallResult, par: number): readonly MvaluesRow[] {
-  const from = Math.trunc(par) - 10;
-  return result.rows.filter((row) => row.age >= from && row.age <= from + 20);
+  const from = Math.trunc(par) - 5;
+  return result.rows.filter((row) => row.age >= from && row.age <= 100);
+}
+
+/**
+ * Age ticks along a column chart's x-axis: every fifth age once the window is
+ * wide enough that one label per column would collide, but always the first
+ * and last column so the reader can see exactly where the chart starts and
+ * ends.
+ */
+function ageTicks(
+  svg: SVGSVGElement,
+  rows: readonly MvaluesRow[],
+  centre: (i: number) => number,
+): void {
+  const step = rows.length > 25 ? 5 : 1;
+  rows.forEach((row, i) => {
+    const edge = i === 0 || i === rows.length - 1;
+    if (!edge && row.age % step !== 0) return;
+    svg.append(label(String(row.age), centre(i), PLOT.bottom + 16, "tick tick-x"));
+  });
+}
+
+/**
+ * Drops a series from the legend when it never has a value in the rows being
+ * drawn -- on request, for a typfall with no occupational pension or no
+ * garantipension, say. The stacked band or line itself is still drawn
+ * (harmlessly invisible at zero); this only trims the legend, not the
+ * chart's own arithmetic.
+ */
+function visibleSeries(rows: readonly MvaluesRow[], series: readonly Series[]): readonly Series[] {
+  return series.filter((item) => rows.some((row) => item.get(row) > 0));
 }
 
 /** Where each column sits, and how wide it is. */
@@ -457,34 +623,6 @@ function overlay(
 }
 
 /**
- * `Data_till_Start!C`: the salary the run would have paid had work continued.
- *
- * The cell reads `IF(age < Int(par), NA(), IF(par < age, C(previous), B(previous)))`
- * times an index ratio taken at `par` over the one at this age -- so it starts
- * from the last full salary and then follows the wage level. Written here as
- * that one ratio rather than as the sheet's row-by-row carry, which multiplies
- * the ratio in again at every step.
- */
-function continuedWork(
-  rows: readonly MvaluesRow[],
-  all: readonly MvaluesRow[],
-  view: FigureView,
-): (row: MvaluesRow) => number {
-  const par = Math.trunc(view.par);
-  const before = all.find((r) => r.age === par - 1);
-  const atPar = all.find((r) => r.age === par);
-  const base = before?.income ?? 0;
-  return (row) => {
-    if (row.age < par) return 0;
-    const ratio =
-      view.priceBasis === 1 && atPar !== undefined && row.indexFactor > 0
-        ? atPar.indexFactor / row.indexFactor
-        : 1;
-    return (base * ratio) / scale(view);
-  };
-}
-
-/**
  * Figur 2: what the income is made of, year by year around retirement.
  *
  * The stack is `Data_till_Start` columns B, D, G, E, H in the order the chart
@@ -493,12 +631,15 @@ function continuedWork(
  * Tjänstepension. The sheet's separate Tilläggspension column, F, is left out
  * on purpose: D already contains it, so stacking both would count ATP twice for
  * everyone born before 1954.
+ *
+ * "Lön vid fortsatt arbete" (`Data_till_Start!C`, the salary the run would
+ * have paid had work continued) was drawn as a fourth overlay here; removed
+ * on request, series and legend both.
  */
 export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElement {
   const { lang } = view;
   const per = scale(view);
   const rows = aroundRetirement(result, view.par);
-  const continued = continuedWork(rows, result.rows, view);
 
   const bands: readonly Series[] = [
     {
@@ -541,13 +682,6 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   ];
   const lines: readonly Series[] = [
     {
-      key: "continued",
-      name: (l) => t("continuedWork", l),
-      colour: "--fig-continued",
-      mark: "line",
-      get: continued,
-    },
-    {
       key: "after-tax",
       name: (l) => t("incomeAfterTax", l),
       colour: "--fig-after-tax",
@@ -558,7 +692,11 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
 
   const first = rows[0]?.age ?? view.par;
   const lastAge = rows[rows.length - 1]?.age ?? first;
-  const title = t("figure2", lang).replace(/\d+\s*-\s*\d+/, `${first} - ${lastAge}`);
+  // "Figur 2." is dropped on request, same as Figur 1 and Table 2.
+  const title = dropHeadingNumber(t("figure2", lang)).replace(
+    /\d+\s*-\s*\d+/,
+    `${first} - ${lastAge}`,
+  );
   const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
 
   const svg = newSvg(title);
@@ -575,12 +713,12 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
   shadeRetirement(svg, retirementEdge(rows, view.par, centre, step));
   svg.append(label(t("earningsAndPension", lang), PLOT.left - 56, PLOT.top - 10, "axis-title"));
   stack(svg, rows, bands, y, centre, width);
-  overlay(svg, rows, lines[0]!, y, centre, Math.trunc(view.par));
-  overlay(svg, rows, lines[1]!, y, centre);
-  rows.forEach((row, i) => svg.append(label(String(row.age), centre(i), PLOT.bottom + 16, "tick tick-x")));
+  overlay(svg, rows, lines[0]!, y, centre);
+  ageTicks(svg, rows, centre);
 
   const series = [...bands, ...lines];
-  const figure = frame(title, subtitle, svg, legend([...bands].reverse().concat(lines), lang));
+  const legendSeries = visibleSeries(rows, [...bands].reverse().concat(lines));
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang));
   hover(
     svg,
     figure,
@@ -650,16 +788,82 @@ export function renderDisposable(result: TypfallResult, view: FigureView): HTMLE
         class: "marker",
       }),
     );
-    svg.append(label(String(row.age), cx, PLOT.bottom + 16, "tick tick-x"));
   });
+  ageTicks(svg, rows, centre);
 
   const series = [...bands, line];
-  const figure = frame(title, undefined, svg, legend([bands[1]!, bands[0]!, line], lang));
+  const legendSeries = visibleSeries(rows, [bands[1]!, bands[0]!, line]);
+  const figure = frame(title, undefined, svg, legend(legendSeries, lang));
   hover(
     svg,
     figure,
     rows.map((row, i) => ({ x: centre(i), heading: `${t("age", lang)} ${row.age} · ${row.year}`, row })),
     series,
+    lang,
+  );
+  return figure;
+}
+
+/**
+ * "Skatt per år" / "Tax per year": not a workbook figure -- see the header
+ * comment above. Kommunal and statlig skatt are computed the same way for
+ * every age, working or retired, so unlike a payslip-style breakdown that
+ * separates salary withholding from pension withholding, this shows the true
+ * two-part split across the whole window rather than inventing a third,
+ * merged category for the working years the engine doesn't actually have.
+ */
+export function renderTaxChart(result: TypfallResult, view: FigureView): HTMLElement {
+  const { lang } = view;
+  const per = scale(view);
+  const rows = aroundRetirement(result, view.par);
+
+  const bands: readonly Series[] = [
+    {
+      key: "municipal-tax",
+      name: (l) => (l === "sv" ? "Kommunal skatt" : "Municipal tax"),
+      colour: "--fig-municipal-tax",
+      mark: "fill",
+      get: (r) => r.municipalTax / per,
+    },
+    {
+      key: "state-tax",
+      name: (l) => (l === "sv" ? "Statlig skatt" : "State tax"),
+      colour: "--fig-state-tax",
+      mark: "fill",
+      get: (r) => r.stateTax / per,
+    },
+  ];
+
+  // No "(SEK)" suffix, matching every other figure here -- the kronor-
+  // formatted y-axis ticks already say what unit this is.
+  const title = lang === "sv" ? "Skatt per år" : "Tax per year";
+  const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
+  const note =
+    lang === "sv"
+      ? "Statlig skatt inkluderar public service-avgiften och eventuell kapitalskatt."
+      : "State tax includes the public-service fee and any capital-gains tax.";
+
+  const svg = newSvg(title);
+  const { centre, width, step } = columns(rows.length);
+  const max = Math.max(
+    ...rows.map((row) => bands.reduce((sum, s) => sum + Math.max(s.get(row), 0), 0)),
+    1,
+  );
+  const axis = vertical(max);
+  const y = axis.y;
+
+  gridlines(svg, axis, lang);
+  shadeRetirement(svg, retirementEdge(rows, view.par, centre, step));
+  stack(svg, rows, bands, y, centre, width);
+  ageTicks(svg, rows, centre);
+
+  const legendSeries = visibleSeries(rows, bands);
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang), [note]);
+  hover(
+    svg,
+    figure,
+    rows.map((row, i) => ({ x: centre(i), heading: `${t("age", lang)} ${row.age} · ${row.year}`, row })),
+    bands,
     lang,
   );
   return figure;

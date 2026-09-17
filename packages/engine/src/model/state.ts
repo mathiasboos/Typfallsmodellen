@@ -110,6 +110,21 @@ export interface MvaluesRow {
   readonly kpiFactor: number;
   /** 17: the wage-level factor. */
   readonly indexFactor: number;
+  /**
+   * 18: municipal tax -- not one of the workbook's own seventeen `mvalues`
+   * columns. Kommunal inkomstskatt plus kyrkoskatt, net of the job/union/
+   * sickness credits the tax calculation caps against it; what's left of the
+   * year's total tax once `stateTax` is taken out. Added for this port's own
+   * tax-per-year chart and Table 2's matching columns, the same kind of
+   * addition the KPI cards already are.
+   */
+  readonly municipalTax: number;
+  /**
+   * 19: state tax -- statlig inkomstskatt, the public-service fee, and any
+   * capital-gains tax, none of which the credits above touch. Also not one
+   * of the workbook's seventeen.
+   */
+  readonly stateTax: number;
 }
 
 /** Everything the age loop accumulates. */
@@ -175,6 +190,9 @@ export interface RunState {
   readonly netto: AgeArray;
   readonly bidrag: AgeArray;
   readonly indDisp: AgeArray;
+  /** `kinkskatt`/`statskatt`, kept apart -- see `MvaluesRow.municipalTax`/`stateTax`. */
+  readonly municipalTax: AgeArray;
+  readonly stateTax: AgeArray;
 
   // ---- Running scalars -----------------------------------------------------
   /** `IPS_ratt` -- a scalar in the VBA, not a vector. */
@@ -307,6 +325,8 @@ export function createRunState(startage: number, slutage = SLUTAGE): RunState {
     netto: age(),
     bidrag: age(),
     indDisp: age(),
+    municipalTax: age(),
+    stateTax: age(),
 
     ipsRatt: 0,
     atpYear: 0,

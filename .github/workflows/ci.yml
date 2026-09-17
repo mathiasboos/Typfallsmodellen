@@ -1,0 +1,103 @@
+# Every check the README claims, run on every push and pull request.
+#
+# The claims are the point of this repository -- "3 588 of 3 588 cells exact",
+# "no outbound requests" -- and a claim nothing re-runs is a claim about the day
+# someone last ran it by hand. All of it fits in a couple of minutes, so there
+# is no fast/slow split and nothing is left out of the pull-request run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first; nothing here is worth finishing twice.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` also runs the root `prepare` script, which writes
+      # apps/web/src/generated/mortalityRisks.ts. That module is gitignored and
+      # derived from packages/data, so without it a fresh checkout cannot even
+      # typecheck -- which is exactly what this workflow caught on its first run.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and property tests
+        run: npm test
+
+      # `check:ages` reads the .xlsb itself, which needs pyxlsb. The other three
+      # re-derive from committed text and are stdlib-only, but the venv is built
+      # the way the README tells a human to build it -- from the requirements
+      # file rather than a hand-picked package -- so a new extraction dependency
+      # reaches CI without anyone remembering to add it here. LibreOffice is
+      # still not needed: only the full extraction in tools/extract/run.py wants
+      # it, and that is a once-a-year job run by hand (docs/YEARLY-UPDATE.md).
+      - name: Python dependencies for the workbook-reading check
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r tools/extract/requirements.txt
+
+      # These re-derive committed data from the workbook and the VBA dump and
+      # fail if it has drifted.
+      - name: Re-derive the transpiled tax functions
+        run: npm run check:transpile
+
+      - name: Re-parse the riksnorm tables
+        run: npm run check:riksnorm
+
+      - name: Re-read the retirement ages
+        run: npm run check:ages
+
+      - name: Re-read the workbook's defined names
+        run: npm run check:names
+
+      # `npm test` above already ran this -- vitest's include pattern picks up
+      # test/golden/golden.test.ts with everything else. It is repeated as its
+      # own step because it is the acceptance gate (299 typfall the real model
+      # computed, twelve output columns, cell by cell) and because this is what
+      # prints the per-column report into the log, where a reviewer can read it
+      # without downloading anything.
+      - name: Golden file, against Excel
+        run: npm run compare
+
+      - name: Build the single file
+        run: npm run build -w @typfallsmodellen/web
+
+      # Not a dependency of the project -- nothing else here needs a browser --
+      # so it is installed for this step alone, which is also what the README
+      # tells a human to do.
+      - name: Install Chromium for the offline check
+        run: |
+          npm i -D --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Offline check, in a real browser
+        run: npm run verify:offline
+
+      # Only on success: without a build there is no file, and `if: always()`
+      # here turned a typecheck failure into two red steps instead of one.
+      - uses: actions/upload-artifact@v5
+        with:
+          name: typfallsmodellen-html
+          path: apps/web/dist/typfallsmodellen.html
+          if-no-files-found: error

@@ -33,9 +33,25 @@ html = html.replace(script, (_, href) => {
 });
 html = html.replace(stylesheet, (_, href) => `<style>${read(href)}</style>`);
 
+/**
+ * What a leftover `src`/`href` is allowed to be.
+ *
+ * The check is for subresources -- things the page fetches while rendering,
+ * which is what fails silently over `file://`. Somewhere to *navigate* is not
+ * one of those: an `http` link, a `mailto:` handed to the mail client, a `#`
+ * anchor and a `data:` URI all work from a file on a stick. Anything else is a
+ * request, and has to be inlined.
+ */
+const navigates = (v) =>
+  v.startsWith("data:") ||
+  v.startsWith("http") ||
+  v.startsWith("mailto:") ||
+  v.startsWith("tel:") ||
+  v.startsWith("#");
+
 const left = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
   .map((m) => m[1])
-  .filter((v) => !v.startsWith("data:") && !v.startsWith("http") && !v.startsWith("#"));
+  .filter((v) => !navigates(v));
 if (left.length > 0) {
   throw new Error(
     `the page still requests ${left.join(", ")}, which would fail over file://. ` +

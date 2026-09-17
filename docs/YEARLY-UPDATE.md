@@ -133,9 +133,11 @@ Commit, then hand out that file (and deploy it, once Phase 5 adds hosting).
 
 Three things that would otherwise be hand-copying are not:
 
-- **The version banner** reads `content.modelVersion`, which the extractor rewrites from the
-  workbook's `Versionsinformation` sheet. `packages/data/manifest.json` records which `.xlsb` it
-  came from, by sha256.
+- **The model version** is `content.modelVersion`, which the extractor rewrites from the
+  workbook's `Versionsinformation` sheet, and `packages/data/manifest.json` records which `.xlsb`
+  it came from, by sha256 -- both update themselves on extraction, with nothing to hand-copy. The
+  page itself no longer shows a version banner (removed on request); check `content.modelVersion`
+  in `packages/data/content.json` directly if you need to confirm which release a build is from.
 - **The mortality grid** is re-embedded into the bundle from `packages/data/mortality-risks.bin`
   by `tools/build/embed-mortality.mjs` on every build. There is no generated file to refresh by
   hand; `apps/web/src/generated/` is git-ignored for that reason.
