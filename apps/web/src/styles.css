@@ -74,14 +74,26 @@
   --fig-state-tax: #ff5b30;
   --fig-disposable: #000000;
 
-  /* compare.ts's scenario colours: a categorical set, fixed order, validated
-     (dataviz skill's validate_palette.js) against this app's own chart
-     surface (--surface-raised) in both themes, not the skill's generic
-     defaults -- this app's dark surface is a dark green, not near-black. */
-  --fig-scenario-0: #2a78d6;
-  --fig-scenario-1: #eb6834;
-  --fig-scenario-2: #1baf7a;
-  --fig-scenario-3: #eda100;
+  /* compare.ts's scenario colours: on request, the SEB palette's own steps in
+     the order given (dark green, green, beige, blue) rather than the
+     validator-clean rotation this used before. Run through the same
+     validator anyway: CVD separation and the normal-vision floor both PASS
+     (worst adjacent pair, beige<->green, normal ΔE 19.1), so the four are
+     genuinely tellable apart; lightness/chroma FAIL and beige's own contrast
+     WARNs (1.71:1 on white) the same way the header note above already
+     accepts for this brand's darkest and most neutral steps -- covered by
+     the same relief: a legend, the hover readout below, and every number
+     also in the comparison table. */
+  --fig-scenario-0: #005d35;
+  --fig-scenario-1: #48b866;
+  --fig-scenario-2: #d3c5a6;
+  --fig-scenario-3: #4885c5;
+
+  /* The dashed reference line marking a scenario's retirement year in
+     `renderCompareChart` -- SEB's own grey 60%, the same step already used
+     for `--border`. One value for both themes: light enough to read as a
+     subtle guide on white, and plenty visible on the dark surfaces too. */
+  --fig-retirement-line: #dfdfdf;
 
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -116,10 +128,15 @@
     --fig-gross: #99beae;
     --fig-disposable: #ffffff;
 
-    --fig-scenario-0: #3987e5;
-    --fig-scenario-1: #d95926;
-    --fig-scenario-2: #199e70;
-    --fig-scenario-3: #c98500;
+    /* Only the dark-green step moves -- it sits too close to this theme's
+       own dark-green surfaces (contrast 1.64:1 at the raw step); one step
+       lighter (`Dark green 80%`) clears 2.78:1, still a WARN but the same
+       relief applies. The other three read fine unstepped (green, beige and
+       blue all clear 3:1 against #003824). */
+    --fig-scenario-0: #358157;
+    --fig-scenario-1: #48b866;
+    --fig-scenario-2: #d3c5a6;
+    --fig-scenario-3: #4885c5;
   }
 }
 
@@ -571,6 +588,7 @@ body {
 .grid { stroke: var(--grid); stroke-width: 1; }
 .axis { stroke: var(--axis); stroke-width: 1; }
 .retired { fill: var(--retired); }
+.line-retirement { stroke: var(--fig-retirement-line); stroke-width: 1; stroke-dasharray: 4 4; }
 .tick { fill: var(--text-muted); font-size: 11px; font-family: var(--font); }
 .tick-y { text-anchor: end; }
 .tick-x { text-anchor: middle; }

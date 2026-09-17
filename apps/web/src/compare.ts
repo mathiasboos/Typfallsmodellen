@@ -119,6 +119,9 @@ export function createComparePanel(
   // happened to be constructed with.
   let lastBaseline = initialBaseline;
   const variants: ScenarioOverride[] = [newVariant(String(nextId), "Scenario 1", initialBaseline)];
+  // Plain text, like a variant's own label -- typed once, then kept as-is
+  // across language switches rather than re-translated on every `relabel`.
+  let baselineLabel = say(lang, "Utgångsläge", "Baseline");
 
   const element = document.createElement("div");
   element.className = "compare-panel";
@@ -224,9 +227,15 @@ export function createComparePanel(
     card.dataset.scenario = "baseline";
     const head = document.createElement("div");
     head.className = "compare-card-head";
-    const heading = document.createElement("strong");
-    heading.textContent = say(currentLang, "Utgångsläge", "Baseline");
-    head.append(swatch(SCENARIO_COLOURS[0]), heading);
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className = "compare-card-label";
+    labelInput.value = baselineLabel;
+    labelInput.addEventListener("change", () => {
+      baselineLabel = labelInput.value.trim() || baselineLabel;
+      onChange();
+    });
+    head.append(swatch(SCENARIO_COLOURS[0]), labelInput);
     card.append(head);
     return card;
   }
@@ -268,7 +277,7 @@ export function createComparePanel(
         (typfall, i) => {
           const result = run(typfall, context, { deaths });
           return {
-            label: i === 0 ? say(runLang, "Utgångsläge", "Baseline") : variants[i - 1]!.label,
+            label: i === 0 ? baselineLabel : variants[i - 1]!.label,
             colour: SCENARIO_COLOURS[i] ?? SCENARIO_COLOURS[0],
             result,
             par: retirementAge(typfall, result),

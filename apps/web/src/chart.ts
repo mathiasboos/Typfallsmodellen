@@ -58,8 +58,10 @@ export interface FigureView {
   readonly priceBasis: number;
 }
 
-/** One plotted series: where its colour comes from and how it reads a row. */
-interface Series {
+/** What a series needs for its legend/tooltip key, regardless of what shape
+ * of row it reads -- `legend()` and `lineSwatchClass()` never call `get`, so
+ * they take this rather than the full generic `Series` below. */
+interface SeriesMeta {
   /** Stable across languages, so it can name a CSS class. */
   readonly key: string;
   /** Composed rather than a plain key: `Y8` concatenates two of the sheet's. */
@@ -75,7 +77,19 @@ interface Series {
    * relies on it; `renderCompareChart`'s own lines are genuinely solid, so
    * its series set this to `false` rather than adding a fourth mismatch. */
   readonly dashed?: boolean;
-  readonly get: (row: MvaluesRow) => number;
+}
+
+/**
+ * One plotted series: where its colour comes from and how it reads a row.
+ *
+ * Generic over the row shape so `renderCompareChart`'s hover can share this
+ * with every other figure: its tooltip reads one row per *scenario* at a
+ * given age (`readonly MvaluesRow[]`) rather than the single shared
+ * `MvaluesRow` every other figure's series reads, since each scenario is its
+ * own separate run rather than a column of the same one.
+ */
+interface Series<T = MvaluesRow> extends SeriesMeta {
+  readonly get: (row: T) => number;
 }
 
 function el<K extends keyof SVGElementTagNameMap>(
@@ -158,11 +172,11 @@ function shadeRetirement(svg: SVGSVGElement, from: number): void {
 
 /** A "line" mark's own swatch class -- dashed unless the series says its
  * plotted line is genuinely solid (`dashed: false`). */
-function lineSwatchClass(item: Series): string {
+function lineSwatchClass(item: SeriesMeta): string {
   return item.dashed === false ? "swatch swatch-line-solid" : "swatch swatch-line";
 }
 
-function legend(series: readonly Series[], lang: Lang): HTMLElement {
+function legend(series: readonly SeriesMeta[], lang: Lang): HTMLElement {
   const box = document.createElement("ul");
   box.className = "legend";
   for (const item of series) {
@@ -180,18 +194,18 @@ function legend(series: readonly Series[], lang: Lang): HTMLElement {
 }
 
 /** One column of the readout: an age, and every series' value at it. */
-interface Point {
+interface Point<T = MvaluesRow> {
   readonly x: number;
   readonly heading: string;
-  readonly row: MvaluesRow;
+  readonly row: T;
 }
 
 /** Crosshair and a readout of every series at the nearest age. */
-function hover(
+function hover<T>(
   svg: SVGSVGElement,
   figure: HTMLElement,
-  points: readonly Point[],
-  series: readonly Series[],
+  points: readonly Point<T>[],
+  series: readonly Series<T>[],
   lang: Lang,
 ): void {
   if (points.length === 0) return;
@@ -404,18 +418,15 @@ export function renderFigure1(result: TypfallResult, view: FigureView): HTMLElem
  * "fixed prices" series uses), since the point here is comparing scenarios on
  * equal footing, not comparing price bases against each other.
  *
- * No hover/crosshair, unlike every other figure here. `hover()`'s own `Point`
- * carries one shared `MvaluesRow` that every series' `get` reads -- true
- * across Figur 1's three price views, since they come from the same run, but
- * false here, where each scenario is its own separate run with its own rows.
- * Reusing it would need `hover()` itself rewritten to look a row up per
- * series rather than share one; the comparison table this chart sits beside
- * already gives the exact numbers, so this first cut ships the lines, legend
- * and axes without a tooltip rather than forcing a mismatched abstraction.
- *
  * The age range comes from the first scenario's own rows: `born` and
  * `startWorkAge` are shared baseline fields no scenario overrides, so every
  * scenario's row range is the same age span in practice.
+ *
+ * The hover readout can't share `Figur1`'s own series array -- each column
+ * is its own separate run with its own rows, not one shared `MvaluesRow` per
+ * age -- so it builds a second, `Series<readonly MvaluesRow[]>` set for
+ * `hover()` alone: the drawing loop below still reads each column's own row
+ * directly, since every column's line uses the same `value` formula.
  */
 export function renderCompareChart(columns: readonly ScenarioColumn[], view: FigureView): HTMLElement {
   const { lang } = view;
@@ -423,13 +434,12 @@ export function renderCompareChart(columns: readonly ScenarioColumn[], view: Fig
 
   const value = (row: MvaluesRow) => (nominal(row.brutto, row, view.priceBasis) * row.kpiFactor) / per;
 
-  const series: readonly Series[] = columns.map((column) => ({
+  const series: readonly SeriesMeta[] = columns.map((column) => ({
     key: column.label,
     name: () => column.label,
     colour: column.colour,
     mark: "line",
     dashed: false,
-    get: value,
   }));
 
   const title =
@@ -454,12 +464,45 @@ export function renderCompareChart(columns: readonly ScenarioColumn[], view: Fig
     }
   }
 
-  columns.forEach((column, i) => {
-    const points = column.result.rows.map((row) => `${x(row.age)},${y(series[i]!.get(row))}`).join(" ");
+  // One dashed reference line per distinct retirement age among the active
+  // scenarios -- usually just one, since a new variant starts out at the
+  // baseline's own retirement age until its own control is moved.
+  for (const par of new Set(columns.map((column) => column.par))) {
+    if (par < first || par > last) continue;
+    const cx = x(par);
+    svg.append(el("line", { x1: cx, x2: cx, y1: PLOT.top, y2: PLOT.bottom, class: "line-retirement" }));
+  }
+
+  columns.forEach((column) => {
+    const points = column.result.rows.map((row) => `${x(row.age)},${y(value(row))}`).join(" ");
     svg.append(el("polyline", { points, fill: "none", stroke: `var(${column.colour})`, class: "line" }));
   });
 
-  return frame(title, undefined, svg, legend(series, lang));
+  const figure = frame(title, undefined, svg, legend(series, lang), [
+    lang === "sv" ? "Streckad linje markerar pensionsåret." : "Dashed line marks the retirement year.",
+  ]);
+
+  const hoverSeries: readonly Series<readonly MvaluesRow[]>[] = columns.map((column, i) => ({
+    key: column.label,
+    name: () => column.label,
+    colour: column.colour,
+    mark: "line",
+    dashed: false,
+    get: (rowsAtAge) => value(rowsAtAge[i]!),
+  }));
+  hover(
+    svg,
+    figure,
+    rows.map((baseRow, j) => ({
+      x: x(baseRow.age),
+      heading: `${baseRow.year} · ${baseRow.age}`,
+      row: columns.map((column) => column.result.rows[j] ?? baseRow),
+    })),
+    hoverSeries,
+    lang,
+  );
+
+  return figure;
 }
 
 // ------------------------------------------------- the two column charts ---

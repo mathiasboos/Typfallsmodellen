@@ -375,16 +375,25 @@ input-only:
   be read against.
 - `chart.ts`'s `renderCompareChart` draws one solid line per scenario — at fixed prices, the same
   formula Figur 1's own "fixed prices" series already uses, since the point here is comparing scenarios
-  on equal footing rather than comparing price bases. It skips the interactive hover Figur 1 has:
-  `hover()`'s own `Point` carries one shared row that every series reads, true across price bases
-  (same run) but false across scenarios (each its own run) — reusing it would need `hover()` itself
-  rewritten, and the table beside the chart already gives exact numbers.
+  on equal footing rather than comparing price bases. A dashed `--fig-retirement-line` marks each
+  distinct retirement age among the active scenarios (usually just one, since a new variant starts out
+  at the baseline's own age). It has the same interactive hover Figur 1 has, despite each scenario being
+  its own separate run rather than a column of one shared run: `Series`/`Point` in `chart.ts` are
+  generic over the row shape (default `MvaluesRow`, same as every other figure), so this chart's own
+  `hover()` call reads a `readonly MvaluesRow[]` — one row per scenario at that age — instead.
+- The baseline's own label is editable, like a variant's, via an `<input>` in its card head rather than
+  a fixed heading — plain text, kept as typed rather than re-translated on a language switch, the same
+  as a variant's label already was.
 - Every scenario gets a stable colour **slot** by card position (baseline = 0, each variant in add
-  order = 1/2/3) — validated (the `dataviz` skill's `validate_palette.js`) as a fixed-order categorical
-  set against this app's own chart surface, `--surface-raised`, in both themes (its dark value is a
-  dark green, not the skill's generic near-black default, so the generic palette's own validation
-  doesn't transfer without checking). A small coloured square ties a card, its line in the chart and
-  its column in the table together.
+  order = 1/2/3) — on request, the SEB palette's own steps in the order given (dark green, green,
+  beige, blue) rather than a validator-clean rotation. Re-run through the `dataviz` skill's
+  `validate_palette.js` anyway against this app's own chart surface in both themes: CVD separation and
+  the normal-vision floor both PASS (every pair is genuinely tellable apart), while lightness/chroma
+  FAIL and beige's own contrast WARNs the same way the stylesheet's header note already accepts for
+  this brand's darkest and most neutral steps — covered by the same relief (a legend, the hover readout,
+  and every number also in the comparison table). Only the dark-mode baseline steps one shade lighter
+  (`Dark green 80%`), since the raw 100% step sits too close to this theme's own dark-green surfaces. A
+  small coloured square ties a card, its line in the chart and its column in the table together.
 - A reviewer's own pasted mockup of this table once showed a replacement-rate figure over 100%, next
   to the note "I paste an example" — read as an artifact of assembling that mockup by hand, not a live
   bug, since nothing in `replacementRate`'s own arithmetic (a plain ratio) can produce that from a real

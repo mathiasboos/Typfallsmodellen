@@ -663,6 +663,45 @@ if (dashedChartLines !== 0) {
   problems.push(`the compare chart has ${dashedChartLines} dashed line(s), expected solid lines only`);
 }
 
+// The baseline's own label is editable, like a variant's -- not just a
+// fixed "Baseline" heading -- and drives its column's own heading text.
+const baselineLabelInput = tab.locator(".compare-card-baseline .compare-card-label");
+await baselineLabelInput.fill("Idag");
+await baselineLabelInput.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const renamedHeader = await tab.locator('table.compare-table thead th[data-scenario="Idag"]').count();
+console.log(`baseline renamed: ${renamedHeader === 1 ? "yes" : "no"}`);
+if (renamedHeader !== 1) {
+  problems.push(
+    'renaming the baseline card did not retitle its own column (expected a th[data-scenario="Idag"])',
+  );
+}
+
+// A dashed reference line marks the retirement year -- shared by both
+// scenarios here, since a freshly added variant starts at the baseline's own
+// retirement age.
+const retirementLines = await tab.locator(".compare-results svg .line-retirement").count();
+console.log(`retirement line : ${retirementLines}`);
+if (retirementLines !== 1) {
+  problems.push(`the compare chart draws ${retirementLines} retirement-year reference line(s), expected 1`);
+}
+
+// Hovering the chart shows a tooltip with one readout row per active
+// scenario -- each its own separate run, unlike every other figure's shared-
+// row tooltip.
+const compareChartBox = await tab.locator(".compare-results svg").first().boundingBox();
+if (compareChartBox === null) {
+  problems.push("the compare chart's <svg> has no bounding box to hover");
+} else {
+  await tab.mouse.move(compareChartBox.x + compareChartBox.width / 2, compareChartBox.y + compareChartBox.height / 2);
+  await tab.waitForTimeout(50);
+  const tooltipRows = await tab.locator(".compare-results .tooltip .tooltip-row").count();
+  console.log(`hover tooltip rows: ${tooltipRows}`);
+  if (tooltipRows !== 2) {
+    problems.push(`hovering the compare chart shows ${tooltipRows} tooltip row(s), expected 2 (one per scenario)`);
+  }
+}
+
 // Add up to the cap -- baseline plus three variants -- then confirm add
 // disables and the table/chart both track the new count.
 await tab.locator('[data-action="add-scenario"]').click();
