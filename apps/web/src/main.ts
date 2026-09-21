@@ -24,13 +24,21 @@ import { renderDisposable, renderFigure1, renderFigure2, renderTaxChart } from "
 import type { FigureView } from "./chart.js";
 import { createComparePanel } from "./compare.js";
 import { loadDeathProbabilities } from "./deaths.js";
+import { csvExportButton, xlsxExportButton } from "./export.js";
 import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis, retirementAge } from "./kpis.js";
 import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
-import { renderTable1, renderTable2, table1ToCsv, table2ToCsv } from "./tables.js";
+import {
+  renderTable1,
+  renderTable2,
+  table1ToCsv,
+  table1ToXlsxRows,
+  table2ToCsv,
+  table2ToXlsxRows,
+} from "./tables.js";
 import type { Table1View } from "./tables.js";
 import "./styles.css";
 
@@ -333,30 +341,6 @@ function section(title: string, body: HTMLElement, actions?: HTMLElement): HTMLE
   return wrap;
 }
 
-/**
- * A CSV download for one table. Not a workbook feature -- there is no SysLang
- * row for it -- so the button text is a plain per-language literal, the same
- * way the subtitle above is.
- */
-function exportButton(lang: Lang, filename: string, csv: () => string): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "export-btn";
-  button.textContent = lang === "sv" ? "Ladda ner CSV" : "Download CSV";
-  button.addEventListener("click", () => {
-    // A BOM, so Excel reads å/ä/ö as UTF-8 instead of guessing a legacy
-    // codepage from the bytes.
-    const blob = new Blob(["﻿" + csv()], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  });
-  return button;
-}
-
 function render(): void {
   renderHeading();
   const lang = view.lang;
@@ -422,23 +406,31 @@ function render(): void {
     lastPensionRight: context.lastPensionRight > 0,
   };
 
+  const table1Actions = document.createElement("div");
+  table1Actions.className = "panel-actions";
+  table1Actions.append(
+    csvExportButton(lang, lang === "sv" ? "tabell1.csv" : "table1.csv", () =>
+      table1ToCsv(result, lang, table1View),
+    ),
+    xlsxExportButton(lang, lang === "sv" ? "tabell1.xlsx" : "table1.xlsx", () =>
+      table1ToXlsxRows(result, lang, table1View),
+    ),
+  );
+
   const table2Actions = document.createElement("div");
   table2Actions.className = "panel-actions";
   table2Actions.append(
     scaleToggle(),
-    exportButton(lang, lang === "sv" ? "tabell2.csv" : "table2.csv", () =>
+    csvExportButton(lang, lang === "sv" ? "tabell2.csv" : "table2.csv", () =>
       table2ToCsv(result, lang),
+    ),
+    xlsxExportButton(lang, lang === "sv" ? "tabell2.xlsx" : "table2.xlsx", () =>
+      table2ToXlsxRows(result, lang),
     ),
   );
 
   results.append(
-    section(
-      table1Title,
-      wrapScroll(renderTable1(result, lang, table1View)),
-      exportButton(lang, lang === "sv" ? "tabell1.csv" : "table1.csv", () =>
-        table1ToCsv(result, lang, table1View),
-      ),
-    ),
+    section(table1Title, wrapScroll(renderTable1(result, lang, table1View)), table1Actions),
     renderFigure1(result, figures),
     renderFigure2(result, figures),
     renderDisposable(result, figures),

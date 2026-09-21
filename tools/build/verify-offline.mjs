@@ -16,6 +16,7 @@
  *   node tools/build/verify-offline.mjs [--shots <dir>]
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -109,10 +110,13 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 1000
 
 // Nothing may leave the page. Any request that is not the file itself fails,
 // so a stylesheet, a font or a telemetry beacon that crept in shows up here.
+// `blob:` is let through alongside `file://` -- a CSV/Excel download is
+// `URL.createObjectURL(blob)` plus `<a download>`, which never leaves the
+// page either; Chromium still routes the click through here.
 const outbound = [];
 await context.route("**/*", (route) => {
   const url = route.request().url();
-  if (url.startsWith("file://")) return route.continue();
+  if (url.startsWith("file://") || url.startsWith("blob:")) return route.continue();
   outbound.push(url);
   return route.abort();
 });
@@ -139,6 +143,27 @@ async function shown(key, col) {
 }
 
 const problems = [];
+
+/**
+ * Clicks a download button and reads back what it actually produced --
+ * `Blob`/`<a download>` never touches the network, so `context.route`'s own
+ * block-everything rule doesn't cover it, and nothing else here proves the
+ * file this triggers is real rather than an empty or broken one.
+ */
+let downloadCount = 0;
+async function download(button) {
+  const [saved] = await Promise.all([tab.waitForEvent("download"), button.click()]);
+  const path = join(tmpdir(), `verify-offline-${downloadCount++}-${saved.suggestedFilename()}`);
+  await saved.saveAs(path);
+  return { filename: saved.suggestedFilename(), buffer: readFileSync(path) };
+}
+
+/** The ZIP local-file-header signature every `.xlsx` starts with -- proof
+ * this is a real OOXML package, not just a file with an `.xlsx` name. */
+function looksLikeXlsx(buffer) {
+  return buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+}
+
 for (const { key, want } of expected) {
   const got = [];
   for (const column of COLUMNS) got.push(await shown(key, column.col));
@@ -196,6 +221,25 @@ if (kpiCards === 3) {
       `KPI "average pension": ${gotAverage} is outside the sane range (0, ${wantMonthly * 2})`,
     );
   }
+}
+
+// Table 1's own CSV and Excel downloads. Scoped to the `.panel` that holds
+// `table.table1` itself, not just "the first `.panel-actions`" -- the
+// Avancerat column's own salary-grid actions row is already in the DOM at
+// this point (just hidden until that mode is on), and sits before the
+// results column, so it would otherwise win a plain `.first()`.
+const table1Actions = tab
+  .locator("section.panel", { has: tab.locator("table.table1") })
+  .locator(".panel-actions");
+const table1Csv = await download(table1Actions.getByRole("button", { name: "Ladda ner CSV" }));
+console.log(`table1 CSV      : ${table1Csv.filename}, ${table1Csv.buffer.length} bytes`);
+if (!table1Csv.filename.endsWith(".csv") || !table1Csv.buffer.toString("utf8").includes("Slutlön")) {
+  problems.push(`Table 1's CSV download ("${table1Csv.filename}") doesn't look like Table 1's own data`);
+}
+const table1Xlsx = await download(table1Actions.getByRole("button", { name: "Ladda ner Excel" }));
+console.log(`table1 Excel    : ${table1Xlsx.filename}, ${table1Xlsx.buffer.length} bytes`);
+if (!table1Xlsx.filename.endsWith(".xlsx") || !looksLikeXlsx(table1Xlsx.buffer)) {
+  problems.push(`Table 1's Excel download ("${table1Xlsx.filename}") isn't a real .xlsx file`);
 }
 
 const table2Rows = await tab.locator(".table2 tbody tr").count();
@@ -264,6 +308,22 @@ if (!stateTaxInfo || !/20\s*%/.test(stateTaxInfo) || !/public.service/i.test(sta
 const yearHeaderIsAbbr = await tab.locator(".table2 thead th").first().locator("abbr").count();
 if (yearHeaderIsAbbr !== 0) {
   problems.push("the Year column got an explanatory <abbr> it doesn't need");
+}
+
+// Table 2's own CSV and Excel downloads -- scoped the same way, to the
+// `.panel` holding `table.table2` (beside the Årsvis/Månadsvis toggle).
+const table2Actions = tab
+  .locator("section.panel", { has: tab.locator("table.table2") })
+  .locator(".panel-actions");
+const table2Csv = await download(table2Actions.getByRole("button", { name: "Ladda ner CSV" }));
+console.log(`table2 CSV      : ${table2Csv.filename}, ${table2Csv.buffer.length} bytes`);
+if (!table2Csv.filename.endsWith(".csv") || !table2Csv.buffer.toString("utf8").includes("Statlig skatt")) {
+  problems.push(`Table 2's CSV download ("${table2Csv.filename}") doesn't look like Table 2's own data`);
+}
+const table2Xlsx = await download(table2Actions.getByRole("button", { name: "Ladda ner Excel" }));
+console.log(`table2 Excel    : ${table2Xlsx.filename}, ${table2Xlsx.buffer.length} bytes`);
+if (!table2Xlsx.filename.endsWith(".xlsx") || !looksLikeXlsx(table2Xlsx.buffer)) {
+  problems.push(`Table 2's Excel download ("${table2Xlsx.filename}") isn't a real .xlsx file`);
 }
 
 /** One cell of Table 2, found by row and column position -- Table 2's cells
@@ -718,6 +778,23 @@ if (compareChartBox === null) {
   if (tooltipRows !== 2) {
     problems.push(`hovering the compare chart shows ${tooltipRows} tooltip row(s), expected 2 (one per scenario)`);
   }
+}
+
+// The comparison table's own CSV and Excel downloads -- entirely new; there
+// was no export at all here before.
+const compareActions = tab.locator(".compare-results .panel-actions");
+const compareCsv = await download(compareActions.getByRole("button", { name: "Ladda ner CSV" }));
+console.log(`compare CSV     : ${compareCsv.filename}, ${compareCsv.buffer.length} bytes`);
+if (
+  !compareCsv.filename.endsWith(".csv") ||
+  !compareCsv.buffer.toString("utf8").includes("Scenario 1")
+) {
+  problems.push(`the comparison table's CSV download ("${compareCsv.filename}") doesn't look right`);
+}
+const compareXlsx = await download(compareActions.getByRole("button", { name: "Ladda ner Excel" }));
+console.log(`compare Excel   : ${compareXlsx.filename}, ${compareXlsx.buffer.length} bytes`);
+if (!compareXlsx.filename.endsWith(".xlsx") || !looksLikeXlsx(compareXlsx.buffer)) {
+  problems.push(`the comparison table's Excel download ("${compareXlsx.filename}") isn't a real .xlsx file`);
 }
 
 // Add up to the cap -- baseline plus three variants -- then confirm add

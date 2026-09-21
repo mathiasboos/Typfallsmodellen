@@ -38,10 +38,11 @@ import type {
 import { renderCompareChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
 import { fieldSet, span } from "./controls.js";
+import { csvExportButton, xlsxExportButton } from "./export.js";
 import type { Lang } from "./i18n.js";
 import { t } from "./i18n.js";
 import { retirementAge } from "./kpis.js";
-import { renderCompareTable } from "./tables.js";
+import { compareTableToCsv, compareTableToXlsxRows, renderCompareTable } from "./tables.js";
 import type { ScenarioColumn } from "./tables.js";
 
 const RETIREMENT = span(RETIREMENT_AGES);
@@ -292,16 +293,27 @@ export function createComparePanel(
         priceBasis: context.priceBasis,
       };
 
-      const table = document.createElement("div");
-      table.className = "scroll";
-      table.append(
-        renderCompareTable(columns, runLang, {
-          finalSalaryYears: context.finalSalaryYears,
-          lastPensionRight: context.lastPensionRight > 0,
-        }),
+      const shared = {
+        finalSalaryYears: context.finalSalaryYears,
+        lastPensionRight: context.lastPensionRight > 0,
+      };
+
+      const tableActions = document.createElement("div");
+      tableActions.className = "panel-actions";
+      tableActions.append(
+        csvExportButton(runLang, runLang === "sv" ? "jamforelse.csv" : "comparison.csv", () =>
+          compareTableToCsv(columns, runLang, shared),
+        ),
+        xlsxExportButton(runLang, runLang === "sv" ? "jamforelse.xlsx" : "comparison.xlsx", () =>
+          compareTableToXlsxRows(columns, runLang, shared),
+        ),
       );
 
-      results.replaceChildren(renderCompareChart(columns, figureView), table);
+      const table = document.createElement("div");
+      table.className = "scroll";
+      table.append(renderCompareTable(columns, runLang, shared));
+
+      results.replaceChildren(renderCompareChart(columns, figureView), tableActions, table);
     },
   };
 }

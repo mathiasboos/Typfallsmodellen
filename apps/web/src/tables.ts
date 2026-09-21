@@ -21,6 +21,8 @@ import { kronor, percent } from "./format.js";
 import { t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { computeKpis, kpiLabels } from "./kpis.js";
+import { kronorCell, percentCell } from "./xlsx.js";
+import type { SheetData } from "./xlsx.js";
 
 /** What Table 1's headings and notes need beyond the result itself. */
 export interface Table1View {
@@ -77,26 +79,38 @@ const TABLE1_COLUMNS: readonly {
   readonly name: string;
   readonly head: (lang: Lang) => string;
   readonly text: (row: Table1Row, lang: Lang) => string;
+  /** The same figure `text` formats, unrounded -- what an Excel cell holds
+   * once the display formatting is a number format string instead of text. */
+  readonly value: (row: Table1Row) => number;
+  readonly kind: "kronor" | "percent";
 }[] = [
   {
     name: "nominal",
     head: (l) => t("currentPricesKronor", l),
     text: (r, l) => kronor(r.nominal, l),
+    value: (r) => r.nominal,
+    kind: "kronor",
   },
   {
     name: "adjusted",
     head: (l) => `${t("fixedPrices", l)}, ${t("kronor", l)}`,
     text: (r, l) => kronor(r.adjusted, l),
+    value: (r) => r.adjusted,
+    kind: "kronor",
   },
   {
     name: "monthly",
     head: (l) => `${t("perMonth", l)}, ${t("kronor", l)}`,
     text: (r, l) => kronor(r.monthly, l),
+    value: (r) => r.monthly,
+    kind: "kronor",
   },
   {
     name: "share",
     head: (l) => t("shareOfFinalSalaryShort", l),
     text: (r, l) => percent(r.shareOfFinalSalary, l),
+    value: (r) => r.shareOfFinalSalary,
+    kind: "percent",
   },
 ];
 
@@ -614,4 +628,141 @@ export function table2ToCsv(result: TypfallResult, lang: Lang): string {
     );
   }
   return lines.join("\r\n");
+}
+
+/**
+ * `renderCompareTable` as a CSV -- the same two rows of headers (a scenario's
+ * name, blank beside it standing in for its colspan; then its two sub-column
+ * heads), the three KPI rows, and `TABLE1_LINES`'s own rows, in the same
+ * order. The spacer and the two footnotes are prose, not data, and are left
+ * out, the same as `table1ToCsv`.
+ */
+export function compareTableToCsv(
+  columns: readonly ScenarioColumn[],
+  lang: Lang,
+  shared: { readonly finalSalaryYears: number; readonly lastPensionRight: boolean },
+): string {
+  const delimiter = delimiterFor(lang);
+  const anchor = columns[0]!;
+  const anchorView: Table1View = { par: anchor.par, ...shared };
+
+  const nameRow = [""];
+  const subRow = [t("pensionWord", lang)];
+  for (const column of columns) {
+    nameRow.push(column.label, "");
+    subRow.push(`${t("perMonth", lang)}, ${t("kronor", lang)}`, t("shareOfFinalSalaryShort", lang));
+  }
+  const lines: string[] = [csvLine(nameRow, delimiter), csvLine(subRow, delimiter)];
+
+  const [pensionLabel, replacementLabel, averageLabel] = kpiLabels(lang);
+  const kpis = columns.map((column) => computeKpis(column.result, column.par));
+  const kpiLine = (rowLabel: string, sub: "monthly" | "share", get: (i: number) => number) => {
+    const cells = [rowLabel];
+    columns.forEach((_column, i) => {
+      const value = get(i);
+      cells.push(sub === "monthly" ? kronor(value, lang) : "", sub === "share" ? percent(value, lang) : "");
+    });
+    lines.push(csvLine(cells, delimiter));
+  };
+  kpiLine(pensionLabel, "monthly", (i) => kpis[i]!.monthlyAtRetirement);
+  kpiLine(replacementLabel, "share", (i) => kpis[i]!.replacementRate);
+  kpiLine(averageLabel, "monthly", (i) => kpis[i]!.averageMonthly);
+
+  const byKey = columns.map((column) => new Map(column.result.table1.map((r) => [r.key, r])));
+  for (const line of TABLE1_LINES) {
+    if (line.kind !== "row") continue;
+    const cells = [label(line.label, lang, anchor.result, anchorView)];
+    columns.forEach((_column, i) => {
+      const row: Table1Row | undefined = byKey[i]!.get(line.key);
+      cells.push(row ? kronor(row.monthly, lang) : "", row ? percent(row.shareOfFinalSalary, lang) : "");
+    });
+    lines.push(csvLine(cells, delimiter));
+  }
+  return lines.join("\r\n");
+}
+
+// ------------------------------------------------------------- Excel export --
+
+/**
+ * Table 1 as `write-excel-file`'s sheet-data shape -- the same rows
+ * `table1ToCsv` writes, but each amount a live number with a display format
+ * instead of pre-formatted text, so the numbers stay usable in a formula
+ * once they're in Excel.
+ */
+export function table1ToXlsxRows(result: TypfallResult, lang: Lang, view: Table1View): SheetData {
+  const byKey = new Map(result.table1.map((r) => [r.key, r]));
+  const rows: SheetData = [
+    [
+      `${t("pensionWord", lang)} ${t("at", lang)} ${view.par} ${t("yearsAge", lang)}`,
+      ...TABLE1_COLUMNS.map((c) => c.head(lang)),
+    ],
+  ];
+  for (const line of TABLE1_LINES) {
+    if (line.kind !== "row") continue;
+    const row = byKey.get(line.key);
+    if (row === undefined) continue;
+    rows.push([
+      label(line.label, lang, result, view),
+      ...TABLE1_COLUMNS.map((c) =>
+        c.kind === "kronor" ? kronorCell(c.value(row)) : percentCell(c.value(row)),
+      ),
+    ]);
+  }
+  return rows;
+}
+
+/** Table 2 as `write-excel-file`'s sheet-data shape -- year and age as plain
+ * numbers, every amount a kronor-formatted number. */
+export function table2ToXlsxRows(result: TypfallResult, lang: Lang): SheetData {
+  const columns = visibleTable2Columns(result);
+  const rows: SheetData = [columns.map((c) => c.head(lang))];
+  for (const row of result.table2) {
+    rows.push(columns.map((col, i) => (i < 2 ? col.get(row) : kronorCell(col.get(row)))));
+  }
+  return rows;
+}
+
+/** `renderCompareTable` as `write-excel-file`'s sheet-data shape -- the same
+ * rows `compareTableToCsv` writes, with live numbers in place of text. */
+export function compareTableToXlsxRows(
+  columns: readonly ScenarioColumn[],
+  lang: Lang,
+  shared: { readonly finalSalaryYears: number; readonly lastPensionRight: boolean },
+): SheetData {
+  const anchor = columns[0]!;
+  const anchorView: Table1View = { par: anchor.par, ...shared };
+
+  const nameRow: SheetData[number] = [""];
+  const subRow: SheetData[number] = [t("pensionWord", lang)];
+  for (const column of columns) {
+    nameRow.push(column.label, "");
+    subRow.push(`${t("perMonth", lang)}, ${t("kronor", lang)}`, t("shareOfFinalSalaryShort", lang));
+  }
+  const rows: SheetData = [nameRow, subRow];
+
+  const [pensionLabel, replacementLabel, averageLabel] = kpiLabels(lang);
+  const kpis = columns.map((column) => computeKpis(column.result, column.par));
+  const kpiRow = (rowLabel: string, sub: "monthly" | "share", get: (i: number) => number) => {
+    const cells: SheetData[number] = [rowLabel];
+    columns.forEach((_column, i) => {
+      const value = get(i);
+      cells.push(sub === "monthly" ? kronorCell(value) : "", sub === "share" ? percentCell(value) : "");
+    });
+    rows.push(cells);
+  };
+  kpiRow(pensionLabel, "monthly", (i) => kpis[i]!.monthlyAtRetirement);
+  kpiRow(replacementLabel, "share", (i) => kpis[i]!.replacementRate);
+  kpiRow(averageLabel, "monthly", (i) => kpis[i]!.averageMonthly);
+
+  const byKey = columns.map((column) => new Map(column.result.table1.map((r) => [r.key, r])));
+  for (const line of TABLE1_LINES) {
+    if (line.kind !== "row") continue;
+    const cells: SheetData[number] = [label(line.label, lang, anchor.result, anchorView)];
+    columns.forEach((_column, i) => {
+      const row: Table1Row | undefined = byKey[i]!.get(line.key);
+      cells.push(row ? kronorCell(row.monthly) : "", row ? percentCell(row.shareOfFinalSalary) : "");
+    });
+    rows.push(cells);
+  }
+  return rows;
 }

@@ -438,3 +438,53 @@ Two follow-on requests, both about explaining terms rather than adding a new cal
   disclosure's own summary ("Ordlista"/"Glossary") and a short English note saying so switch with the
   page's language. No dedicated scrollbox: `.input-column` already scrolls the whole left column, and
   nesting a second one inside it would trap the pointer between the two.
+
+### Excel export, and this port's first runtime dependency
+
+Table 1, Table 2 and the Jämför scenarier comparison table each already had (or, for the comparison
+table, gained) a CSV download; on request, each now also offers a genuine `.xlsx` file beside it, not
+just a CSV renamed.
+
+**Why a real `.xlsx` rather than another CSV variant.** The CSV already opens correctly in Excel --
+`;`-delimited with a decimal comma in Swedish mode, exactly what Swedish Excel expects -- so "Excel
+support" in the sense of *opening* was already there. What a CSV can't do is carry typed cells: every
+figure in it is pre-formatted text, so a cell like "20 154" can't be summed or referenced from a formula
+without Excel re-parsing it first, and a percentage like "52,8 %" is text, not the 0.528 a `%`-formatted
+numeric cell would be. Asked to choose between "keep it CSV, just label a button Excel" and "write a
+real workbook", the answer was the real one -- this is this port's first-ever runtime dependency
+(`write-excel-file`, plus its own dependency `fflate` for the underlying ZIP), a size and precedent this
+project has been careful about (`apps/web/package.json`'s `dependencies` list, before this, was
+`@typfallsmodellen/data` and `@typfallsmodellen/engine` alone). The pair added about 70 kB to the built
+single file (~900 kB before, ~970 kB after) -- measured, not assumed.
+
+**Why `write-excel-file/universal`, not `/browser`.** The package's default browser entry point runs in
+a Web Worker, which needs its own script URL -- fundamentally incompatible with a single inlined HTML
+file that must open from `file://` with zero outbound requests (`verify-offline.mjs`'s own "outbound
+blocked" check, which the deploy workflow also runs on the way out). `/universal` does the same work
+synchronously on the main thread and returns a `Blob` directly; the cost is a sub-millisecond
+main-thread pause for a table this size, the same trade the rest of this app already makes by not
+debouncing or memoizing `run()`.
+
+**What each cell holds.** `xlsx.ts` (the only file that imports the dependency, the same isolation
+`deaths.ts` gives the generated mortality data) exports `kronorCell`/`percentCell` helpers -- a real
+number with a `#,##0` or `0.0%` display format, not a pre-rounded string -- so the workbook shows the
+same figures the page does while keeping the underlying precision a spreadsheet user might want.
+`tables.ts` gained `table1ToXlsxRows`/`table2ToXlsxRows`/`compareTableToXlsxRows`, each mirroring its
+own CSV sibling's row order exactly (`table1ToCsv`/`table2ToCsv`/the new `compareTableToCsv`, which the
+comparison table needed anyway since it had no export of any kind before this).
+
+**The download buttons themselves** moved out of `main.ts`'s own local `exportButton` function into a
+new shared `export.ts` (`csvExportButton`/`xlsxExportButton`), once a third call site -- the comparison
+table, in `compare.ts` -- needed the same pair of buttons a second place already had.
+
+**`verify-offline.mjs` gained its first real download tests.** Existing checks never actually clicked a
+CSV button; this adds a `download()` helper that clicks a button, captures the file Playwright's own
+download event hands back, and reads it -- CSV content checked for a known label, `.xlsx` checked for
+the ZIP local-file-header signature (`PK`) every real OOXML package starts with. Building these caught
+two real bugs, both fixed in the same change: `context.route("**/*")`'s block-everything rule doesn't
+exempt `blob:` URLs (what `URL.createObjectURL` produces) the way it already exempted `file://`, so a
+download would have silently gone nowhere in this exact test setup; and `.locator(".panel-actions")`
+alone is ambiguous once a table has its own actions row, because the Avancerat column's salary-grid
+actions row is already in the DOM before the results column even in Normalt (just hidden until that
+mode is on) -- both Table 1's and Table 2's own checks are now scoped to the `section.panel` that holds
+that table specifically.
