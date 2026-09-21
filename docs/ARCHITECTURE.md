@@ -488,3 +488,38 @@ alone is ambiguous once a table has its own actions row, because the Avancerat c
 actions row is already in the DOM before the results column even in Normalt (just hidden until that
 mode is on) -- both Table 1's and Table 2's own checks are now scoped to the `section.panel` that holds
 that table specifically.
+
+### A black screen on the phone: the built file's own script tag
+
+Opened on an iPhone -- tapped from Files, Mail or Messages, not typed as a URL -- the built file showed
+a black screen and nothing else. `verify-offline.mjs` never caught this because it only ever drives
+desktop Chromium; the failure is specific to Mobile Safari opening a `file://` page.
+
+The cause was the script tag itself. Vite's own HTML output always wraps the app's bundle in
+`<script type="module">`, and `inline-single-file.mjs` inherited that wrapping unquestioned when it
+folded the separate `.js` file into the page. A module script's own semantics -- deferred execution,
+its own module-graph loader -- are exactly the machinery Mobile Safari can refuse to run at all for a
+page opened this way, even with the module's own imports already inlined and nothing left to fetch: the
+restriction is on the tag's `type`, not on what it still needs to ask for. The result reads as a plain
+black screen, not an error a phone's user could report more precisely than that -- Safari's own console
+is not somewhere most people look, or can even reach, on a phone.
+
+The fix has two parts, both necessary:
+
+- **`vite.config.ts`** builds with `rollupOptions.output.format: "iife"` instead of Rollup's default
+  `"es"` -- a plain, self-invoking classic script rather than a module. This needs a single chunk to
+  work at all, which `inlineDynamicImports: true` (already there, for the same single-file requirement)
+  already guarantees.
+- **`inline-single-file.mjs`** writes a plain `<script>`, not `<script type="module">` -- but a classic
+  script has no implicit defer the way a module has, and Vite places the tag in `<head>`, before `<body>`
+  and `#app` exist. `defer` cannot fix this either: the attribute is defined to do nothing on a script
+  with no `src`, inline or not -- confirmed by testing it, not assumed. The actual fix is the ordinary
+  one for exactly this: the inliner now moves the tag to just before `</body>`, after building it,
+  rather than leaving it where Vite put it.
+
+`verify-offline.mjs` gained a static check for this, before a browser is even involved: the built file
+must have no `<script type="module">` anywhere, and its one `<script>` tag must come after `#app` in the
+document. Proven to fail first the ordinary way -- reverting just these two files and rebuilding
+reproduces the exact `<script type="module">` this check now catches, and (checked separately, by
+testing `<script defer>` against the same reverted build) `defer` alone does not fix the ordering
+problem for an inline script even though it looks like it should.

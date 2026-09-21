@@ -26,12 +26,25 @@ const stylesheet = /<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g;
 
 const read = (href) => readFileSync(join(dist, href.replace(/^\.?\//, "")), "utf8");
 
+// A classic script, not `type="module"` -- see vite.config.ts's own comment
+// on why. A module script defers itself; a classic one runs the moment the
+// parser reaches it, which is a problem since Vite places it in `<head>`,
+// before `<body>` -- `#app` included -- exists to find. `defer` cannot fix
+// this either: the attribute is defined to do nothing on a script with no
+// `src`, inline or not. So this moves the tag to just before `</body>`
+// instead, the ordinary fix for exactly this, rather than leaving it where
+// Vite put it.
+let inlineScript = "";
 html = html.replace(script, (_, href) => {
   const code = read(href);
   // `</script>` inside the bundle would close the tag early.
-  return `<script type="module">${code.replace(/<\/script>/gi, "<\\/script>")}</script>`;
+  inlineScript = `<script>${code.replace(/<\/script>/gi, "<\\/script>")}</script>`;
+  return "";
 });
 html = html.replace(stylesheet, (_, href) => `<style>${read(href)}</style>`);
+if (inlineScript === "") throw new Error("no <script src> tag found to inline");
+if (!html.includes("</body>")) throw new Error("no </body> to place the inlined script before");
+html = html.replace("</body>", `${inlineScript}</body>`);
 
 /**
  * What a leftover `src`/`href` is allowed to be.

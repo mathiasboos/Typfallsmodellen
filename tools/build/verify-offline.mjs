@@ -32,6 +32,34 @@ if (!existsSync(page)) {
   fail(`${page} is not there. Build it first: npm run build -w @typfallsmodellen/web`);
 }
 
+/**
+ * A static check on the file itself, before a browser is even involved:
+ * Mobile Safari can fail to run a `<script type="module">` at all when the
+ * page is opened from Files/Mail/Messages over `file://` -- reported as a
+ * black screen on an iPhone -- so the build produces a classic script
+ * instead (`vite.config.ts`'s own comment on why). A classic script has no
+ * implicit defer the way a module does, so it also has to sit after `#app`
+ * in the document -- `inline-single-file.mjs` moves it there rather than
+ * leaving it where Vite placed it, in `<head>`.
+ */
+const html = readFileSync(page, "utf8");
+if (/<script[^>]*type=["']module["']/.test(html)) {
+  fail(
+    'the built file has a <script type="module"> -- Mobile Safari can fail to run it at all over ' +
+      "file://. See vite.config.ts's own comment on why this app uses a classic script instead.",
+  );
+}
+const scriptIndex = html.indexOf("<script>");
+const appIndex = html.indexOf('id="app"');
+if (scriptIndex === -1) fail("the built file has no plain <script> tag to run the app.");
+if (appIndex === -1 || scriptIndex < appIndex) {
+  fail(
+    "the built file's <script> tag isn't after #app in the document -- a classic script runs the " +
+      "instant the parser reaches it, unlike a module script, so it has to come after #app exists.",
+  );
+}
+console.log("script tag      : classic, after #app -- runs on Mobile Safari too");
+
 let chromium;
 try {
   ({ chromium } = await import("playwright"));
