@@ -412,8 +412,12 @@ scrolls inside `.scroll` instead of widening the page.
 Two follow-on requests, both about explaining terms rather than adding a new calculation:
 
 - **Table 2's headers**, on request, name what each column's own figure is built from on hover/focus —
-  20% state income tax above the first threshold and 25% above the second, plus the public-service fee
-  and any capital tax, for "Statlig skatt", say. `headCell` in `tables.ts` takes an optional `info`
+  20% state income tax above the threshold, plus the public-service fee and any capital tax, for
+  "Statlig skatt", say. The formula also has a 25% band above a second, higher threshold —
+  "värnskatten", abolished in 2020 — left out of the tooltip on request: the data sets that threshold to
+  an unreachable `10^16` from 2020 on (`NO_SECOND_THRESHOLD`, `packages/engine/src/data/projection.ts`),
+  so it never actually fires for a present-day or future run, and naming it read as if it were still in
+  force. `headCell` in `tables.ts` takes an optional `info`
   string and wraps the header text in `<abbr title>` when it is given, rather than a custom tooltip: this
   is one static string per column, not a value that moves with the pointer the way the charts' own hover
   readout is, so the browser's own mechanism already does the job. The text itself is not a SysLang

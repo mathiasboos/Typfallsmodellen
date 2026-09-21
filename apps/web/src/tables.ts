@@ -454,10 +454,16 @@ const TABLE2_COLUMNS: readonly {
   },
   {
     head: (l) => (l === "sv" ? "Statlig skatt" : "State tax"),
+    // The formula also has a 25% band above a second, higher threshold --
+    // "värnskatten", abolished in 2020 -- left out here on request: the
+    // data sets that threshold to an unreachable 10^16 from 2020 on (see
+    // NO_SECOND_THRESHOLD in packages/engine/src/data/projection.ts), so it
+    // never actually fires for a present-day or future run, and naming it
+    // here read as if it were still in force.
     info: (l) =>
       l === "sv"
-        ? "Statlig inkomstskatt (20 % över nedre brytpunkten, 25 % över den övre), public service-avgiften, och eventuell skatt på kapital efter pensionering."
-        : "State income tax (20% above the lower threshold, 25% above the upper one), the public-service fee, and any capital-income tax after retirement.",
+        ? "Statlig inkomstskatt (20 % över brytpunkten), public service-avgiften, och eventuell skatt på kapital efter pensionering."
+        : "State income tax (20% above the threshold), the public-service fee, and any capital-income tax after retirement.",
     get: (r) => r.stateTax,
   },
   {
