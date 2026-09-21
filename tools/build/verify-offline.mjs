@@ -248,6 +248,24 @@ if (!table2Headers.some((text) => text === "Statlig skatt" || text === "State ta
   problems.push("Table 2 is missing the state-tax column");
 }
 
+// Hovering/focusing a Table 2 header names what its own figure is built
+// from -- an `<abbr title>`, so the check reads the attribute a screen
+// reader or a real hover would surface, not just that the cell has text.
+const stateTaxInfo = await tab
+  .locator(".table2 thead abbr", { hasText: /Statlig skatt|State tax/ })
+  .getAttribute("title");
+console.log(`state tax info  : ${stateTaxInfo}`);
+if (!stateTaxInfo || !/20\s*%/.test(stateTaxInfo) || !/public.service/i.test(stateTaxInfo)) {
+  problems.push(
+    `the "Statlig skatt"/"State tax" header's title is "${stateTaxInfo}", expected it to name the 20% ` +
+      "threshold and the public-service fee",
+  );
+}
+const yearHeaderIsAbbr = await tab.locator(".table2 thead th").first().locator("abbr").count();
+if (yearHeaderIsAbbr !== 0) {
+  problems.push("the Year column got an explanatory <abbr> it doesn't need");
+}
+
 /** One cell of Table 2, found by row and column position -- Table 2's cells
  * carry no `data-key`/`data-col` the way Table 1's do, so position is all
  * there is; the header row just found gives the column indices. */
@@ -820,10 +838,50 @@ if (closedAfter !== closedOnScreen) {
   problems.push(`printing left ${closedAfter} disclosures closed, expected ${closedOnScreen} as before`);
 }
 
+// Ordlista: the workbook's own glossary sheet, surfaced as a disclosure in
+// the left column below "Om pris- och avkastningsantaganden" -- the terms
+// themselves stay Swedish always (the sheet has no English column), but the
+// disclosure's own summary and a Swedish-only note still switch with the
+// page's language, like every other piece of this port's own UI chrome.
+const glossaryDetails = tab.locator("details", { has: tab.locator(".glossary") });
+const glossaryTerms = await glossaryDetails.locator(".glossary dt").count();
+console.log(`glossary terms  : ${glossaryTerms}`);
+if (glossaryTerms < 50) {
+  problems.push(`Ordlista shows ${glossaryTerms} terms, expected around 57`);
+}
+const firstTermSv = await glossaryDetails.locator(".glossary dt").first().textContent();
+if (firstTermSv !== "Administrationsavgift") {
+  problems.push(`Ordlista's first term is "${firstTermSv}", expected "Administrationsavgift" (alphabetical)`);
+}
+const glossarySummarySv = await glossaryDetails.locator("summary").textContent();
+if (glossarySummarySv !== "Ordlista") {
+  problems.push(`Ordlista's Swedish heading reads "${glossarySummarySv}", expected "Ordlista"`);
+}
+
+await tab.getByRole("button", { name: "EN", exact: true }).click();
+await tab.waitForTimeout(50);
+const glossarySummaryEn = await glossaryDetails.locator("summary").textContent();
+if (glossarySummaryEn !== "Glossary") {
+  problems.push(`Ordlista's English heading reads "${glossarySummaryEn}", expected "Glossary"`);
+}
+const glossaryNoteEn = await glossaryDetails.locator(".field-note-body > p").first().textContent();
+if (!glossaryNoteEn || !/only available in Swedish/i.test(glossaryNoteEn)) {
+  problems.push(
+    `Ordlista's English note reads "${glossaryNoteEn}", expected it to say the glossary is Swedish-only`,
+  );
+}
+const firstTermEn = await glossaryDetails.locator(".glossary dt").first().textContent();
+if (firstTermEn !== "Administrationsavgift") {
+  problems.push("Ordlista's own terms changed with the language, expected them to stay Swedish");
+}
+await tab.getByRole("button", { name: "SV", exact: true }).click();
+await tab.waitForTimeout(50);
+
 if (shots) {
   mkdirSync(shots, { recursive: true });
   await tab.screenshot({ path: join(shots, "sv.png"), fullPage: true });
-  await tab.getByRole("button", { name: "EN" }).click();
+  // Exact match, or this also resolves "Jämför scenarier" (contains "en").
+  await tab.getByRole("button", { name: "EN", exact: true }).click();
   await tab.waitForTimeout(150);
   await tab.screenshot({ path: join(shots, "en.png"), fullPage: true });
   await tab.emulateMedia({ colorScheme: "dark" });

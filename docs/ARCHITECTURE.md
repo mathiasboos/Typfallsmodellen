@@ -406,3 +406,31 @@ smaller size. `.compare-card { min-width: 0; }` keeps each input card at its int
 of a long select option; `.compare-results { min-width: 0; }` (and `> *`) gives the shared chart and
 table the same treatment `.results` already needed for the single-scenario view, so the wide table
 scrolls inside `.scroll` instead of widening the page.
+
+### Table 2's own column tooltips, and Ordlista
+
+Two follow-on requests, both about explaining terms rather than adding a new calculation:
+
+- **Table 2's headers**, on request, name what each column's own figure is built from on hover/focus —
+  20% state income tax above the first threshold and 25% above the second, plus the public-service fee
+  and any capital tax, for "Statlig skatt", say. `headCell` in `tables.ts` takes an optional `info`
+  string and wraps the header text in `<abbr title>` when it is given, rather than a custom tooltip: this
+  is one static string per column, not a value that moves with the pointer the way the charts' own hover
+  readout is, so the browser's own mechanism already does the job. The text itself is not a SysLang
+  extraction — the sheet has no per-column explanations of its own — so it is written from
+  `MvaluesRow`'s own field comments (`packages/engine/src/model/state.ts`) and `buildTable2`'s
+  composition of them (`packages/engine/src/model/result.ts`), the same source this port's own
+  tax-per-year chart note already draws on for the municipal/state tax split. Year and Age get no
+  `<abbr>` — there is no composition to explain.
+- **Ordlista** — the workbook's own glossary sheet — is now a `<details class="field-note">` in the
+  left column, directly below "Om pris- och avkastningsantaganden", the same disclosure pattern that
+  note already uses. `content.glossary` (`packages/data/content.json`, extracted by
+  `tools/extract/extract_content.py`'s `_glossary`) was sitting unused until now — the same situation
+  PGB was in before Phase 6 — so no new extraction work was needed, only wiring an existing export into
+  the UI as a `<dl>`, one `<dt>` per term and one `<dd>` per paragraph, built once in `form.ts` since the
+  fifty-seven terms never change with the language. They stay in Swedish always: the sheet has no
+  English column, and retyping fifty-seven prose entries of pension and tax law by hand is a different
+  order of risk from the 26 short setting labels this port did choose to retype for Avancerat. Only the
+  disclosure's own summary ("Ordlista"/"Glossary") and a short English note saying so switch with the
+  page's language. No dedicated scrollbox: `.input-column` already scrolls the whole left column, and
+  nesting a second one inside it would trap the pointer between the two.

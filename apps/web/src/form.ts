@@ -25,7 +25,7 @@
  * The form is built once and then left alone -- re-creating the fields on every
  * keystroke would take the focus with it. Only the results re-render.
  */
-import { options } from "@typfallsmodellen/data";
+import { content, options } from "@typfallsmodellen/data";
 import { RETIREMENT_AGES, riktalderFor } from "@typfallsmodellen/engine";
 import type { SchemeId, TypfallInput } from "@typfallsmodellen/engine";
 
@@ -41,6 +41,14 @@ const BORN = span(BIRTH_YEARS);
 const RETIREMENT = span(RETIREMENT_AGES);
 // `Börjar arbeta vid ålder` has no extracted list; the sheet offers 15 to 40.
 const START_WORK = { min: 15, max: 40 };
+
+interface GlossaryEntry {
+  readonly term: string;
+  readonly body: readonly string[];
+}
+// `content.glossary`: the Ordlista sheet, term followed by one or more
+// paragraphs -- see `tools/extract/extract_content.py`'s own `_glossary`.
+const GLOSSARY = content.glossary as readonly GlossaryEntry[];
 
 export interface FormHandle {
   readonly element: HTMLElement;
@@ -80,6 +88,24 @@ function assumptionsNote(l: Lang): { readonly summary: string; readonly paragrap
             "return – that is, how much the return on capital exceeds general wage growth.",
         ],
       };
+}
+
+/**
+ * The Ordlista disclosure's own chrome -- the terms and their definitions
+ * below it stay in Swedish always, since the sheet they come from has no
+ * English column (`tools/extract/extract_content.py` reads a single text
+ * column), the same situation the advanced settings' labels were in before
+ * this port chose to retype those 26 -- retyping fifty-seven prose entries of
+ * pension and tax law is a different order of risk, so this leaves them as
+ * the sheet wrote them and says so in English rather than translating them.
+ */
+function glossaryHeading(l: Lang): string {
+  return l === "sv" ? "Ordlista" : "Glossary";
+}
+function glossaryNote(l: Lang): string | undefined {
+  return l === "sv"
+    ? undefined
+    : "This glossary is only available in Swedish -- the source model has no English translation for it.";
 }
 
 export function createForm(
@@ -216,6 +242,37 @@ export function createForm(
   assumptionsInfo.append(assumptionsSummary, assumptionsBody);
   relabels.push(applyAssumptionsNote);
   element.append(assumptionsInfo);
+
+  const glossaryInfo = document.createElement("details");
+  glossaryInfo.className = "field-note";
+  const glossarySummary = document.createElement("summary");
+  const glossaryBody = document.createElement("div");
+  glossaryBody.className = "field-note-body";
+  const glossaryNoteEl = document.createElement("p");
+  const glossaryList = document.createElement("dl");
+  glossaryList.className = "glossary";
+  // Built once -- the terms themselves never change with the language.
+  for (const entry of GLOSSARY) {
+    const dt = document.createElement("dt");
+    dt.textContent = entry.term;
+    glossaryList.append(dt);
+    for (const paragraph of entry.body) {
+      const dd = document.createElement("dd");
+      dd.textContent = paragraph;
+      glossaryList.append(dd);
+    }
+  }
+  glossaryBody.append(glossaryNoteEl, glossaryList);
+  const applyGlossaryLabel = (l: Lang) => {
+    glossarySummary.textContent = glossaryHeading(l);
+    const note = glossaryNote(l);
+    glossaryNoteEl.textContent = note ?? "";
+    glossaryNoteEl.hidden = note === undefined;
+  };
+  applyGlossaryLabel(lang);
+  glossaryInfo.append(glossarySummary, glossaryBody);
+  relabels.push(applyGlossaryLabel);
+  element.append(glossaryInfo);
 
   return {
     element,

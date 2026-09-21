@@ -107,9 +107,24 @@ function cell(text: string, className?: string): HTMLTableCellElement {
   return td;
 }
 
-function headCell(text: string): HTMLTableCellElement {
+/**
+ * `info`, when given, names what the column's own figure is built from --
+ * shown on hover/focus via a plain `<abbr title>` rather than a custom
+ * tooltip: unlike the charts' hover readout, this is one static string per
+ * column, not a value that changes with the pointer's position, so the
+ * browser's own mechanism already does the job.
+ */
+function headCell(text: string, info?: string): HTMLTableCellElement {
   const th = document.createElement("th");
-  th.textContent = text;
+  if (info === undefined) {
+    th.textContent = text;
+  } else {
+    const abbr = document.createElement("abbr");
+    abbr.className = "table-term";
+    abbr.title = info;
+    abbr.textContent = text;
+    th.append(abbr);
+  }
   return th;
 }
 
@@ -367,22 +382,113 @@ export function renderCompareTable(
   return table;
 }
 
-const TABLE2_COLUMNS: readonly { readonly head: (lang: Lang) => string; readonly get: (r: Table2Row) => number }[] = [
+/**
+ * What each column's own figure is built from, in one or two sentences --
+ * not a SysLang extraction (the sheet has no per-column explanations of its
+ * own), so written from `MvaluesRow`'s own field comments
+ * (`packages/engine/src/model/state.ts`) and `buildTable2`'s composition of
+ * them (`packages/engine/src/model/result.ts`), the same source this port's
+ * own tax-per-year chart note already draws on for the tax split. Year and
+ * age need none of this -- they carry no composition to explain.
+ */
+const TABLE2_COLUMNS: readonly {
+  readonly head: (lang: Lang) => string;
+  readonly info?: (lang: Lang) => string;
+  readonly get: (r: Table2Row) => number;
+}[] = [
   { head: (l) => t("year", l), get: (r) => r.year },
   { head: (l) => t("age", l), get: (r) => r.age },
-  { head: (l) => t("salary", l), get: (r) => r.salary },
-  { head: (l) => t("incomeAndSupplementary", l), get: (r) => r.incomeAndSupplementary },
-  { head: (l) => t("premium", l), get: (r) => r.premium },
-  { head: (l) => t("occupationalPlusIps", l), get: (r) => r.occupationalAndPrivate },
-  { head: (l) => t("guarantee", l), get: (r) => r.guaranteeAndSupplement },
-  { head: (l) => t("grossIncome", l), get: (r) => r.gross },
+  {
+    head: (l) => t("salary", l),
+    info: (l) => (l === "sv" ? "Årets lön eller annan förvärvsinkomst." : "The year's salary or other earned income."),
+    get: (r) => r.salary,
+  },
+  {
+    head: (l) => t("incomeAndSupplementary", l),
+    info: (l) =>
+      l === "sv"
+        ? "Inkomstpension, den största delen av den allmänna pensionen, plus tilläggspension för den som är född 1953 eller tidigare."
+        : "Income pension, the largest part of the public pension, plus tilläggspension (ATP) for those born in 1953 or earlier.",
+    get: (r) => r.incomeAndSupplementary,
+  },
+  {
+    head: (l) => t("premium", l),
+    info: (l) =>
+      l === "sv"
+        ? "Premiepension: den del av den allmänna pensionen du själv väljer placering för."
+        : "Premium pension: the part of the public pension you choose how to invest.",
+    get: (r) => r.premium,
+  },
+  {
+    head: (l) => t("occupationalPlusIps", l),
+    info: (l) =>
+      l === "sv"
+        ? "Tjänstepension från arbetsgivaren plus eventuellt individuellt pensionssparande (IPS), före skatt."
+        : "Occupational pension from the employer plus any individual pension saving (IPS), before tax.",
+    get: (r) => r.occupationalAndPrivate,
+  },
+  {
+    head: (l) => t("guarantee", l),
+    info: (l) =>
+      l === "sv"
+        ? "Garantipension (lägstanivå för den som haft låg eller ingen inkomst) plus inkomstpensionstillägg och, för den som är född 1938–1953, garantitillägg."
+        : "Guarantee pension (a minimum level for those with low or no income) plus the income pension supplement and, for those born 1938–1953, the guarantee supplement.",
+    get: (r) => r.guaranteeAndSupplement,
+  },
+  {
+    head: (l) => t("grossIncome", l),
+    info: (l) =>
+      l === "sv"
+        ? "Summan av lön, allmän pension, tjänstepension och privat pensionssparande, före skatt."
+        : "The sum of salary, public pension, occupational pension and private pension saving, before tax.",
+    get: (r) => r.gross,
+  },
   // Not a SysLang extraction -- the workbook never shows this split either.
-  { head: (l) => (l === "sv" ? "Kommunal skatt" : "Municipal tax"), get: (r) => r.municipalTax },
-  { head: (l) => (l === "sv" ? "Statlig skatt" : "State tax"), get: (r) => r.stateTax },
-  { head: (l) => t("incomeAfterTax", l), get: (r) => r.net },
-  { head: (l) => t("benefits", l), get: (r) => r.benefits },
-  { head: (l) => t("privateSavingIsk", l), get: (r) => r.privateAfterTax },
-  { head: (l) => t("disposable", l), get: (r) => r.disposable },
+  {
+    head: (l) => (l === "sv" ? "Kommunal skatt" : "Municipal tax"),
+    info: (l) =>
+      l === "sv"
+        ? "Kommunal inkomstskatt och kyrko-/begravningsavgift, efter jobbskatteavdrag och andra skattereduktioner."
+        : "Municipal income tax and the church/burial fee, net of the earned-income tax credit and other tax reductions.",
+    get: (r) => r.municipalTax,
+  },
+  {
+    head: (l) => (l === "sv" ? "Statlig skatt" : "State tax"),
+    info: (l) =>
+      l === "sv"
+        ? "Statlig inkomstskatt (20 % över nedre brytpunkten, 25 % över den övre), public service-avgiften, och eventuell skatt på kapital efter pensionering."
+        : "State income tax (20% above the lower threshold, 25% above the upper one), the public-service fee, and any capital-income tax after retirement.",
+    get: (r) => r.stateTax,
+  },
+  {
+    head: (l) => t("incomeAfterTax", l),
+    info: (l) => (l === "sv" ? "Bruttoinkomst minus kommunal och statlig skatt." : "Gross income minus municipal and state tax."),
+    get: (r) => r.net,
+  },
+  {
+    head: (l) => t("benefits", l),
+    info: (l) =>
+      l === "sv"
+        ? "Bostadstillägg, äldreförsörjningsstöd och andra behovsprövade tillägg."
+        : "Housing supplement, income support for the elderly, and other means-tested benefits.",
+    get: (r) => r.benefits,
+  },
+  {
+    head: (l) => t("privateSavingIsk", l),
+    info: (l) =>
+      l === "sv"
+        ? "Utbetalning från privat pensionssparande (ISK eller kapitalförsäkring), som inte beskattas som inkomst."
+        : "Payout from private pension saving (an ISK or endowment insurance), which is not taxed as income.",
+    get: (r) => r.privateAfterTax,
+  },
+  {
+    head: (l) => t("disposable", l),
+    info: (l) =>
+      l === "sv"
+        ? "Inkomst efter skatt plus bidrag och privat pensionssparande efter skatt."
+        : "Income after tax plus benefits and private pension saving after tax.",
+    get: (r) => r.disposable,
+  },
 ];
 
 /**
@@ -412,7 +518,7 @@ export function renderTable2(result: TypfallResult, lang: Lang): HTMLElement {
   table.className = "table table2";
 
   const head = table.createTHead().insertRow();
-  for (const col of columns) head.append(headCell(col.head(lang)));
+  for (const col of columns) head.append(headCell(col.head(lang), col.info?.(lang)));
 
   const body = table.createTBody();
   for (const row of result.table2) {

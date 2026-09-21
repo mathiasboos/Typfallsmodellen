@@ -509,6 +509,17 @@ body {
 .field-note-body { margin-top: 6px; font-size: 0.78rem; color: var(--text-muted); }
 .field-note-body p { margin: 0 0 8px; }
 .field-note-body p:last-child { margin-bottom: 0; }
+.field-note-body p:empty { display: none; }
+
+/* Ordlista: fifty-odd terms in one long disclosure, so each term needs its
+   own visual break rather than reading as one run-on paragraph. No scrollbox
+   of its own -- `.input-column`'s already scrolls the whole left column, and
+   nesting a second one inside it would trap the pointer between the two. */
+.glossary { margin: 0; }
+.glossary dt { margin: 12px 0 2px; font-weight: 600; color: var(--text-secondary); }
+.glossary dt:first-of-type { margin-top: 0; }
+.glossary dd { margin: 0 0 6px; }
+.glossary dd:last-of-type { margin-bottom: 0; }
 
 .scroll { overflow-x: auto; }
 
@@ -538,6 +549,11 @@ body {
 .table td.num, .table thead th:not(:first-child) { text-align: right; }
 .table tr.strong td { font-weight: 700; border-top: 1px solid var(--rule); }
 .table tbody tr:last-child td { border-bottom: none; }
+
+/* Table 2's own headers: a dotted underline names which ones explain what
+   they're built from on hover/focus, the same way `<abbr>` reads everywhere
+   else on the web. */
+.table-term { text-decoration: underline dotted; text-decoration-color: var(--text-muted); cursor: help; }
 
 /* Table 2 has up to twelve columns and fifty-odd rows; a smaller, tighter
    grid is what keeps it inside the panel width instead of forcing a
