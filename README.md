@@ -1,5 +1,7 @@
 # Typfallsmodellen på webben
 
+[![CI](https://github.com/mathiasboos/Typfallsmodellen/actions/workflows/ci.yml/badge.svg)](https://github.com/mathiasboos/Typfallsmodellen/actions/workflows/ci.yml)
+
 A web version of Pensionsmyndigheten's **Typfallsmodellen** — the model that computes the full
 Swedish pension outcome for a hypothetical individual (a *typfall*): inkomstpension,
 premiepension, tilläggspension, garantipension, inkomstpensionstillägg, occupational pension
@@ -36,7 +38,16 @@ npm install
 npm run build -w @typfallsmodellen/web
 ```
 
-That writes **`apps/web/dist/typfallsmodellen.html`** — one self-contained file, about 800 kB.
+`npm install` also writes `apps/web/src/generated/mortalityRisks.ts`, through the root `prepare`
+script — the death-probability grid packed into a module, since a browser will not `fetch` it over
+`file://`. It is derived from `packages/data` rather than committed, so a fresh clone has to make it
+before anything will typecheck.
+
+That writes **`apps/web/dist/typfallsmodellen.html`** — one self-contained file, about 850 kB.
+The same file is published two ways: at
+[mathiasboos.github.io/Typfallsmodellen](https://mathiasboos.github.io/Typfallsmodellen), and as an
+asset on each [release](https://github.com/mathiasboos/Typfallsmodellen/releases), which is how the
+original is distributed — something you save and keep.
 Open it in any browser: double-click it, email it, put it on a stick. No installation, no server,
 no network. Everything is computed in the browser and nothing is sent anywhere, which is not a
 privacy claim to take on trust — `npm run verify:offline` opens the built file in Chromium with
@@ -53,8 +64,9 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
 | 2. Golden-file harness vs. Excel | done | 299 typfall out of the real model, twelve output columns, every cell exact — `npm run compare` |
 | 3. Normal-mode website | done | the Start sheet: eight typed input cells, Table 1's four columns, Table 2, Figur 1, Figur 2 and the disposable income chart, Swedish and English — one offline HTML file |
-| 4. Advanced mode | next | the other seventy-six `Adv_settings` |
-| 5. Polish, CI, deploy | | |
+| 4. Advanced mode | done | the workbook's second mode: twenty-eight of the `Adv_settings` in the manual's own groups (including partial withdrawal of the public pension), the Indata_lista wage vector as an editable grid, and the PGB sheet's pension-qualifying amounts as a second grid — sickness/activity compensation typed in kronor, conscription and study computed from a date range and a semester count the same way the sheet itself computes them |
+| 5. Polish, CI, deploy | done | every check above runs on each push; the site publishes to GitHub Pages and each tag attaches the file to a release |
+| 6. Compare scenarios *(not from the workbook)* | done | a second top-level view: the baseline typfall alongside up to three variants, each with its own salary, retirement age, start-of-work age and occupational pension, lined up in one shared comparison table and an overlay chart |
 
 ### Verified so far
 
@@ -67,7 +79,15 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | The earning phase of the main loop, end to end | the `Brutto` sheet's per-age trace — PGI, PGB and all three contributions | exact |
 | **Every Table 1 figure, end to end** | **299 typfall the real model computed, all twelve output columns** | **3 588 of 3 588 cells exact** |
 | The built HTML file, opened from disk with the network cut | all four Table 1 columns read back out of Chromium, against the engine's own snapshot | no outbound requests, no page errors, values exact — `npm run verify:offline` |
-| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
+| Advanced mode, driven in the same browser | a municipal rate, a rent, ten zeroed salary years, and a manual PGB entry, each read back out of the rendered tables | every setting moves the model, and `Använd normala inställningar` puts it back |
+| Compare scenarios, driven in the same browser | a scenario's own salary and start-of-work age each raised well above the baseline's, the add/remove scenario limits, and the comparison table's own replacement-rate row | only that scenario's own column in the table and line in the chart move, the baseline stays put, the card/column/line count stays between one and four, and no replacement-rate cell ever reaches 100% |
+| Table 2's header tooltips and Ordlista, driven in the same browser | the "Statlig skatt" header's own `<abbr title>`, and Ordlista's term count and language-switched summary | names the 20% threshold and the public-service fee; 57 terms present, staying Swedish across a language switch that still relabels the disclosure itself |
+| CSV and Excel downloads, driven in the same browser | Table 1's, Table 2's and the comparison table's own download buttons, each actually clicked | a real file every time: the CSV's own content matches that table's data, the `.xlsx`'s first bytes are the ZIP signature every real OOXML package starts with |
+| The built file's own script tag | a static check of the file itself, no browser involved | a classic `<script>`, not `type="module"` (which Mobile Safari can refuse to run at all over `file://`, seen as a black screen on an iPhone), placed after `#app` in the document |
+| The PGB grid's "Visa alla kolumner" pop-out, driven in the same browser at 1280px and again at 375px | the same table moved into a `<dialog>` and back, an edit made from inside it, and `.adv-grid-scroll`'s own scroll width against its client width | the dialog is the same live table, not a copy — edits reach the model and survive the round trip — and needs no horizontal scrollbar at either width, which the 1280px case alone would not have caught |
+| Conscription and study's own PGB arithmetic | 15 unit tests pinning the day-split across one, two and three calendar years by hand, and the browser reading back a date range's own day-by-day readout and a semester count's own kronor readout | exact day counts at every split; a 1998 conscription period and a 2005 semester both raise the pension on their own, distinct from each other and from a typed sickness/activity amount |
+| Partial withdrawal of the public pension, driven in the same browser | age 67's own Lön and pension columns in Table 2, before and after setting a 50% withdrawal share and a final age of 70 | 0 kr salary and a full pension become a part-time salary alongside almost exactly half the full pension, and age 70 returns to 0 kr salary and a pension above the full-at-66 figure |
+| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 581 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
 | The lowest pension age and riktålder, per cohort | re-read from the workbook by `npm run check:ages` | 128 cohorts match |
@@ -93,6 +113,30 @@ the report.
 `reference/fixtures/default-run.json` holds the engine's own output for the shipped typfall. It is
 a regression snapshot, not a check against the workbook: it makes an unintended change to any rule
 show up as a diff.
+
+## Continuous integration and publishing
+
+`.github/workflows/ci.yml` runs everything the tables above claim — typecheck, the 581 unit and
+property tests, the four re-derivation checks, the golden file against Excel, the build, and the
+offline check in a real Chromium — on every push and pull request. The claims are the point of this
+repository, and a claim nothing re-runs is a claim about the day someone last ran it by hand. The
+whole run is a couple of minutes, so nothing is held back for a nightly job.
+
+`check:ages` reads the `.xlsb` itself and so needs `pyxlsb`; CI builds the same `.venv` from
+`tools/extract/requirements.txt` that the instructions below describe, rather than hand-picking that
+one package, so a new extraction dependency reaches CI without anyone remembering to add it. The
+other three `check:*` scripts re-derive from committed text and need nothing. LibreOffice is still
+only for the full extraction. Playwright is installed for the offline step alone rather than declared
+as a dependency — the same thing the instructions above tell a human to do.
+
+`.github/workflows/deploy.yml` builds from source, re-runs the offline check, and then publishes:
+GitHub Pages from `main`, and a release asset on a `v*` tag. Publishing a page that reaches for the
+network is the one thing this project must never do, so the check runs again on the way out rather
+than trusting the artifact.
+
+> Two settings have no API and were done by hand: **Settings → Pages → Source** set to *GitHub
+> Actions*, and the repository's default branch. Deploy fails at the `pages` job until the first is
+> set.
 
 ## Regenerating the data
 

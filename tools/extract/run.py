@@ -27,6 +27,7 @@ import extract_deltal
 import extract_i18n
 import extract_mortality
 import extract_options
+import extract_pgb
 import extract_retirement_ages
 import extract_riksnorm
 import extract_series
@@ -154,6 +155,9 @@ def main() -> int:
     print("Tax rates...")
     tax = extract_tax.extract(wb, formula_map)
     write_json(DATA_DIR / "municipal-tax.json", tax, description="K_skatt")
+
+    print("PGB study/conscription reference rates...")
+    write_json(DATA_DIR / "pgb-study.json", extract_pgb.extract(wb), description="study-PGB reference rates")
 
     print("Options and defaults...")
     options = extract_options.extract(wb)

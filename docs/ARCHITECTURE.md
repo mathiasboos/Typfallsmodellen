@@ -70,7 +70,7 @@ an invention:
 
 | Field | What it is | Where it comes from |
 |---|---|---|
-| `rows` | one row per age, seventeen columns | `mvalues` in Mcalc |
+| `rows` | one row per age, the seventeen `mvalues` columns plus two this port adds (municipal/state tax) | `mvalues` in Mcalc |
 | `table2` | the cash-flow table, from `rng_tabell2_startAge` | Table 2 on the Start sheet |
 | `table1` | the summary at retirement, four columns per line | Table 1 on the Start sheet |
 | `lifeIncome` | three discounted sums over the retirement | `Life0`, `life1`, `life2` |
@@ -112,7 +112,9 @@ and the three economic assumptions. `ModelContext` is Adv_settings: everything a
 behaves, all with the workbook's own defaults. A normal-mode run passes only a `TypfallInput`.
 
 That is the workbook's own split, and it is what lets normal mode show eight fields while advanced
-mode reaches the other seventy-six.
+mode reaches the rest. `result.wagePath` belongs to the same split from the other direction: it is
+the income and wage series the run derived, shaped as `TypfallInput.ownIncome` so the advanced
+form's salary grid can fill from it and hand it straight back.
 
 ### Where the mortality data comes in
 
@@ -127,19 +129,74 @@ where they come from, which is what keeps it free of a runtime.
 `apps/web` is plain TypeScript and Vite — no UI framework, no chart library, no network at runtime.
 The figures are inline SVG.
 
-It renders the Start sheet as the sheet lays it out: eight input cells you type numbers into, Table
-1 with the four columns `C23:F23` heads — A) löpande priser, B) fasta priser, C) per månad, D) som
-andel av slutlön — its rows in `A24:A45`'s order and its two notes under the gross total, then
-Figur 1, Figur 2 and the disposable income chart, then Table 2. Every heading, row label, legend
-entry and footnote is a `SysLang` row the workbook itself looks up for that cell, so a year that
-renumbers the sheet is caught by `checkLabels` rather than silently relabelling the page.
+It renders the Start sheet as the sheet lays it out: seven cells you type numbers into, a
+riktålder checkbox, Table 1 with the four columns `C23:F23` heads — löpande priser, fasta priser,
+per månad, som andel av slutlön; the sheet leads each with a letter, A) to D), dropped here on
+request — its rows in `A24:A45`'s order and its two notes under the gross total, then Figur 1,
+Figur 2 and the disposable income chart, then Table 2. Every heading, row label, legend entry and
+footnote is a `SysLang` row the workbook itself looks up for that cell, so a year that renumbers
+the sheet is caught by `checkLabels` rather than silently relabelling the page.
 
-The figures wear the workbook's colours, which is the point of them. Those colours fail the
-data-visualisation guidance's lightness and chroma bands — Excel's pastels are lighter and greyer
-than it wants — while passing its colour-blindness and normal-vision separation checks; the relief
-it asks for in exchange is present, in the 2px surface gap between stacked bands, a legend and a
-hover readout on every figure, and Table 2 carrying every plotted number in text. The agency's
-wordmark, which sits inside the workbook's own plot areas, is not reproduced.
+**Three KPI cards sit above Table 1**, none of them a workbook feature: pension at retirement,
+replacement rate at retirement, and the average pension over the years it's expected to be paid
+(`apps/web/src/kpis.ts`). Every value is a number Table 1 or the per-age matrix already computes,
+not a second calculation — the first two read `Table1Key.TotalGross`'s own `monthly` and
+`shareOfFinalSalary` fields outright, deliberately *not* re-derived from `result.rows` at the
+retirement age, which disagrees with Table 1's figure (`closeRetirementYear` rebuilds the
+retirement year's gross for Table 1 after that age's row has already been written to `rows`). The
+third averages `rows[i].brutto` over whole ages from retirement to `lifeIncome.throughAge` — the
+same span `lifeIncome` sums over, but as a plain mean rather than a sum discounted at
+`context.discountRate`, which would answer a different question. `computeKpis` is kept separate
+from the DOM-building `renderKpis` specifically so this arithmetic has a unit test
+(`apps/web/test/kpis.test.ts`) despite `apps/web` having no DOM in its test environment; the
+rendered cards themselves are checked, like every other rendering function here, against the real
+built page by `verify:offline`.
+
+**A fourth figure, "Tax per year", is not a workbook chart either**: municipal and state tax,
+stacked, over the same age window Figur 2 covers. The workbook computes this split too
+(`kinkskatt`/`statskatt` in `VBA_go.bas`) but only to combine it into one `Netto` figure and discard
+the parts — this port keeps them, as `MvaluesRow`'s 18th and 19th column (`municipalTax`/`stateTax`,
+`packages/engine/src/model/state.ts`), the only two that are not one of the workbook's own
+seventeen. The split is computed identically for every age, working or retired, so the chart shows
+it uniformly across the whole window rather than inventing a separate "salary tax" category for the
+working years the engine doesn't actually distinguish. Table 2 carries the same two columns.
+
+Two of the form's fields are not the Start sheet's own, chosen this way on request rather than by
+following `mdlIndataInputOutput.bas` one-for-one:
+
+- **The salary field asks for a monthly wage** (`Wage_Monthly`, which `TypfallInput.monthlySalary`
+  already is) instead of the sheet's own annual Årslön, which divides by twelve on the way in
+  (`mdlIndataInputOutput.bas:291`). Binding the field to it directly removes that round trip rather
+  than adding one.
+- **A riktålder checkbox mirrors `rng_Riktålder`** (`wsStart.cls:33`, `mdlAlternativePensYear.
+  bas:51`): checked, a birth-year change writes that cohort's riktålder (`riktalderFor`, already
+  exported for the golden-file harness) into the retirement age and locks the field to it, exactly
+  as the sheet's own checkbox does; unchecked, the field is the plain typed cell it always was.
+
+A collapsed `<details>` under the three economic-assumption fields explains what those numbers
+mean: the forecast runs at fixed prices (0% inflation, 0% real wage growth, so it reads in today's
+money) and its 1.7% return is expressed as an excess return over general wage growth rather than a
+raw one. Neither sentence is a `SysLang` row, so — like the KPI cards — it is plain per-language
+text local to `createForm`, not a `t()` lookup. Native `<details>` needs no script of its own and
+keeps its own open state across a language switch, since `relabel()` only rewrites its text.
+
+Table 1 and Table 2 each carry a **CSV download** beside their own title bar
+(`apps/web/src/tables.ts`'s `table1ToCsv` / `table2ToCsv`), built from the same rows and the same
+`kronor` / `percent` formatting the table renders — not a second, divergent export path. Neither is
+a workbook feature, so the delimiter follows Excel's own per-locale convention (`;` and a decimal
+comma for Swedish, `,` and a decimal point otherwise) rather than a `SysLang` row.
+
+The page's colours are SEB's rather than the workbook's or this port's own choice — read out of
+`SEB_colors_2026.pptx`'s theme and its colour-reference slide (`apps/web/src/styles.css`'s header
+comment carries every hex and names its source), with the Start sheet's gold title-bar shape kept
+but redrawn in SEB Gold. Each figure's series were re-stepped in stack order against the
+data-visualisation guidance's validator rather than chosen by eye; the palette fails its lightness
+and chroma bands — SEB's accents run from a very dark green to a near-neutral beige, which is what
+a brand palette is — while passing its colour-blindness and normal-vision separation checks. The
+relief it asks for in exchange is present: a 2px surface gap between stacked bands, a distinct dash
+per line, a legend and hover readout on every figure, and Table 2 carrying every plotted number in
+text. Neither the agency's wordmark nor SEB's own logo is reproduced on the page — the palette is
+borrowed, not the branding.
 
 **Its build output is one self-contained HTML file**, `dist/typfallsmodellen.html`. That is forced
 by the delivery promise rather than chosen for elegance: a browser refuses ES module imports and
@@ -154,3 +211,424 @@ because one run is sub-millisecond; what is on screen is exactly what the engine
 the form says. The month/year switch is `rng_Chart_Earning_factor` on the `ModelContext` rather
 than a division in the view, since `buildTable2` already divides by it — the same rule as
 everywhere else here: where the workbook has an opinion, the port does not add a second one.
+
+### Saying whose model it is
+
+The page carries an `Inofficiell version` notice under its subtitle, in both languages, naming
+Pensionsmyndigheten as the model's owner and giving their address for questions about it. This is
+not decoration: the site computes a pension forecast and looks like it knows what it is talking
+about, and it is published at a URL anyone can reach. The notice also says what the output is — a
+forecast under the assumptions entered, not a statement about anyone's pension. It is styled in the
+beige surface rather than the red `.warnings` box on purpose; dressing it as an error would teach
+people to dismiss it.
+
+### Print
+
+People take a pension forecast to a meeting, so paper is a real output. The print rules force a
+light ground whatever the screen theme is (a dark page would otherwise print as a black rectangle),
+collapse the layout to one column, and drop the controls that only work on a screen — the language
+chips, the mode toggle, the CSV buttons, the year/month switch.
+
+Every `<details>` prints open, because a collapsed disclosure on paper is a heading that withholds
+what it covers from a reader who cannot click it. That part is script, not CSS: a closed `<details>`
+hides its content through an internal slot that `display: block` on the child does not reach, so the
+rule computes correctly and still lays out a zero-height box. `openForPrint` in main.ts opens them
+on `beforeprint` and re-closes them on `afterprint`, with a `matchMedia("print")` listener beside it
+for Safari, which fires neither. The offline check asserts the laid-out height rather than the
+computed `display`, which is what caught the difference.
+
+### Normalt and Avancerat
+
+The page keeps the workbook's two modes, chosen by the toggle above the input panel. The state is
+three variables in `main.ts`: `mode`, an `advanced: Partial<ModelContext>` and an
+`advancedInput: Partial<TypfallInput>`. Normal mode simply does not spread them, so it runs on the
+Start sheet alone — which is why `viewContext` could hand `run()` an empty settings map for the
+whole of phase 3.
+
+Switching back to Normalt **suspends** the advanced entries rather than dropping them; the workbook
+leaves them sitting on its sheet too, and switching modes to compare two answers would be useless
+if coming back showed an empty form. Only `Använd normala inställningar` — the Adv_settings sheet's
+own button — clears them.
+
+The overrides are a typed `Partial<ModelContext>` rather than entries in `contextFromSettings`'s
+name-keyed map, which is not only for the type safety: `buildContext` sets `tjpPar`, `uttagIp`,
+`uttagPp`, `wTime`, `makeBorn`, `table2StartAge` and `chartEarningFactor` to literal sentinels and
+never reads them through `workbookDefault`, so the map cannot reach them at all.
+
+`apps/web/src/advanced.ts` holds the twenty-five exposed settings as a descriptor table, grouped as
+sections 3.2 to 3.8 of the user manual group them, each carrying the `Adv_settings` row it came
+from. The rest of the sheet's seventy-six rows are left out deliberately and the file says why:
+some are Excel's own business, some feed the Mikrosim sheet this port does not have, some are not
+ported, and the remainder are policy experiments wanting a more careful UI than a number box.
+**Their labels are written out in both languages, which is the one place this port retypes the
+workbook** — the workbook never translated that sheet (59 of its 90 rows have an empty English
+string) and what Swedish it carries is maintainer shorthand. The *values* are still never retyped:
+every default comes from `defaultContext()`.
+
+`apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
+up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
+array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for
+me". Amounts are rounded to whole kronor, shown and used, which costs 0.02 kr per month on the
+final salary and keeps the rule that the form never shows a number the run did not use. Once a
+vector is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from a
+second run with `ownIncome` removed.
+
+### Pensionsgrundande belopp (PGB)
+
+`apps/web/src/pgb.ts` exposes `TypfallInput.pgbManual`/`pgbConscription` — the PGB sheet's sickness/
+activity compensation, conscription and study entries, credited as pension rights the same way
+childcare years already are. Unlike every setting in `advanced.ts`, these are not `Adv_settings`/
+`ModelContext` fields at all: they live on the Start-sheet side of the split, so they could not be one
+more row in that file's descriptor table. They are also not new to the *engine* the way the
+municipality table above is — `earnPgb` (`packages/engine/src/model/mcalc.ts`) has read manual PGB
+since the port's earliest phases, cross-checked against the workbook's own `Brutto` sheet; only the web
+UI for it was ever missing, and only sickness/activity compensation stayed a typed kronor figure once
+that UI arrived — see below.
+
+The grid's shape follows `salaryPath.ts`'s, with one real difference: there is no computed path to
+open with, since a default run has none of this (`pgbManual`'s own comment: "the shipped workbook has
+none, so childcare years are the only PGB a default run earns"), so every cell starts at zero and only
+the nonzero rows are ever handed to the engine — an all-zero row and an absent one are the same thing
+to `earnPgb`. The row range is a fixed 16 through 70 rather than tied to a computed wage path: `earnPgb`
+only ever reads a manual entry for `age > 15 && age <= riktalder`, and `context.riktage` — the only
+riktålder this port has today — defaults to 66 for every cohort ("cohort table pending"), so a fixed
+range needs no per-cohort logic the workbook does not model yet, and never has to reconcile typed
+values against a row list that moved.
+
+**Conscription and study compute their own kronor, on request** — in the real sheet only
+sickness/activity compensation is "Ange manuellt"; conscription is a single date range (`PGB!H4`/`H5`)
+and study a semester count (`PGB!M`), both turned into kronor by the sheet itself. `packages/engine/src/
+model/pgb.ts` is the port of that arithmetic, read cell by cell off the source workbook rather than
+guessed — `pyxlsb` only ever returns a formula's *cached* result, so getting the formula text itself
+needed the same LibreOffice `.xlsb` → `.xlsx` conversion `formulas.py` already uses for `extract_series.
+py`, read here by hand rather than through that module (a one-off lookup, not a recurring extraction).
+Three findings shaped the port:
+
+- **The 50%-of-average-income reference conscription pays out of (`PGB!G`, "50% medel efter 1995") needs
+  no new data at all** — it is half of `medelPgi`, already extracted as `economic-series.json`'s own
+  column F and already on every run as `v.mpgi`. Only two more columns actually needed extracting:
+  `PGB!L`/`N` ("Studie-medel/termin", "PA avgift för studier som ger individen ett PGB") read
+  `'Några tal'` columns AF and AG the same `row = year - 1953` way every other column on that sheet
+  already does — but they are not economic projections `extract_series.py`'s own machinery fits: the
+  sheet never adjusts either for inflation or growth, it just holds a literal per-year decision that
+  goes flat once the sheet's own data runs out (AF plateaus at 20 600 kr from 2023, then artifactually
+  drops to 0 past 2110 — the sheet's own fill running out, not a claim that conscription-era study
+  grants stop existing). `tools/extract/extract_pgb.py` is a small, separate extractor for exactly this
+  shape of data — literal, not projected — writing `packages/data/pgb-study.json`; the engine clamps to
+  the last extracted year past either column's own end, the same convention `mcalc.ts`'s own
+  `employerRates` already uses for `municipal-tax.json`.
+- **Conscription only ever earned PGB 1995-2010, and again from 2018** (`PGB!F`'s own eligibility flag) —
+  the manual's own subheading over the date fields says so outright: "Plikttjänst under åren
+  1995–2010, och från 2018 och framåt". `conscriptionPgb` in `pgb.ts` applies this window regardless of
+  what `conscriptionDaysByYear`'s own day-count found for that year, matching the sheet's own two-stage
+  design (a day count in `PGB!H`, an eligibility-gated reference value in `PGB!G`, multiplied together
+  in `PGB!I`) rather than trying to fold eligibility into the day-splitting itself.
+- **The day-splitting across up to three calendar years (`PGB!H10:J11`) has its own asymmetries, kept
+  rather than smoothed over** — a period under the 120-day minimum zeroes only its first year's own
+  share, not a later year the same short period might still reach across a New Year's boundary; the
+  third year's own cell carries an `IF(J10="-", ...)` guard that can never actually take, since its
+  sibling `J10` is a year number or a literal `0`, never the string `"-"` `H10`/`I10` use for "no such
+  year" — the same class of dead-but-faithfully-kept branch this port's comments already flag elsewhere
+  (`mcalc.ts`'s own `DEAD in the original too` notes). `conscriptionDaysByYear`'s own comment names both,
+  and 15 unit tests in `packages/engine/test/pgb.test.ts` pin the day counts by hand for periods within
+  one year, crossing one boundary, and crossing two.
+
+Three amount-shaped columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
+~45px-wide inputs, clipping a sixth digit that the salary grid's own ~62px inputs do not — so the
+table gets a `min-width` wider than the sidebar, scrolling horizontally the same way the grid already
+scrolls vertically, keeping every column's proportions and just rendering them bigger. Its longest
+header, "Sjuk-/aktivitetsersättning", is also one unbroken compound word with no space to wrap at,
+which measured as overflowing its fixed-width cell into the next one — `overflow-wrap: break-word` on
+`.adv-grid th` lets it wrap mid-word instead, harmlessly, since none of `salaryPath.ts`'s own shorter
+headers were ever close to their column's width.
+
+**"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
+`min-width` above trades a legible column for a horizontal scrollbar confined to the sidebar's own
+~280px `.adv-grid-scroll` box — reported as having to scroll sideways just to see Värnplikt and
+Studier. `pgb.ts`'s `expandBtn` moves the same `scroll` div (the same `<table>`, same inputs, same
+`change` listeners — not a rebuilt copy that would need its own state to stay in sync) into a
+`<dialog>` opened with `showModal()`, and moves it back on the dialog's own `close` event, whichever
+of the three ways that fires: the dialog's close button, the browser's own Escape handling, or a click
+on the backdrop (`event.target === dialog`, the same test a click anywhere *inside* the dialog fails).
+Freed from the sidebar, the dialog alone (`width: min(94vw, 480px)`) is wider than the grid's 380px
+floor on any realistic screen, so `.pgb-dialog .pgb-grid { min-width: 0; }` lets the table settle back
+to a plain 100%-wide fixed layout and needs no horizontal scrollbar of its own — measured at three
+widths (1280px desktop, 390px, and 375px — an iPhone SE, the narrowest realistic phone) with
+`scrollWidth <= clientWidth` on `.adv-grid-scroll` before this shipped. Only the 375px case is checked
+on every push: at the suite's standard 1280px, the dialog's own cap already clears the 380px floor
+whether or not `min-width: 0` is even there, so that width alone would never catch a regression in the
+one rule this feature actually adds — the desktop check instead covers what the dialog itself moves
+and restores. `reset()` — "Använd normala inställningar" — cannot also close the dialog if it happens
+to be open: a modal `<dialog>` makes the rest of the page inert by design, intercepting every pointer
+event outside itself, so that button is never reachable while the dialog is open in the first place
+(confirmed the hard way — an earlier draft of the offline check tried exactly that and Playwright
+timed out with "dialog intercepts pointer events" rather than the click ever landing).
+
+### Partiellt uttag: a fourth field the extractor never saw
+
+`uttagIp`, `uttagPp` and `defAr` (manual §3.7's own example: simulate a "jobbonär" — someone combining
+part-time work with a partial pension for a few years, then retiring in full) join `advanced.ts` as a
+new group, requested on top of every earlier addition here. The engine has carried all three since
+early on — `mcalc.ts`'s per-age loop already gates `uttagIp`/`uttagPp` between the retirement age and
+`defAr`, and `wages.ts`'s `withdrawalShare` already ties Lön to whichever share is drawn — the same
+"wired in the engine, missing only a UI" situation PGB was in before Phase 6.
+
+**Why `uttagIp`/`uttagPp` carry a row number `options.json` does not.** `defAr` (row 81, "Definitivt
+vid") was already a normal, extracted Adv_settings row — `contextFromSettings`'s `workbookDefault("rng_
+def_ar", 0)` already reads it, the same as every plain setting. `uttagIp`/`uttagPp` are not: reading the
+sheet directly (`tools/extract/common.py`'s `Sheet` wrapper, `Adv_settings!D82`/`D83` — the two rows sit
+right there, labelled "Partiellt uttag IP" and "...PP", each defaulting to 1) showed why
+`extract_options.py`'s `_advanced_settings` never picked them up — it requires a name in column 9, the
+layout every other row uses, and these two don't carry one. That is the same situation `tjpPar` was
+already in (`ModelContext`'s own comment on it says so) — `buildContext` gives both a literal default
+instead of reading `options.json`, and advanced.ts's own header comment now explains why for all three
+together rather than repeating it per field.
+
+**Why exposing the withdrawal share alone is the whole feature, not a first slice of it.**
+`withdrawalShare` (`packages/engine/src/income/wages.ts`) defaults to following the withdrawal itself
+whenever `workDuringPartialWithdrawal` is left at its own default (a string, "Arbetar deltid", not a
+number) — so a 50% pension draw already computes 50% work on its own, with nothing else to set. Verified
+empirically rather than just read off the source: at the shipped typfall's own retirement age 66, age 67
+reads 0 kr salary and a full pension under today's default (100% right away); setting `uttagIp`/`uttagPp`
+to 50% and `defAr` to 70 turns that same age 67 into a nonzero salary (19 936 kr) alongside almost
+exactly half the full pension (8 162 kr against 16 332 kr inkomst-/tilläggspension, 1 863 against 3 726
+kr premiepension) — and age 70 itself is back to 0 kr salary and a pension higher than the full-at-66
+figure, since the extra working years between 66 and 70 earned more pension rights on top of a now-full
+withdrawal. `rngLönPartUttag` (`workDuringPartialWithdrawal`), which would let work run at a *fixed*
+share independent of the withdrawal, and the sibling `tempTjpUttag`/`tempIpsUttag` bounds already
+exposed in the "saving" group (occupational pension and private saving's own withdrawal length) are left
+for later — not needed for the manual's own example to work end to end, and each wants its own look
+rather than riding in on this one.
+
+Barnår, section 3.7's other half (`childBirthYears`, `rng_Född_Barn1..4`), stays unexposed: a real but
+separate concern this round did not touch, the same "left out, and why" honesty every other group here
+already practices.
+
+### Two ways of filling in `kommunalskatt` and `begravningsavgift`
+
+`apps/web/src/kommunalskatt.ts` gives the two tax-basis settings a friendlier starting point than a
+bare percent box: a per-municipality dropdown for `kommunalskatt`, and a member/non-member selector
+for `begravningsavgift` with a link to find your own parish. The two halves come from opposite ends
+of the "is this from the workbook" question, and the file's own header is explicit about which is
+which.
+
+The **municipality table** (290 names, `KOMMUNALSKATT`) is new data — `packages/data/municipal-
+tax.json` is a national *average*, not a per-municipality list, so there is nothing in this repo to
+extract it from. It is copied verbatim from a reference calculator the user supplied, which cites
+SCB's own published table, and is documented the same way the tax-per-year chart or the KPI cards
+are: not from the workbook, cited, and dated (`KOMMUNALSKATT_YEAR`) so a future update is a wholesale
+replacement rather than a patch.
+
+The **church/burial selector** needed no new data at all. `context.begravningsavgift` is Adv_settings
+row 40's own single field — "Begravningsavgiften samt avgiften till kyrkan/trossamfundet" — matching
+`taxAndBenefits.ts`'s one `kyrkskatt` line; the reference calculator that prompted this models church
+fee and burial fee as two taxes it sums, which this engine's single field does not support without
+changing it. It turns out unnecessary: `packages/data/municipal-tax.json` (`K_skatt`) already carries
+both halves as separate historical series — `begravningsavgift` (burial fee alone) and `kyrkoavgift`
+("church fee including burial fee") — and the engine has always extracted the second without ever
+reading it. `kommunalskatt.ts`'s `CHURCH_MEMBER_RATE`/`BURIAL_ONLY_RATE` read the latest real (not
+mechanically projected) year of each, so the selector's two population-average options are exactly
+this engine's own data, just given a UI path that was never built. Stockholm's and Tranås's own
+burial-fee regimes are the one part that is a cited external fact rather than extracted data — the
+same class of addition `returnBasis`'s PPM/AP7 choices already are.
+
+**The footgun this closes.** Setting `kommunalskatt` away from 0 flips `historicalTaxRate` off in
+`setup.ts`, which stops `begravavg` from following the historical-average series and starts reading
+`context.begravningsavgift` directly — silently 0 unless something has also set it, a trap that
+predates this change and is far easier to hit with a one-click municipality picker. Picking a
+municipality while the church/burial field is still untouched auto-fills it with the burial-only
+average instead — this port's own honest default for "not a member, and nothing else chosen either",
+which is exactly what the historical-average path it just left would have used anyway.
+
+### Jämför scenarier
+
+`apps/web/src/compare.ts` is a second top-level view, toggled by a third `.panel-toggle` beside
+Normalt/Avancerat, that runs the baseline typfall alongside up to three variants. It has no workbook
+equivalent — the same class of addition as the tax-per-year chart — but it adds almost no new
+machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` already calls it twice per
+render in Avancerat with no debounce), so running it up to four times per change costs nothing extra.
+
+A variant is **not** an inherit/override state machine — `undefined` fields, a placeholder empty
+state, and so on. `newVariant` copies the baseline's salary, retirement age, start-of-work age and
+occupational scheme the moment a scenario is added; the four controls on that card then edit their own
+copy independently, and `applyScenario` lays those four fields over whatever the baseline currently is
+on every run. Everything else about the baseline — birth year, the economic assumptions, any advanced
+setting, a typed salary or PGB vector — keeps flowing into every scenario's run live, since only these
+four fields are ever "frozen" per card. This is simpler than a real inherit/override design and reads
+the same way to whoever is using it: a new scenario starts out identical to the baseline and diverges
+only where it is typed into.
+
+**Results moved out of the cards, on request.** The first cut gave each scenario its own KPI row and
+full Table 1, stacked inside its own card. A reviewer found that hard to actually compare row by row
+and hand-built a spreadsheet mockup of what they wanted instead — one table, every row lined up across
+scenarios — plus a line chart. Both now live in one shared section below the cards, which are
+input-only:
+
+- `tables.ts`'s `renderCompareTable` reuses `TABLE1_LINES` (the row order and labels) and the
+  `"monthly"`/`"share"` entries of `TABLE1_COLUMNS` verbatim — the other two Table 1 columns (nominal,
+  price-adjusted) say less once salary itself is what is being varied, so the mockup dropped them and
+  this does too. The three KPI cards' own figures (`kpiLabels`, pulled out of `kpis.ts`'s `renderKpis`
+  so both share the same text) lead the table, each filled into whichever of its two sub-columns it
+  naturally has and blank in the other. Two row labels embed a number that can differ per scenario
+  (`finalSalary`'s age-range suffix, `iptFull`'s qualifying-years count) but the table has only one row
+  to show it in — both use the first column's own scenario for that text, a deliberate simplification:
+  the row's *numbers* are still each scenario's real ones regardless of which one the label happens to
+  be read against.
+- `chart.ts`'s `renderCompareChart` draws one solid line per scenario — at fixed prices, the same
+  formula Figur 1's own "fixed prices" series already uses, since the point here is comparing scenarios
+  on equal footing rather than comparing price bases. A dashed `--fig-retirement-line` marks each
+  distinct retirement age among the active scenarios (usually just one, since a new variant starts out
+  at the baseline's own age). It has the same interactive hover Figur 1 has, despite each scenario being
+  its own separate run rather than a column of one shared run: `Series`/`Point` in `chart.ts` are
+  generic over the row shape (default `MvaluesRow`, same as every other figure), so this chart's own
+  `hover()` call reads a `readonly MvaluesRow[]` — one row per scenario at that age — instead.
+- The baseline's own label is editable, like a variant's, via an `<input>` in its card head rather than
+  a fixed heading — plain text, kept as typed rather than re-translated on a language switch, the same
+  as a variant's label already was.
+- Every scenario gets a stable colour **slot** by card position (baseline = 0, each variant in add
+  order = 1/2/3) — on request, the SEB palette's own steps in the order given (dark green, green,
+  beige, blue) rather than a validator-clean rotation. Re-run through the `dataviz` skill's
+  `validate_palette.js` anyway against this app's own chart surface in both themes: CVD separation and
+  the normal-vision floor both PASS (every pair is genuinely tellable apart), while lightness/chroma
+  FAIL and beige's own contrast WARNs the same way the stylesheet's header note already accepts for
+  this brand's darkest and most neutral steps — covered by the same relief (a legend, the hover readout,
+  and every number also in the comparison table). Only the dark-mode baseline steps one shade lighter
+  (`Dark green 80%`), since the raw 100% step sits too close to this theme's own dark-green surfaces. A
+  small coloured square ties a card, its line in the chart and its column in the table together.
+- A reviewer's own pasted mockup of this table once showed a replacement-rate figure over 100%, next
+  to the note "I paste an example" — read as an artifact of assembling that mockup by hand, not a live
+  bug, since nothing in `replacementRate`'s own arithmetic (a plain ratio) can produce that from a real
+  run. `verify-offline.mjs` asserts no cell in that row reaches 100% after raising a scenario's salary,
+  closing the loop on that question rather than leaving it merely asserted in a comment.
+- **Start-of-work age** joined the other three overrides as a fourth card control, on request. It reuses
+  `t("startWorkAge", l)` and the same 15–40 bound `form.ts`'s own field uses (`START_WORK`, duplicated
+  rather than imported since `form.ts` doesn't export it either — the same reasoning already covers
+  `RETIREMENT`). It is not cosmetic: `setup.ts` derives `startage` as
+  `Math.min(context.modelStartAge, input.startWorkAge)`, so a later start genuinely shortens a
+  scenario's own working life and lowers its accrued pension, independent of everything else on that
+  card — `verify-offline.mjs` moves it on its own, holding salary and retirement age fixed, to prove
+  that rather than only the salary control's already-covered path.
+
+Two CSS fixes came out of measuring the built page rather than assuming, both from the same cause: a
+flex item's or grid item's default `min-width: auto` lets its content's own width win over an intended
+smaller size. `.compare-card { min-width: 0; }` keeps each input card at its intended 340px regardless
+of a long select option; `.compare-results { min-width: 0; }` (and `> *`) gives the shared chart and
+table the same treatment `.results` already needed for the single-scenario view, so the wide table
+scrolls inside `.scroll` instead of widening the page.
+
+### Table 2's own column tooltips, and Ordlista
+
+Two follow-on requests, both about explaining terms rather than adding a new calculation:
+
+- **Table 2's headers**, on request, name what each column's own figure is built from on hover/focus —
+  20% state income tax above the threshold, plus the public-service fee and any capital tax, for
+  "Statlig skatt", say. The formula also has a 25% band above a second, higher threshold —
+  "värnskatten", abolished in 2020 — left out of the tooltip on request: the data sets that threshold to
+  an unreachable `10^16` from 2020 on (`NO_SECOND_THRESHOLD`, `packages/engine/src/data/projection.ts`),
+  so it never actually fires for a present-day or future run, and naming it read as if it were still in
+  force. `headCell` in `tables.ts` takes an optional `info`
+  string and wraps the header text in `<abbr title>` when it is given, rather than a custom tooltip: this
+  is one static string per column, not a value that moves with the pointer the way the charts' own hover
+  readout is, so the browser's own mechanism already does the job. The text itself is not a SysLang
+  extraction — the sheet has no per-column explanations of its own — so it is written from
+  `MvaluesRow`'s own field comments (`packages/engine/src/model/state.ts`) and `buildTable2`'s
+  composition of them (`packages/engine/src/model/result.ts`), the same source this port's own
+  tax-per-year chart note already draws on for the municipal/state tax split. Year and Age get no
+  `<abbr>` — there is no composition to explain.
+- **Ordlista** — the workbook's own glossary sheet — is now a `<details class="field-note">` in the
+  left column, directly below "Om pris- och avkastningsantaganden", the same disclosure pattern that
+  note already uses. `content.glossary` (`packages/data/content.json`, extracted by
+  `tools/extract/extract_content.py`'s `_glossary`) was sitting unused until now — the same situation
+  PGB was in before Phase 6 — so no new extraction work was needed, only wiring an existing export into
+  the UI as a `<dl>`, one `<dt>` per term and one `<dd>` per paragraph, built once in `form.ts` since the
+  fifty-seven terms never change with the language. They stay in Swedish always: the sheet has no
+  English column, and retyping fifty-seven prose entries of pension and tax law by hand is a different
+  order of risk from the 26 short setting labels this port did choose to retype for Avancerat. Only the
+  disclosure's own summary ("Ordlista"/"Glossary") and a short English note saying so switch with the
+  page's language. No dedicated scrollbox: `.input-column` already scrolls the whole left column, and
+  nesting a second one inside it would trap the pointer between the two.
+
+### Excel export, and this port's first runtime dependency
+
+Table 1, Table 2 and the Jämför scenarier comparison table each already had (or, for the comparison
+table, gained) a CSV download; on request, each now also offers a genuine `.xlsx` file beside it, not
+just a CSV renamed.
+
+**Why a real `.xlsx` rather than another CSV variant.** The CSV already opens correctly in Excel --
+`;`-delimited with a decimal comma in Swedish mode, exactly what Swedish Excel expects -- so "Excel
+support" in the sense of *opening* was already there. What a CSV can't do is carry typed cells: every
+figure in it is pre-formatted text, so a cell like "20 154" can't be summed or referenced from a formula
+without Excel re-parsing it first, and a percentage like "52,8 %" is text, not the 0.528 a `%`-formatted
+numeric cell would be. Asked to choose between "keep it CSV, just label a button Excel" and "write a
+real workbook", the answer was the real one -- this is this port's first-ever runtime dependency
+(`write-excel-file`, plus its own dependency `fflate` for the underlying ZIP), a size and precedent this
+project has been careful about (`apps/web/package.json`'s `dependencies` list, before this, was
+`@typfallsmodellen/data` and `@typfallsmodellen/engine` alone). The pair added about 70 kB to the built
+single file (~900 kB before, ~970 kB after) -- measured, not assumed.
+
+**Why `write-excel-file/universal`, not `/browser`.** The package's default browser entry point runs in
+a Web Worker, which needs its own script URL -- fundamentally incompatible with a single inlined HTML
+file that must open from `file://` with zero outbound requests (`verify-offline.mjs`'s own "outbound
+blocked" check, which the deploy workflow also runs on the way out). `/universal` does the same work
+synchronously on the main thread and returns a `Blob` directly; the cost is a sub-millisecond
+main-thread pause for a table this size, the same trade the rest of this app already makes by not
+debouncing or memoizing `run()`.
+
+**What each cell holds.** `xlsx.ts` (the only file that imports the dependency, the same isolation
+`deaths.ts` gives the generated mortality data) exports `kronorCell`/`percentCell` helpers -- a real
+number with a `#,##0` or `0.0%` display format, not a pre-rounded string -- so the workbook shows the
+same figures the page does while keeping the underlying precision a spreadsheet user might want.
+`tables.ts` gained `table1ToXlsxRows`/`table2ToXlsxRows`/`compareTableToXlsxRows`, each mirroring its
+own CSV sibling's row order exactly (`table1ToCsv`/`table2ToCsv`/the new `compareTableToCsv`, which the
+comparison table needed anyway since it had no export of any kind before this).
+
+**The download buttons themselves** moved out of `main.ts`'s own local `exportButton` function into a
+new shared `export.ts` (`csvExportButton`/`xlsxExportButton`), once a third call site -- the comparison
+table, in `compare.ts` -- needed the same pair of buttons a second place already had.
+
+**`verify-offline.mjs` gained its first real download tests.** Existing checks never actually clicked a
+CSV button; this adds a `download()` helper that clicks a button, captures the file Playwright's own
+download event hands back, and reads it -- CSV content checked for a known label, `.xlsx` checked for
+the ZIP local-file-header signature (`PK`) every real OOXML package starts with. Building these caught
+two real bugs, both fixed in the same change: `context.route("**/*")`'s block-everything rule doesn't
+exempt `blob:` URLs (what `URL.createObjectURL` produces) the way it already exempted `file://`, so a
+download would have silently gone nowhere in this exact test setup; and `.locator(".panel-actions")`
+alone is ambiguous once a table has its own actions row, because the Avancerat column's salary-grid
+actions row is already in the DOM before the results column even in Normalt (just hidden until that
+mode is on) -- both Table 1's and Table 2's own checks are now scoped to the `section.panel` that holds
+that table specifically.
+
+### A black screen on the phone: the built file's own script tag
+
+Opened on an iPhone -- tapped from Files, Mail or Messages, not typed as a URL -- the built file showed
+a black screen and nothing else. `verify-offline.mjs` never caught this because it only ever drives
+desktop Chromium; the failure is specific to Mobile Safari opening a `file://` page.
+
+The cause was the script tag itself. Vite's own HTML output always wraps the app's bundle in
+`<script type="module">`, and `inline-single-file.mjs` inherited that wrapping unquestioned when it
+folded the separate `.js` file into the page. A module script's own semantics -- deferred execution,
+its own module-graph loader -- are exactly the machinery Mobile Safari can refuse to run at all for a
+page opened this way, even with the module's own imports already inlined and nothing left to fetch: the
+restriction is on the tag's `type`, not on what it still needs to ask for. The result reads as a plain
+black screen, not an error a phone's user could report more precisely than that -- Safari's own console
+is not somewhere most people look, or can even reach, on a phone.
+
+The fix has two parts, both necessary:
+
+- **`vite.config.ts`** builds with `rollupOptions.output.format: "iife"` instead of Rollup's default
+  `"es"` -- a plain, self-invoking classic script rather than a module. This needs a single chunk to
+  work at all, which `inlineDynamicImports: true` (already there, for the same single-file requirement)
+  already guarantees.
+- **`inline-single-file.mjs`** writes a plain `<script>`, not `<script type="module">` -- but a classic
+  script has no implicit defer the way a module has, and Vite places the tag in `<head>`, before `<body>`
+  and `#app` exist. `defer` cannot fix this either: the attribute is defined to do nothing on a script
+  with no `src`, inline or not -- confirmed by testing it, not assumed. The actual fix is the ordinary
+  one for exactly this: the inliner now moves the tag to just before `</body>`, after building it,
+  rather than leaving it where Vite put it.
+
+`verify-offline.mjs` gained a static check for this, before a browser is even involved: the built file
+must have no `<script type="module">` anywhere, and its one `<script>` tag must come after `#app` in the
+document. Proven to fail first the ordinary way -- reverting just these two files and rebuilding
+reproduces the exact `<script type="module">` this check now catches, and (checked separately, by
+testing `<script defer>` against the same reverted build) `defer` alone does not fix the ordering
+problem for an inline script even though it looks like it should.

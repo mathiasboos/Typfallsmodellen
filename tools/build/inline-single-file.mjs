@@ -26,16 +26,45 @@ const stylesheet = /<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g;
 
 const read = (href) => readFileSync(join(dist, href.replace(/^\.?\//, "")), "utf8");
 
+// A classic script, not `type="module"` -- see vite.config.ts's own comment
+// on why. A module script defers itself; a classic one runs the moment the
+// parser reaches it, which is a problem since Vite places it in `<head>`,
+// before `<body>` -- `#app` included -- exists to find. `defer` cannot fix
+// this either: the attribute is defined to do nothing on a script with no
+// `src`, inline or not. So this moves the tag to just before `</body>`
+// instead, the ordinary fix for exactly this, rather than leaving it where
+// Vite put it.
+let inlineScript = "";
 html = html.replace(script, (_, href) => {
   const code = read(href);
   // `</script>` inside the bundle would close the tag early.
-  return `<script type="module">${code.replace(/<\/script>/gi, "<\\/script>")}</script>`;
+  inlineScript = `<script>${code.replace(/<\/script>/gi, "<\\/script>")}</script>`;
+  return "";
 });
 html = html.replace(stylesheet, (_, href) => `<style>${read(href)}</style>`);
+if (inlineScript === "") throw new Error("no <script src> tag found to inline");
+if (!html.includes("</body>")) throw new Error("no </body> to place the inlined script before");
+html = html.replace("</body>", `${inlineScript}</body>`);
+
+/**
+ * What a leftover `src`/`href` is allowed to be.
+ *
+ * The check is for subresources -- things the page fetches while rendering,
+ * which is what fails silently over `file://`. Somewhere to *navigate* is not
+ * one of those: an `http` link, a `mailto:` handed to the mail client, a `#`
+ * anchor and a `data:` URI all work from a file on a stick. Anything else is a
+ * request, and has to be inlined.
+ */
+const navigates = (v) =>
+  v.startsWith("data:") ||
+  v.startsWith("http") ||
+  v.startsWith("mailto:") ||
+  v.startsWith("tel:") ||
+  v.startsWith("#");
 
 const left = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
   .map((m) => m[1])
-  .filter((v) => !v.startsWith("data:") && !v.startsWith("http") && !v.startsWith("#"));
+  .filter((v) => !navigates(v));
 if (left.length > 0) {
   throw new Error(
     `the page still requests ${left.join(", ")}, which would fail over file://. ` +

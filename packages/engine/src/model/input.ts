@@ -67,11 +67,18 @@ export interface TypfallInput {
   readonly ownIncome?: readonly OwnIncomeYear[];
 
   /**
-   * The PGB sheet's hand-typed pensionsgrundande belopp for sickness and
-   * activity compensation, conscription and study. The shipped workbook has
-   * none, so childcare years are the only PGB a default run earns.
+   * The PGB sheet's per-age entries: sickness/activity compensation (typed
+   * kronor) and study (a semester count, `packages/engine/src/model/pgb.ts`
+   * computes the kronor from it). The shipped workbook has neither, so
+   * childcare years are the only PGB a default run earns.
    */
   readonly pgbManual?: readonly PgbManualYear[];
+  /**
+   * The PGB sheet's conscription entry, `wsPGB!H4`/`H5` -- a single date
+   * range, not one entry per age; `pgb.ts`'s `conscriptionDaysByYear` splits
+   * it across the years it touches.
+   */
+  readonly pgbConscription?: PgbConscriptionPeriod;
 }
 
 /** One age's manual entries on the PGB sheet. */
@@ -79,10 +86,16 @@ export interface PgbManualYear {
   readonly age: number;
   /** Column 5: sickness and activity compensation. */
   readonly sa: number;
-  /** Column 9: conscription. */
-  readonly vpl: number;
-  /** Column 16: study. */
-  readonly studier: number;
+  /** Column 13 ("Antal terminer"): 1 or 2 semesters that year. */
+  readonly studySemesters: number;
+}
+
+/** `wsPGB!H4`/`H5`. */
+export interface PgbConscriptionPeriod {
+  /** ISO `YYYY-MM-DD`. The sheet's own hint on `H4`: "ej före 1995-01-01". */
+  readonly start: string;
+  /** ISO `YYYY-MM-DD` -- "Muck", `H5`. */
+  readonly end: string;
 }
 
 const NORMAL = optionsJson.normalDefaults as {
