@@ -635,6 +635,7 @@ if (!(grossAfter < grossBefore)) {
   );
 }
 
+
 // PGB: sickness/activity compensation is still hand-typed kronor; conscription
 // (a single date range) and study (a per-age semester count) compute their
 // own kronor instead, the same way the real PGB sheet does. The shipped
@@ -875,6 +876,24 @@ if (pgbDialogSecondSaKept !== "100000") {
     `after the dialog closed, the panel shows "${pgbDialogSecondSaKept}" for the amount typed inside the ` +
       'dialog, expected "100000" -- the grid moved back with the table it is, not a copy of it',
   );
+}
+
+// "Nollställ alla värden": every row's own income and wage cell has to read
+// 0, not just the ten already zeroed above. Not a pension-direction check --
+// a whole working life at 0 kr leans on garantipension, whose own means-
+// tested taper can (correctly, faithfully) leave *more* total gross pension
+// than a life with some income in it does, so "lower" is not a safe
+// assumption here. Run last, right before the full reset below: every PGB
+// check above assumes a normal-income economic regime where more PGB is
+// strictly more pension, which a fully zeroed salary grid no longer is.
+await tab.locator('[data-group="salary-path"] [data-action="salary-zero"]').click();
+await tab.waitForTimeout(80);
+const nonZeroCells = await salaryGrid.locator("input").evaluateAll(
+  (inputs) => inputs.filter((el) => el.value !== "0").length,
+);
+console.log(`salary zero all : ${nonZeroCells} cell(s) left non-zero, expected 0`);
+if (nonZeroCells !== 0) {
+  problems.push(`"Nollställ alla värden" left ${nonZeroCells} salary-grid cell(s) not at 0`);
 }
 
 // Aterstall clears the grid, and the conscription dates, back to empty --

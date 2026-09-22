@@ -279,8 +279,27 @@ up. It fills from `result.wagePath` rather than opening empty, because `setup.ts
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for
 me". Amounts are rounded to whole kronor, shown and used, which costs 0.02 kr per month on the
 final salary and keeps the rule that the form never shows a number the run did not use. Once a
-vector is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from a
-second run with `ownIncome` removed.
+typed path is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from
+a second run with `ownIncome` removed.
+
+**`Inkomst` and `Varav lön` are read independently, not one derived from the other, and neither is
+redundant with the other** — asked directly whether `Inkomst` could be dropped. `setup.ts:424` sets
+both straight from whatever a row gives it (`income.set(age, own?.income ?? 0)`, the same line for
+`wage`), and each then feeds a disjoint set of calculations: `Inkomst` is what PGI (pension-qualifying
+income) is computed from, and PGI is what actually earns income-pension, premium-pension and
+guarantee-pension rights — `ipavgift`/`ppavgift`/`gpavgift` all read PGI, never `wage` directly.
+`Inkomst` is also the final salary Table 1 reports, private saving entered as a share of income, and
+the tax base `taxes()` reads. `Varav lön` is the narrower, employer-paid part of it: what an
+occupational scheme's own premium (`premiumFor`) and the employer-contribution reduction (`arbgiv`)
+are computed from, and what a benefit or tax calculation subtracts back out of gross income to
+isolate salary from everything else taxable. Dropping `Inkomst` would silently zero PGI (and so every
+public pension right) for anyone using this grid, while leaving `Varav lön` alone would silently zero
+occupational pension instead — neither column can stand in for the other.
+
+**"Nollställ alla värden"** zeroes every row's own `Inkomst` and `Varav lön` in one click, next to the
+existing `Återställ` button — asked for once the grid's own ~50-row length made a full year of leave
+tedious to type one row at a time. It reuses `rows.map` and the same `drawGrid`/`onChange` pair
+`Återställ` already calls, so there is no second code path to keep in step with the first.
 
 ### Pensionsgrundande belopp (PGB)
 
@@ -526,7 +545,7 @@ state, and so on. `newVariant` copies the baseline's salary, retirement age, sta
 occupational scheme the moment a scenario is added; the four controls on that card then edit their own
 copy independently, and `applyScenario` lays those four fields over whatever the baseline currently is
 on every run. Everything else about the baseline — birth year, the economic assumptions, any advanced
-setting, a typed salary or PGB vector — keeps flowing into every scenario's run live, since only these
+setting, a typed salary path or PGB entry — keeps flowing into every scenario's run live, since only these
 four fields are ever "frozen" per card. This is simpler than a real inherit/override design and reads
 the same way to whoever is using it: a new scenario starts out identical to the baseline and diverges
 only where it is typed into.

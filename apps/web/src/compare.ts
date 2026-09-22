@@ -17,7 +17,7 @@
  * simpler than an inherit/override state machine and reads the same way to
  * whoever is using it: a new scenario starts out identical to the baseline,
  * and diverges only where it is typed into. Every other field -- birth year,
- * inflation, any advanced setting, a typed salary vector -- keeps coming from
+ * inflation, any advanced setting, a typed salary path -- keeps coming from
  * the live baseline on every run, so only these four are ever "frozen" per
  * scenario.
  *

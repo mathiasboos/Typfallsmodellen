@@ -14,7 +14,7 @@
  * sheet, and this keeps them: normal mode runs on a `TypfallInput` alone, which
  * is the whole reason `viewContext` could get this far handing `run()` an empty
  * settings map. Avancerat adds `advanced.ts`'s settings and `salaryPath.ts`'s
- * own wage vector on top.
+ * own salary path on top.
  */
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
@@ -89,7 +89,7 @@ let mode: Mode = "normal";
 let screen: Screen = "single";
 /** Adv_settings, as overrides on top of the workbook's own normal values. */
 let advanced: Partial<ModelContext> = {};
-/** The Start-sheet side of advanced mode: today just the own wage vector. */
+/** The Start-sheet side of advanced mode: the own salary path and PGB. */
 let advancedInput: Partial<TypfallInput> = {};
 
 const root = document.querySelector("#app");
@@ -368,7 +368,7 @@ function render(): void {
   const par = retirementAge(typfall, result);
 
   // The salary grid fills from, and resets to, the path the model derives for
-  // the Start sheet as it currently stands. Once an own vector is in use the
+  // the Start sheet as it currently stands. Once an own path is in use the
   // run's own `wagePath` just echoes it back, so the baseline has to come from
   // a run without it. A run is well under a millisecond, and this second one
   // only happens in advanced mode.
