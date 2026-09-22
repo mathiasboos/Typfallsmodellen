@@ -184,6 +184,8 @@ body {
 }
 .disclaimer strong { color: var(--text-secondary); }
 .disclaimer a { color: var(--text-secondary); }
+.disclaimer > summary { cursor: pointer; }
+.disclaimer > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .langs { display: flex; gap: 6px; flex-wrap: wrap; }
 

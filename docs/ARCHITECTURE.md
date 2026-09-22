@@ -222,6 +222,15 @@ forecast under the assumptions entered, not a statement about anyone's pension. 
 beige surface rather than the red `.warnings` box on purpose; dressing it as an error would teach
 people to dismiss it.
 
+It is a `<details>`, collapsed by default, matching Ordlista's own disclosure — labeled "Om
+modellen" / "About the model" rather than left open under the subtitle, so it doesn't compete with
+the inputs for a first-time visitor while staying one click away. Built once at module scope rather
+than inside `renderHeading()` (which reruns on every input change anywhere on the page): a fresh
+`<details>` on every rerun would silently reset `.open` to closed the instant someone who had
+expanded it touched anything else, so the element is constructed once and only its text is
+rewritten — `applyNoticeText(lang)` — on a language switch, the same pattern `salaryPath`/
+`advancedPanel`/`comparePanel` already use for their own persistent, stateful elements.
+
 ### Print
 
 People take a pension forecast to a meeting, so paper is a real output. The print rules force a

@@ -209,6 +209,26 @@ function screenToggle(): HTMLElement {
 const modeBox = document.createElement("div");
 modeBox.className = "mode-row";
 
+// Built once, not inside `renderHeading()` -- that function reruns on every
+// `render()`, which is every input change anywhere on the page, and a fresh
+// `document.createElement("details")` each time would reset `.open` back to
+// closed the instant someone who had expanded it touched anything else.
+// Moving the same node around the DOM (what `header.replaceChildren` below
+// still does every render) does not reset it; only recreating the element
+// would. Collapsed by default -- a freshly created `<details>` starts closed,
+// and nothing here ever sets `.open`.
+const noticeSummary = document.createElement("summary");
+const noticeStrong = document.createElement("strong");
+const noticeRest = document.createElement("span");
+const noticeMail = document.createElement("a");
+noticeMail.href = "mailto:typfallsmodellen@pensionsmyndigheten.se";
+noticeMail.textContent = "typfallsmodellen@pensionsmyndigheten.se";
+const notice = document.createElement("details");
+notice.className = "disclaimer";
+notice.dataset.role = "disclaimer";
+notice.append(noticeSummary, noticeStrong, noticeRest, noticeMail, document.createTextNode("."));
+applyNoticeText(view.lang);
+
 /** Rebuilt on a language change, so the subtitle and the active chip follow. */
 function renderHeading(): void {
   const title = document.createElement("h1");
@@ -221,8 +241,6 @@ function renderHeading(): void {
       ? `Alla beräkningar sker i din webbläsare; ingenting skickas någonstans.`
       : `Everything is computed in your browser; nothing is sent anywhere.`;
 
-  const notice = disclaimer(view.lang);
-
   const langs = document.createElement("div");
   langs.className = "langs";
   langs.setAttribute("role", "group");
@@ -234,6 +252,7 @@ function renderHeading(): void {
     button.className = lang === view.lang ? "chip active" : "chip";
     button.addEventListener("click", () => {
       view = { ...view, lang };
+      applyNoticeText(lang);
       form.relabel(lang);
       advancedPanel.relabel(lang);
       salaryPath.relabel(lang);
@@ -256,17 +275,16 @@ function renderHeading(): void {
  * talking about, which is exactly why it has to say whose model it is and what
  * a forecast is worth. The agency's own address is here because a question
  * about the model belongs with the people who wrote it, not with this port.
+ *
+ * A `<details>`, matching Ordlista, rather than an always-open box: the text
+ * doesn't change while someone works, only the language does, so this just
+ * fills in the four text nodes `notice` was built from (see where it's
+ * constructed, above) rather than rebuilding the element.
  */
-function disclaimer(l: Lang): HTMLElement {
-  const box = document.createElement("aside");
-  box.className = "disclaimer";
-  box.dataset.role = "disclaimer";
-
-  const strong = document.createElement("strong");
-  strong.textContent = l === "sv" ? "Inofficiell version." : "Unofficial version.";
-
-  const rest = document.createElement("span");
-  rest.textContent =
+function applyNoticeText(l: Lang): void {
+  noticeSummary.textContent = l === "sv" ? "Om modellen" : "About the model";
+  noticeStrong.textContent = l === "sv" ? "Inofficiell version." : "Unofficial version.";
+  noticeRest.textContent =
     l === "sv"
       ? " Den här sidan är inte utvecklad av, kopplad till eller godkänd av " +
         "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. " +
@@ -276,14 +294,6 @@ function disclaimer(l: Lang): HTMLElement {
         "the Swedish Pensions Agency. The model, its data and its user manual are theirs. " +
         "What it shows is a forecast under the assumptions you enter – not a statement " +
         "about your pension. Questions about the model itself go to ";
-
-  const mail = document.createElement("a");
-  mail.href = "mailto:typfallsmodellen@pensionsmyndigheten.se";
-  mail.textContent = "typfallsmodellen@pensionsmyndigheten.se";
-
-  const stop = document.createTextNode(".");
-  box.append(strong, rest, mail, stop);
-  return box;
 }
 
 /**

@@ -159,6 +159,14 @@ tab.on("console", (message) => {
 await tab.goto(pathToFileURL(page).href);
 await tab.waitForSelector(".table1 tbody tr[data-key]", { timeout: 15000 });
 
+// The disclaimer is a disclosure now, not an always-open box -- proven closed
+// as loaded, before any other interaction could have opened it.
+const problems = [];
+const noticeAsLoaded = await tab.locator('[data-role="disclaimer"]').getAttribute("open");
+if (noticeAsLoaded !== null) {
+  problems.push("the disclaimer is open on load, expected collapsed by default");
+}
+
 /** One cell of a Table 1 row, found by the model's key and the column's name. */
 async function shown(key, col) {
   const text = await tab
@@ -169,8 +177,6 @@ async function shown(key, col) {
   // comma the percentage column uses.
   return Number(text.replace(/[^\d,-]/g, "").replace(",", "."));
 }
-
-const problems = [];
 
 /**
  * Clicks a download button and reads back what it actually produced --
