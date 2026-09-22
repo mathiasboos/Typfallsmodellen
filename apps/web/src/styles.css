@@ -622,6 +622,12 @@ body {
   color: var(--text-primary);
 }
 .adv-ips input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The share input's own "%" marker -- next to the box, not below the whole
+   widget the way `field()`'s usual hint slot would put it (see
+   `savingAmountOrShare`'s own comment on why it builds this row itself). */
+.adv-ips-share { display: flex; align-items: center; gap: 6px; }
+.adv-ips-share input { flex: 1; min-width: 0; }
+.adv-ips-share .field-hint { flex: 0 0 auto; }
 
 .field-check { grid-template-columns: auto minmax(0, 1fr); }
 .field-check > input {

@@ -294,6 +294,21 @@ is still 1 kr/month by its own label, but `ipsMonthly > 1` reads it as the share
 of income) — the workbook's own off-by-one, not smoothed over here, and vanishingly unlikely in
 practice since every real kronor figure in this app is a multiple of 100.
 
+**Every percent field renders in the page's own language, not the browser's.** A native
+`<input type="number">` shows its own decimal mark using the *browser's* UI language, never the
+page's — a Swedish user on an English-language browser would see "1.7" for "Real avkastning" even
+with the page itself set to Swedish, since a number input has no way to be told to use a comma
+instead. `controls.ts`'s shared `percent` builder (`fieldSet`) uses `type="text"` with
+`inputMode="decimal"` instead, formatting its value with `Intl.NumberFormat(locale(lang), ...)` and
+re-rendering through a `relabel` hook every other stateful control already exposes (`select` did
+this first). Typing accepts either "," or "." as the decimal separator regardless of language, so a
+habit of typing a period still parses. `savingAmountOrShare`'s own share field reuses this same
+builder rather than the hand-rolled `<input type="number">` it had before — the same "1.7" bug would
+otherwise have shown up a second time in the one field a user explicitly flagged it in — and gets a
+"%" marker next to the input, shown only in share mode: `field()`'s own hint slot is one line for the
+whole toggle widget and cannot follow which of its two modes is active, so this one is its own small
+row (`.adv-ips-share`) instead.
+
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for

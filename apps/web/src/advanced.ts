@@ -41,7 +41,7 @@ import { defaultContext } from "@typfallsmodellen/engine";
 import type { ModelContext } from "@typfallsmodellen/engine";
 
 import { fieldSet } from "./controls.js";
-import type { Relabel } from "./controls.js";
+import type { FieldSet, Relabel } from "./controls.js";
 import type { Lang } from "./i18n.js";
 import {
   BURIAL_ONLY_RATE,
@@ -677,6 +677,7 @@ function churchBurialSelect(
 function savingAmountOrShare(
   lang: Lang,
   initial: number,
+  percentControl: FieldSet["percent"],
   onChange: (v: number) => void,
 ): { element: HTMLElement; relabel: Relabel; setValue: (v: number) => void } {
   const wrap = document.createElement("div");
@@ -702,14 +703,24 @@ function savingAmountOrShare(
   amountInput.step = "100";
   amountInput.dataset.setting = "ipsMonthly-amount";
 
-  const shareInput = document.createElement("input");
-  shareInput.type = "number";
-  shareInput.inputMode = "decimal";
-  shareInput.min = "0";
-  shareInput.max = "100";
-  shareInput.step = "0.1";
-  shareInput.className = "percent";
-  shareInput.dataset.setting = "ipsMonthly-share";
+  // Reuses the same control every other percent field in this app does --
+  // reported as showing "1.7" instead of "1,7" for another percent field, a
+  // bug this one would otherwise have repeated with its own hand-rolled input.
+  const share = percentControl(0, onChange);
+  share.element.dataset.setting = "ipsMonthly-share";
+
+  // The one thing a bare number can't say for itself: which of the two this
+  // is. "kr" is not spelled out the same way for the amount field, matching
+  // every other kronor field in this app, none of which do either. Its own
+  // row, not `field()`'s usual hint slot below the label -- that slot is one
+  // line for the whole widget and can't toggle with the mode the way this
+  // one, sitting right beside the share input itself, does.
+  const shareRow = document.createElement("div");
+  shareRow.className = "adv-ips-share";
+  const hint = document.createElement("span");
+  hint.className = "field-hint";
+  hint.textContent = "%";
+  shareRow.append(share.element, hint);
 
   // A value at or below 1 already means "share" to the engine; use the same
   // rule here to decide which mode a freshly loaded or reset value opens in.
@@ -719,13 +730,13 @@ function savingAmountOrShare(
     amountBtn.className = mode === "amount" ? "panel-btn active" : "panel-btn";
     shareBtn.className = mode === "share" ? "panel-btn active" : "panel-btn";
     amountInput.hidden = mode !== "amount";
-    shareInput.hidden = mode !== "share";
+    shareRow.hidden = mode !== "share";
   };
 
   const setValue = (v: number) => {
     mode = v > 0 && v <= 1 ? "share" : "amount";
     amountInput.value = String(mode === "amount" ? Math.round(v) : 0);
-    shareInput.value = mode === "share" ? String(Math.round(v * 1000) / 10) : "0";
+    share.setValue(mode === "share" ? v : 0);
     applyMode();
   };
   setValue(initial);
@@ -734,7 +745,7 @@ function savingAmountOrShare(
     if (mode === next) return;
     mode = next;
     amountInput.value = "0";
-    shareInput.value = "0";
+    share.setValue(0);
     applyMode();
     onChange(0);
   };
@@ -752,24 +763,14 @@ function savingAmountOrShare(
     onChange(clamped);
   });
 
-  shareInput.addEventListener("change", () => {
-    const typed = Number(shareInput.value);
-    if (!Number.isFinite(typed) || shareInput.value.trim() === "") {
-      shareInput.value = "0";
-      return;
-    }
-    const clamped = Math.min(Math.max(typed, 0), 100);
-    shareInput.value = String(clamped);
-    onChange(clamped / 100);
-  });
-
   const relabel = (l: Lang) => {
     amountBtn.textContent = l === "sv" ? "Belopp" : "Amount";
     shareBtn.textContent = l === "sv" ? "Andel av inkomst" : "Share of income";
+    share.relabel(l);
   };
   relabel(lang);
 
-  wrap.append(toggle, amountInput, shareInput);
+  wrap.append(toggle, amountInput, shareRow);
   return { element: wrap, relabel, setValue };
 }
 
@@ -831,7 +832,7 @@ export function createAdvancedPanel(
       if (setting.control.kind === "number" && setting.key === "ipsMonthly") {
         // field-wide: a toggle plus a number needs a whole row, not the
         // 104px second column every other field's control gets.
-        const widget = savingAmountOrShare(lang, initial, (v) => onChange(setting.set(v)));
+        const widget = savingAmountOrShare(lang, initial, percentControl, (v) => onChange(setting.set(v)));
         relabels.push(widget.relabel);
         field(widget.element, label, "field field-wide");
         restores.push(() => widget.setValue(initial));
@@ -858,6 +859,7 @@ export function createAdvancedPanel(
           precise ? { maxDecimals: 3 } : undefined,
         );
         control.element.dataset.setting = setting.key;
+        relabels.push(control.relabel);
 
         if (setting.key === "kommunalskatt") {
           // Picking a municipality flips `historicalTaxRate` off in setup.ts,

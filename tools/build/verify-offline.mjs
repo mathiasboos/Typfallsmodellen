@@ -505,10 +505,13 @@ console.log(`kommun select   : Danderyd -> ${kommunalskattValue}%`);
 const kommunalskattSource = Number(
   readFileSync(join(repo, "apps/web/src/kommunalskatt.ts"), "utf8").match(/"Danderyd":\s*([\d.]+)/)?.[1],
 );
-if (kommunalskattValue !== String(kommunalskattSource)) {
+// Swedish decimal comma, not the source file's own JS-literal period -- the
+// field renders in the page's own language, which defaults to "sv" here.
+const kommunalskattExpected = String(kommunalskattSource).replace(".", ",");
+if (kommunalskattValue !== kommunalskattExpected) {
   problems.push(
     `picking Danderyd set kommunalskatt to "${kommunalskattValue}", expected the exact published ` +
-      `rate "${kommunalskattSource}"`,
+      `rate "${kommunalskattExpected}"`,
   );
 }
 const municipalAfterPick = await table2Cell(table2Rows - 1, municipalCol);
@@ -532,7 +535,7 @@ const autoChoice = await churchSelect.inputValue();
 // showing "1.3" next to a hint reading "~1,32 %"; the fix was giving the
 // field the same precision, and checking the exact string is what would
 // catch a regression back to the coarser one.
-const expectedBurialOnlyStr = String(Math.round(expectedBurialOnly * 100_000) / 1000);
+const expectedBurialOnlyStr = String(Math.round(expectedBurialOnly * 100_000) / 1000).replace(".", ",");
 console.log(`church/burial   : auto-filled to ${autoFilled}% (${autoChoice}), expected ${expectedBurialOnlyStr}%`);
 if (autoFilled === "0") {
   problems.push("picking a municipality left the church/burial field at 0 instead of auto-filling it");
@@ -553,7 +556,7 @@ if (autoChoice !== "rest") {
 await churchSelect.selectOption({ value: "member" });
 await tab.waitForTimeout(50);
 const memberFilled = await begravningsavgiftField.inputValue();
-const expectedChurchMemberStr = String(Math.round(expectedChurchMember * 100_000) / 1000);
+const expectedChurchMemberStr = String(Math.round(expectedChurchMember * 100_000) / 1000).replace(".", ",");
 console.log(`church member   : ${memberFilled}%, expected ${expectedChurchMemberStr}%`);
 if (memberFilled !== expectedChurchMemberStr) {
   problems.push(`picking "member" set the rate to "${memberFilled}", expected "${expectedChurchMemberStr}"`);
