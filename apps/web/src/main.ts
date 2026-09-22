@@ -119,10 +119,12 @@ const salaryPath = createSalaryPath(view.lang, (path) => {
   render();
 });
 
-const pgbGrid = createPgbGrid(view.lang, (pgb) => {
+const pgbGrid = createPgbGrid(view.lang, (patch) => {
   const next = { ...advancedInput };
-  if (pgb === undefined) delete next.pgbManual;
-  else next.pgbManual = pgb;
+  if (patch.pgbManual === undefined) delete next.pgbManual;
+  else next.pgbManual = patch.pgbManual;
+  if (patch.pgbConscription === undefined) delete next.pgbConscription;
+  else next.pgbConscription = patch.pgbConscription;
   advancedInput = next;
   render();
 });
@@ -364,7 +366,7 @@ function render(): void {
     const { ownIncome, ...withoutOwnIncome } = typfall;
     const baseline = ownIncome === undefined ? result : run(withoutOwnIncome, context, { deaths });
     salaryPath.setBaseline(baseline.wagePath, input.born);
-    pgbGrid.setBaseline(input.born);
+    pgbGrid.setBaseline(input.born, context.marginal);
   }
 
   results.replaceChildren();

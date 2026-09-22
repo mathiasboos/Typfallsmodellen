@@ -64,7 +64,7 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | 1. Engine core | done | the whole model runs: `run(input, context)` returns Table 1, Table 2, the life-income sums and the per-age matrix |
 | 2. Golden-file harness vs. Excel | done | 299 typfall out of the real model, twelve output columns, every cell exact — `npm run compare` |
 | 3. Normal-mode website | done | the Start sheet: eight typed input cells, Table 1's four columns, Table 2, Figur 1, Figur 2 and the disposable income chart, Swedish and English — one offline HTML file |
-| 4. Advanced mode | done | the workbook's second mode: twenty-eight of the `Adv_settings` in the manual's own groups (including partial withdrawal of the public pension), the Indata_lista wage vector as an editable grid, and the PGB sheet's manual pension-qualifying amounts as a second grid |
+| 4. Advanced mode | done | the workbook's second mode: twenty-eight of the `Adv_settings` in the manual's own groups (including partial withdrawal of the public pension), the Indata_lista wage vector as an editable grid, and the PGB sheet's pension-qualifying amounts as a second grid — sickness/activity compensation typed in kronor, conscription and study computed from a date range and a semester count the same way the sheet itself computes them |
 | 5. Polish, CI, deploy | done | every check above runs on each push; the site publishes to GitHub Pages and each tag attaches the file to a release |
 | 6. Compare scenarios *(not from the workbook)* | done | a second top-level view: the baseline typfall alongside up to three variants, each with its own salary, retirement age, start-of-work age and occupational pension, lined up in one shared comparison table and an overlay chart |
 
@@ -85,8 +85,9 @@ disagrees with the engine. (That check needs `npm i -D playwright`; nothing else
 | CSV and Excel downloads, driven in the same browser | Table 1's, Table 2's and the comparison table's own download buttons, each actually clicked | a real file every time: the CSV's own content matches that table's data, the `.xlsx`'s first bytes are the ZIP signature every real OOXML package starts with |
 | The built file's own script tag | a static check of the file itself, no browser involved | a classic `<script>`, not `type="module"` (which Mobile Safari can refuse to run at all over `file://`, seen as a black screen on an iPhone), placed after `#app` in the document |
 | The PGB grid's "Visa alla kolumner" pop-out, driven in the same browser at 1280px and again at 375px | the same table moved into a `<dialog>` and back, an edit made from inside it, and `.adv-grid-scroll`'s own scroll width against its client width | the dialog is the same live table, not a copy — edits reach the model and survive the round trip — and needs no horizontal scrollbar at either width, which the 1280px case alone would not have caught |
+| Conscription and study's own PGB arithmetic | 15 unit tests pinning the day-split across one, two and three calendar years by hand, and the browser reading back a date range's own day-by-day readout and a semester count's own kronor readout | exact day counts at every split; a 1998 conscription period and a 2005 semester both raise the pension on their own, distinct from each other and from a typed sickness/activity amount |
 | Partial withdrawal of the public pension, driven in the same browser | age 67's own Lön and pension columns in Table 2, before and after setting a 50% withdrawal share and a final age of 70 | 0 kr salary and a full pension become a part-time salary alongside almost exactly half the full pension, and age 70 returns to 0 kr salary and a pension above the full-at-66 figure |
-| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 561 unit and property tests | — |
+| VBA arithmetic semantics, delningstal, wages, ATP, the eight occupational agreements, private saving, tax rules, benefits, the main loop | 581 unit and property tests | — |
 | The 32 mechanically translated tax functions | re-translated from the VBA by `npm run check:transpile` | match |
 | The riksnorm tables | re-parsed from the VBA by `npm run check:riksnorm` | 113 rows match |
 | The lowest pension age and riktålder, per cohort | re-read from the workbook by `npm run check:ages` | 128 cohorts match |
@@ -115,7 +116,7 @@ show up as a diff.
 
 ## Continuous integration and publishing
 
-`.github/workflows/ci.yml` runs everything the tables above claim — typecheck, the 566 unit and
+`.github/workflows/ci.yml` runs everything the tables above claim — typecheck, the 581 unit and
 property tests, the four re-derivation checks, the golden file against Excel, the build, and the
 offline check in a real Chromium — on every push and pull request. The claims are the point of this
 repository, and a claim nothing re-runs is a claim about the day someone last ran it by hand. The

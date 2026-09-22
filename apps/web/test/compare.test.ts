@@ -39,7 +39,7 @@ describe("applying a scenario override", () => {
     const withExtras = {
       ...baseline,
       ownIncome: [{ age: 30, income: 400_000, wage: 380_000 }],
-      pgbManual: [{ age: 40, sa: 10_000, vpl: 0, studier: 0 }],
+      pgbManual: [{ age: 40, sa: 10_000, studySemesters: 0 }],
     };
     const applied = applyScenario(withExtras, {
       id: "1",

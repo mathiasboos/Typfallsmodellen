@@ -629,11 +629,12 @@ if (!(grossAfter < grossBefore)) {
   );
 }
 
-// PGB: a hand-typed sickness/activity-compensation amount at a working age
-// earns pension rights the same way ordinary income does. The shipped
-// workbook has none (`pgbManual`'s own comment: "childcare years are the
-// only PGB a default run earns"), so an untouched grid must not silently
-// change anything, and a filled-in one must.
+// PGB: sickness/activity compensation is still hand-typed kronor; conscription
+// (a single date range) and study (a per-age semester count) compute their
+// own kronor instead, the same way the real PGB sheet does. The shipped
+// workbook has none of the three (`pgbManual`'s own comment: "childcare years
+// are the only PGB a default run earns"), so an untouched grid must not
+// silently change anything, and a filled-in one must.
 const pgbGroup = tab.locator('details[data-group="pgb"]');
 if (!(await pgbGroup.evaluate((node) => node.open))) {
   await pgbGroup.locator("summary").click();
@@ -645,6 +646,52 @@ console.log(`pgb grid rows   : ${pgbRows}`);
 if (pgbRows !== 55) {
   problems.push(`the PGB grid has ${pgbRows} rows, expected 55 (ages 16-70)`);
 }
+
+// Värnplikt: wsPGB!H4/H5, a single date range rather than a row-per-age
+// entry -- the readout is the same year-by-year day split
+// conscriptionDaysByYear computes, so it has to name the year typed in
+// before the pension itself is checked to have moved from it.
+const pensionBeforeVpl = await kpiValue(0);
+await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').fill("1998-01-01");
+await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').dispatchEvent("change");
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31");
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplReadout = await pgbGroup.locator(".pgb-vpl-readout").textContent();
+console.log(`vpl readout     : ${vplReadout}`);
+if (!vplReadout || !/1998/.test(vplReadout)) {
+  problems.push(`the conscription date range's own readout reads "${vplReadout}", expected it to name 1998`);
+}
+const pensionAfterVpl = await kpiValue(0);
+console.log(`pension w/ vpl  : ${pensionBeforeVpl} -> ${pensionAfterVpl} kr after a conscription period`);
+if (!(pensionAfterVpl > pensionBeforeVpl)) {
+  problems.push(
+    `entering a conscription date range did not raise the pension (${pensionBeforeVpl} -> ${pensionAfterVpl})`,
+  );
+}
+
+// Antal terminer: a per-age semester count, auto-computed into its own
+// kronor right there in the grid -- wsPGB!P shows the same figure beside
+// its own "Antal terminer" cell. 2005 (age 46 for this typfall's 1959 birth
+// year) is a year study-PGB actually existed (1995 on), distinct from the
+// conscription test's own 1998 so the two effects stay untangled.
+const pensionBeforeStudy = await kpiValue(0);
+const studyRow = pgbGrid.nth(2005 - 1959 - 16);
+const semesterInput = studyRow.locator("td").nth(3).locator("input");
+await semesterInput.fill("1");
+await semesterInput.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const studyKr = await studyRow.locator("td").nth(4).textContent();
+console.log(`study kr readout: ${studyKr}`);
+if (!studyKr || !(Number(studyKr.replace(/[^\d]/g, "")) > 0)) {
+  problems.push(`entering 1 semester's own readout reads "${studyKr}", expected a positive kronor figure`);
+}
+const pensionAfterStudy = await kpiValue(0);
+console.log(`pension w/ study: ${pensionBeforeStudy} -> ${pensionAfterStudy} kr after 1 semester`);
+if (!(pensionAfterStudy > pensionBeforeStudy)) {
+  problems.push(`entering a semester count did not raise the pension (${pensionBeforeStudy} -> ${pensionAfterStudy})`);
+}
+
 const pensionBeforePgb = await kpiValue(0);
 const pgbSaInput = pgbGrid.first().locator("td").nth(2).locator("input");
 await pgbSaInput.fill("200000");
@@ -659,7 +706,7 @@ if (!(pensionAfterPgb > pensionBeforePgb)) {
 }
 
 // "Visa alla kolumner" moves the same table into a <dialog> -- reported as
-// having to scroll sideways to see Värnplikt and Studier in the sidebar's own
+// having to scroll sideways to see the rest of it in the sidebar's own
 // ~280px-wide scroller. The point of each check below is that it is the same
 // table (the 200 000 typed above is still there, and a further edit still
 // reaches the model), not a copy, and that the dialog itself never needs that
@@ -730,14 +777,18 @@ if (pgbDialogSecondSaKept !== "100000") {
   );
 }
 
-// Aterstall clears the grid back to zero, the same as every other
-// advanced-mode field -- checked with the dialog closed, since it is not
-// reachable any other way (see above).
+// Aterstall clears the grid, and the conscription dates, back to empty --
+// the same as every other advanced-mode field -- checked with the dialog
+// closed, since it is not reachable any other way (see above).
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
 const pgbAfterReset = await pgbSaInput.inputValue();
 if (pgbAfterReset !== "0") {
   problems.push(`the reset button left the PGB field at "${pgbAfterReset}", expected "0"`);
+}
+const vplStartAfterReset = await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').inputValue();
+if (vplStartAfterReset !== "") {
+  problems.push(`the reset button left the conscription start date at "${vplStartAfterReset}", expected empty`);
 }
 
 // Partiellt uttag: "Andel uttag, inkomstpension/premiepension" and

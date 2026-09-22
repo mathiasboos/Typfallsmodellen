@@ -24,7 +24,8 @@ import type { SchemeId } from "../tjanstepension/types.js";
 import { vbaInt, vbaRound, wsMax } from "../vba/math.js";
 import { rgkFor } from "./context.js";
 import type { ModelContext } from "./context.js";
-import type { PgbManualYear, TypfallInput } from "./input.js";
+import type { TypfallInput } from "./input.js";
+import { conscriptionDaysByYear, conscriptionPgb, studyPgb } from "./pgb.js";
 import type { RunProfile, SetupResult, Warning } from "./setup.js";
 import type { RunState, SetupVectors } from "./state.js";
 import { drawdownPhase } from "./drawdown.js";
@@ -50,8 +51,55 @@ export interface Run {
   readonly kvoten: number;
   /** `Iyear` -- the year expenditure rules switch to earnings indexation. */
   readonly iyear: number;
-  /** The PGB sheet's manual entries, by age. */
-  readonly pgbManual: ReadonlyMap<number, PgbManualYear>;
+  /** The PGB sheet's own entries, resolved to kronor and keyed by age --
+   * `earnPgb` reads this the same way regardless of which of `sa`, `vpl` or
+   * `studier` were typed directly and which `buildPgbManual` computed. */
+  readonly pgbManual: ReadonlyMap<number, ResolvedPgbYear>;
+}
+
+/** `earnPgb`'s own view of one age's PGB sheet: everything already in kronor. */
+interface ResolvedPgbYear {
+  readonly sa: number;
+  readonly vpl: number;
+  readonly studier: number;
+}
+
+/**
+ * Resolves `TypfallInput.pgbManual`/`pgbConscription` into one kronor figure
+ * per age, the shape `earnPgb` has always read. `sa` is typed kronor, passed
+ * through; `vpl` and `studier` are computed -- conscription from a single
+ * date range split across the years it touches (`conscriptionDaysByYear`),
+ * study from a per-age semester count -- so this is the one place either
+ * touches a calendar year or a lookup table rather than a typed number.
+ */
+function buildPgbManual(
+  input: TypfallInput,
+  v: SetupVectors,
+  born: number,
+  marginal: number,
+): ReadonlyMap<number, ResolvedPgbYear> {
+  const byAge = new Map<number, { sa: number; studier: number }>(
+    (input.pgbManual ?? []).map((row) => [
+      row.age,
+      { sa: row.sa, studier: studyPgb(vbaInt(born) + row.age, row.studySemesters, marginal) },
+    ]),
+  );
+
+  const vplByAge = new Map<number, number>();
+  if (input.pgbConscription) {
+    for (const [year, days] of conscriptionDaysByYear(input.pgbConscription)) {
+      const age = year - vbaInt(born);
+      vplByAge.set(age, conscriptionPgb(year, days, v.mpgi.getOrZero(age), marginal));
+    }
+  }
+
+  const ages = new Set([...byAge.keys(), ...vplByAge.keys()]);
+  const result = new Map<number, ResolvedPgbYear>();
+  for (const age of ages) {
+    const row = byAge.get(age);
+    result.set(age, { sa: row?.sa ?? 0, vpl: vplByAge.get(age) ?? 0, studier: row?.studier ?? 0 });
+  }
+  return result;
 }
 
 const TAX = municipalTaxJson as {
@@ -116,8 +164,12 @@ const TAK = 7.5;
  * Pensionsgrundande belopp: sickness compensation, childcare years,
  * conscription and study.
  *
- * The sickness, conscription and study amounts are typed into the PGB sheet by
- * hand and ship as zeros; only the childcare years are computed.
+ * Sickness/activity compensation is still typed kronor. Childcare years,
+ * conscription and study are all computed -- `buildPgbManual` resolves the
+ * latter two from a date range and a semester count before the loop starts,
+ * so `manual?.vpl`/`manual?.studier` below are already final kronor. The
+ * shipped workbook has none of the three, so childcare years alone move a
+ * default run.
  */
 export function earnPgb(run: Run, age: number, utgyear: number): void {
   const { v, s, p, context } = run;
@@ -177,14 +229,14 @@ export function earnPgb(run: Run, age: number, utgyear: number): void {
 
   s.pgb.set(age, s.pgb.get(age) + diverse);
 
-  // Conscription.
+  // Conscription -- `buildPgbManual` has already applied wsPGB!I's own
+  // round-down-to-100 (or not, per `marginal`), the same as `study` below.
   s.pgb.set(age, s.pgb.get(age) + (manual?.vpl ?? 0));
   if (s.pgi.get(age) + s.pgb.get(age) > TAK * v.ibb.get(age)) s.pgb.set(age, capped());
 
-  // Study.
-  let study = manual?.studier ?? 0;
-  if (context.marginal === 0) study = vbaInt(study / 100) * 100;
-  s.pgb.set(age, s.pgb.get(age) + study);
+  // Study -- `buildPgbManual` has already turned the typed semester count
+  // into kronor and applied wsPGB!P's own rounding.
+  s.pgb.set(age, s.pgb.get(age) + (manual?.studier ?? 0));
   if (s.pgi.get(age) + s.pgb.get(age) > TAK * v.ibb.get(age)) s.pgb.set(age, capped());
 
   if (s.pgb.get(age) + s.pgi.get(age) > 0 && age < 71) s.pgbYears += 1;
@@ -447,9 +499,7 @@ export function prepareRun(
     }
   }
 
-  const pgbManual = new Map(
-    (input.pgbManual ?? []).map((row) => [row.age, row] as const),
-  );
+  const pgbManual = buildPgbManual(input, v, born, context.marginal);
 
   state.kvoten = kvoten;
 

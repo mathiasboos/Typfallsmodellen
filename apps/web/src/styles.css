@@ -407,7 +407,15 @@ body {
 .pgb-grid thead th:nth-child(2), .pgb-grid td:nth-child(2) { width: 12%; }  /* Ålder */
 .pgb-grid thead th:nth-child(3), .pgb-grid td:nth-child(3),
 .pgb-grid thead th:nth-child(4), .pgb-grid td:nth-child(4),
-.pgb-grid thead th:nth-child(5), .pgb-grid td:nth-child(5) { width: 24%; } /* Sjuk-/aktivitetsersättning, Värnplikt, Studier */
+.pgb-grid thead th:nth-child(5), .pgb-grid td:nth-child(5) { width: 24%; } /* Sjuk-/aktivitetsersättning, Antal terminer, PGB studier */
+.pgb-study-kr { color: var(--text-secondary); }
+
+/* Värnplikt: two date fields plus a day-split readout, above the per-age
+   grid -- a single wsPGB!H4/H5 range, not a row-per-age entry. */
+.pgb-vpl { display: grid; gap: 8px; margin-bottom: 4px; }
+.pgb-vpl-fields { display: flex; gap: 8px; flex-wrap: wrap; }
+.pgb-vpl-fields .field { flex: 1 1 140px; }
+.pgb-vpl-readout:empty { display: none; }
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would
      pin half the screen and hide the results behind it. */

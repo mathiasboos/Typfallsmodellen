@@ -10,6 +10,7 @@
  */
 
 export * from "./model/input.js";
+export * from "./model/pgb.js";
 export * from "./model/context.js";
 export * from "./model/setup.js";
 export * from "./model/state.js";

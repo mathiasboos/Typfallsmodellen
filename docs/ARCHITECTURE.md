@@ -275,14 +275,15 @@ second run with `ownIncome` removed.
 
 ### Pensionsgrundande belopp (PGB)
 
-`apps/web/src/pgb.ts` exposes `TypfallInput.pgbManual` — the PGB sheet's hand-typed sickness/activity
-compensation, conscription and study amounts, credited as pension rights the same way childcare years
-already are. Unlike every setting in `advanced.ts`, it is not an `Adv_settings`/`ModelContext` field at
-all: it lives on the Start-sheet side of the split, as a per-age array, so it could not be one more row
-in that file's descriptor table. It is also not new to the *engine* the way the municipality table
-above is — `earnPgb` (`packages/engine/src/model/mcalc.ts`) has read `pgbManual` since the port's
-earliest phases, cross-checked against the workbook's own `Brutto` sheet; only the web UI for it was
-ever missing.
+`apps/web/src/pgb.ts` exposes `TypfallInput.pgbManual`/`pgbConscription` — the PGB sheet's sickness/
+activity compensation, conscription and study entries, credited as pension rights the same way
+childcare years already are. Unlike every setting in `advanced.ts`, these are not `Adv_settings`/
+`ModelContext` fields at all: they live on the Start-sheet side of the split, so they could not be one
+more row in that file's descriptor table. They are also not new to the *engine* the way the
+municipality table above is — `earnPgb` (`packages/engine/src/model/mcalc.ts`) has read manual PGB
+since the port's earliest phases, cross-checked against the workbook's own `Brutto` sheet; only the web
+UI for it was ever missing, and only sickness/activity compensation stayed a typed kronor figure once
+that UI arrived — see below.
 
 The grid's shape follows `salaryPath.ts`'s, with one real difference: there is no computed path to
 open with, since a default run has none of this (`pgbManual`'s own comment: "the shipped workbook has
@@ -294,7 +295,45 @@ riktålder this port has today — defaults to 66 for every cohort ("cohort tabl
 range needs no per-cohort logic the workbook does not model yet, and never has to reconcile typed
 values against a row list that moved.
 
-Three amount columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
+**Conscription and study compute their own kronor, on request** — in the real sheet only
+sickness/activity compensation is "Ange manuellt"; conscription is a single date range (`PGB!H4`/`H5`)
+and study a semester count (`PGB!M`), both turned into kronor by the sheet itself. `packages/engine/src/
+model/pgb.ts` is the port of that arithmetic, read cell by cell off the source workbook rather than
+guessed — `pyxlsb` only ever returns a formula's *cached* result, so getting the formula text itself
+needed the same LibreOffice `.xlsb` → `.xlsx` conversion `formulas.py` already uses for `extract_series.
+py`, read here by hand rather than through that module (a one-off lookup, not a recurring extraction).
+Three findings shaped the port:
+
+- **The 50%-of-average-income reference conscription pays out of (`PGB!G`, "50% medel efter 1995") needs
+  no new data at all** — it is half of `medelPgi`, already extracted as `economic-series.json`'s own
+  column F and already on every run as `v.mpgi`. Only two more columns actually needed extracting:
+  `PGB!L`/`N` ("Studie-medel/termin", "PA avgift för studier som ger individen ett PGB") read
+  `'Några tal'` columns AF and AG the same `row = year - 1953` way every other column on that sheet
+  already does — but they are not economic projections `extract_series.py`'s own machinery fits: the
+  sheet never adjusts either for inflation or growth, it just holds a literal per-year decision that
+  goes flat once the sheet's own data runs out (AF plateaus at 20 600 kr from 2023, then artifactually
+  drops to 0 past 2110 — the sheet's own fill running out, not a claim that conscription-era study
+  grants stop existing). `tools/extract/extract_pgb.py` is a small, separate extractor for exactly this
+  shape of data — literal, not projected — writing `packages/data/pgb-study.json`; the engine clamps to
+  the last extracted year past either column's own end, the same convention `mcalc.ts`'s own
+  `employerRates` already uses for `municipal-tax.json`.
+- **Conscription only ever earned PGB 1995-2010, and again from 2018** (`PGB!F`'s own eligibility flag) —
+  the manual's own subheading over the date fields says so outright: "Plikttjänst under åren
+  1995–2010, och från 2018 och framåt". `conscriptionPgb` in `pgb.ts` applies this window regardless of
+  what `conscriptionDaysByYear`'s own day-count found for that year, matching the sheet's own two-stage
+  design (a day count in `PGB!H`, an eligibility-gated reference value in `PGB!G`, multiplied together
+  in `PGB!I`) rather than trying to fold eligibility into the day-splitting itself.
+- **The day-splitting across up to three calendar years (`PGB!H10:J11`) has its own asymmetries, kept
+  rather than smoothed over** — a period under the 120-day minimum zeroes only its first year's own
+  share, not a later year the same short period might still reach across a New Year's boundary; the
+  third year's own cell carries an `IF(J10="-", ...)` guard that can never actually take, since its
+  sibling `J10` is a year number or a literal `0`, never the string `"-"` `H10`/`I10` use for "no such
+  year" — the same class of dead-but-faithfully-kept branch this port's comments already flag elsewhere
+  (`mcalc.ts`'s own `DEAD in the original too` notes). `conscriptionDaysByYear`'s own comment names both,
+  and 15 unit tests in `packages/engine/test/pgb.test.ts` pin the day counts by hand for periods within
+  one year, crossing one boundary, and crossing two.
+
+Three amount-shaped columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
 ~45px-wide inputs, clipping a sixth digit that the salary grid's own ~62px inputs do not — so the
 table gets a `min-width` wider than the sidebar, scrolling horizontally the same way the grid already
 scrolls vertically, keeping every column's proportions and just rendering them bigger. Its longest

@@ -121,7 +121,7 @@ describe("pensionsgrundande belopp", () => {
 
   it("takes the PGB sheet's manual entries where they are given", () => {
     const { state } = plain({
-      pgbManual: [{ age: 30, sa: 50_000, vpl: 0, studier: 0 }],
+      pgbManual: [{ age: 30, sa: 50_000, studySemesters: 0 }],
     });
     expect(state.pgb.get(30)).toBe(50_000);
     expect(state.pgb.get(31)).toBe(0);
@@ -133,7 +133,7 @@ describe("pensionsgrundande belopp", () => {
       // A large manual entry, to push against the ceiling.
     });
     const withManual = walk(
-      defaultInput({ monthlySalary: 60_000, pgbManual: [{ age: 40, sa: 5_000_000, vpl: 0, studier: 0 }] }),
+      defaultInput({ monthlySalary: 60_000, pgbManual: [{ age: 40, sa: 5_000_000, studySemesters: 0 }] }),
       defaultContext(),
     );
     const ceiling = 7.5 * run.v.ibb.get(40);
