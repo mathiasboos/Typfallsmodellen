@@ -181,9 +181,27 @@ export function createPgbGrid(
   endWrap.className = "pgb-vpl-date";
   endWrap.append(endLabel, endInput);
 
+  // A native date input's own clear affordance -- Backspace, or a hover-only
+  // icon in Chromium -- is easy to miss squeezed into a header cell this
+  // small, and there was no way at all to clear just the period without
+  // "Använd normala inställningar" clearing the rest of advanced mode too.
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "pgb-vpl-clear";
+  clearBtn.addEventListener("click", () => {
+    startInput.value = "";
+    endInput.value = "";
+    updateVplReadout(currentLang);
+    emit();
+  });
+
+  const vplTitleRow = document.createElement("div");
+  vplTitleRow.className = "pgb-vpl-title-row";
+  vplTitleRow.append(vplTitle, clearBtn);
+
   const vplReadout = document.createElement("p");
   vplReadout.className = "pgb-vpl-readout";
-  vplGroupHead.append(vplTitle, startWrap, endWrap, vplReadout);
+  vplGroupHead.append(vplTitleRow, startWrap, endWrap, vplReadout);
 
   const subRow = document.createElement("tr");
   const semesterHead = document.createElement("th");
@@ -242,6 +260,7 @@ export function createPgbGrid(
   // own days and kronor show in the grid, per year, so this stays blank then
   // rather than repeating the same figures as a line of text above it.
   function updateVplReadout(l: Lang): void {
+    clearBtn.hidden = !startInput.value && !endInput.value;
     const period = conscriptionPeriod();
     if (period === undefined) {
       vplReadout.textContent = "";
@@ -384,6 +403,11 @@ export function createPgbGrid(
     saHead.textContent = say(l, "Sjuk-/aktivitetsersättning", "Sickness/activity comp.");
     studyGroupHead.textContent = say(l, "Studier", "Study");
     vplTitle.textContent = say(l, "Värnplikt", "Conscription");
+    clearBtn.textContent = say(l, "Rensa", "Clear");
+    clearBtn.setAttribute(
+      "aria-label",
+      say(l, "Rensa värnpliktsperiod", "Clear the conscription period"),
+    );
     semesterHead.textContent = say(l, "Antal terminer", "Semesters");
     studyKrHead.textContent = say(l, "PGB studier, kr", "Study PGB, kr");
     vplDaysHead.textContent = say(l, "Dagar", "Days");

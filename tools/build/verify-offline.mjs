@@ -727,6 +727,49 @@ if (!(pensionAfterVpl > pensionBeforeVpl)) {
   );
 }
 
+// "Rensa": a native date input's own clear affordance is easy to miss
+// packed into a header cell this small, and there was no way to clear just
+// the period without "Använd normala inställningar" clearing all of
+// advanced mode -- asked for by name after this shipped.
+const vplClear = pgbGroup.locator(".pgb-vpl-clear");
+if (!(await vplClear.isVisible())) {
+  problems.push('the "Rensa" button is not visible with a conscription period entered');
+}
+await vplClear.click();
+await tab.waitForTimeout(80);
+const vplStartAfterClear = await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').inputValue();
+const vplEndAfterClear = await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').inputValue();
+const vplDaysAfterClear = await vplRow1998.locator("td").nth(5).textContent();
+const pensionAfterClear = await kpiValue(0);
+console.log(
+  `pgb vpl cleared : start "${vplStartAfterClear}", end "${vplEndAfterClear}", ` +
+    `pension ${pensionAfterVpl} -> ${pensionAfterClear}`,
+);
+if (vplStartAfterClear !== "" || vplEndAfterClear !== "") {
+  problems.push(
+    `"Rensa" left the dates at "${vplStartAfterClear}"/"${vplEndAfterClear}", expected both empty`,
+  );
+}
+if (vplDaysAfterClear !== "") {
+  problems.push(`"Rensa" left "${vplDaysAfterClear}" in the 1998 row's days cell, expected blank`);
+}
+if (pensionAfterClear !== pensionBeforeVpl) {
+  problems.push(
+    `"Rensa" left the pension at ${pensionAfterClear}, expected it back at ${pensionBeforeVpl} (before the period)`,
+  );
+}
+if (await vplClear.isVisible()) {
+  problems.push('the "Rensa" button is still visible after clearing, expected hidden with nothing to clear');
+}
+
+// Re-enter the same period so the dialog/study checks below still have a
+// conscription entry to carry through the rest of this run.
+await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').fill("1998-01-01");
+await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').dispatchEvent("change");
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31");
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
+await tab.waitForTimeout(80);
+
 // Antal terminer: a per-age semester count, auto-computed into its own
 // kronor right there in the grid -- wsPGB!P shows the same figure beside
 // its own "Antal terminer" cell. 2005 (age 46 for this typfall's 1959 birth

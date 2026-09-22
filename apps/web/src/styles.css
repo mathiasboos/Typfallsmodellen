@@ -429,7 +429,24 @@ body {
  * than "Studier"'s plain text beside it.
  */
 .pgb-vpl-head { text-align: left; vertical-align: top; }
-.pgb-vpl-title { display: block; margin-bottom: 4px; }
+.pgb-vpl-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
+/* A native date input's own clear affordance (Backspace, or a hover-only
+   icon in Chromium) is easy to miss this small, and there was no way to
+   clear just the period without "Använd normala inställningar" clearing
+   the rest of advanced mode too. Hidden rather than disabled when both
+   dates are already empty -- nothing to undo yet. */
+.pgb-vpl-clear {
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 400;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.pgb-vpl-clear:hover { color: var(--text-primary); }
 /* Label above input, not beside it -- a native date input already needs
    most of the column's own width on its own; beside a label it would
    overflow the column in the sidebar's own narrower view. */

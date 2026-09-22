@@ -399,6 +399,17 @@ input's own `aria-label`, and the eligibility window that used to sit under the 
 reads from the group's own intro paragraph instead, which also now says outright where to look: "fylls i
 uppe i tabellen, under Värnplikt."
 
+**"Rensa" clears just the period, next to the label it clears** — asked for by name once the fields
+moved into the table: a native date input's own clear affordance (Backspace, or a hover-only icon in
+Chromium) is easy to miss packed into a header cell this small, and the only other way to clear it was
+"Använd normala inställningar", which clears every other advanced setting along with it. `clearBtn` sits
+on the same line as the "Värnplikt" label (`vplTitleRow`, a small flex row so the two share space rather
+than each claiming their own), empties both date inputs, and re-runs the same `updateVplReadout`/`emit`
+pair the date fields themselves already call on `change` — no new code path, the same one two ways in.
+Hidden rather than shown-disabled when both dates are already empty: `updateVplReadout` toggles
+`clearBtn.hidden` on every call already made for other reasons (typing a date, resetting, switching
+language), so there is nothing to remember to keep in sync separately.
+
 **"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
 `min-width` above trades legible columns for a horizontal scrollbar confined to the sidebar's own
 ~280px `.adv-grid-scroll` box — reported as having to scroll sideways just to see Värnplikt and
