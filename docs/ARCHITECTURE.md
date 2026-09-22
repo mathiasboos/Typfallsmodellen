@@ -325,6 +325,46 @@ event outside itself, so that button is never reachable while the dialog is open
 (confirmed the hard way — an earlier draft of the offline check tried exactly that and Playwright
 timed out with "dialog intercepts pointer events" rather than the click ever landing).
 
+### Partiellt uttag: a fourth field the extractor never saw
+
+`uttagIp`, `uttagPp` and `defAr` (manual §3.7's own example: simulate a "jobbonär" — someone combining
+part-time work with a partial pension for a few years, then retiring in full) join `advanced.ts` as a
+new group, requested on top of every earlier addition here. The engine has carried all three since
+early on — `mcalc.ts`'s per-age loop already gates `uttagIp`/`uttagPp` between the retirement age and
+`defAr`, and `wages.ts`'s `withdrawalShare` already ties Lön to whichever share is drawn — the same
+"wired in the engine, missing only a UI" situation PGB was in before Phase 6.
+
+**Why `uttagIp`/`uttagPp` carry a row number `options.json` does not.** `defAr` (row 81, "Definitivt
+vid") was already a normal, extracted Adv_settings row — `contextFromSettings`'s `workbookDefault("rng_
+def_ar", 0)` already reads it, the same as every plain setting. `uttagIp`/`uttagPp` are not: reading the
+sheet directly (`tools/extract/common.py`'s `Sheet` wrapper, `Adv_settings!D82`/`D83` — the two rows sit
+right there, labelled "Partiellt uttag IP" and "...PP", each defaulting to 1) showed why
+`extract_options.py`'s `_advanced_settings` never picked them up — it requires a name in column 9, the
+layout every other row uses, and these two don't carry one. That is the same situation `tjpPar` was
+already in (`ModelContext`'s own comment on it says so) — `buildContext` gives both a literal default
+instead of reading `options.json`, and advanced.ts's own header comment now explains why for all three
+together rather than repeating it per field.
+
+**Why exposing the withdrawal share alone is the whole feature, not a first slice of it.**
+`withdrawalShare` (`packages/engine/src/income/wages.ts`) defaults to following the withdrawal itself
+whenever `workDuringPartialWithdrawal` is left at its own default (a string, "Arbetar deltid", not a
+number) — so a 50% pension draw already computes 50% work on its own, with nothing else to set. Verified
+empirically rather than just read off the source: at the shipped typfall's own retirement age 66, age 67
+reads 0 kr salary and a full pension under today's default (100% right away); setting `uttagIp`/`uttagPp`
+to 50% and `defAr` to 70 turns that same age 67 into a nonzero salary (19 936 kr) alongside almost
+exactly half the full pension (8 162 kr against 16 332 kr inkomst-/tilläggspension, 1 863 against 3 726
+kr premiepension) — and age 70 itself is back to 0 kr salary and a pension higher than the full-at-66
+figure, since the extra working years between 66 and 70 earned more pension rights on top of a now-full
+withdrawal. `rngLönPartUttag` (`workDuringPartialWithdrawal`), which would let work run at a *fixed*
+share independent of the withdrawal, and the sibling `tempTjpUttag`/`tempIpsUttag` bounds already
+exposed in the "saving" group (occupational pension and private saving's own withdrawal length) are left
+for later — not needed for the manual's own example to work end to end, and each wants its own look
+rather than riding in on this one.
+
+Barnår, section 3.7's other half (`childBirthYears`, `rng_Född_Barn1..4`), stays unexposed: a real but
+separate concern this round did not touch, the same "left out, and why" honesty every other group here
+already practices.
+
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 
 `apps/web/src/kommunalskatt.ts` gives the two tax-basis settings a friendlier starting point than a

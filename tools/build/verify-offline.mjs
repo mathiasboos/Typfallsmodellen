@@ -431,9 +431,9 @@ await tab.waitForTimeout(50);
 
 const advGroups = await tab.locator(".advanced-box .adv-group").count();
 console.log(`advanced groups : ${advGroups}`);
-// Six settings groups, plus the salary-path grid and the PGB grid.
-if (advGroups !== 8) {
-  problems.push(`advanced mode shows ${advGroups} groups, expected 8`);
+// Seven settings groups, plus the salary-path grid and the PGB grid.
+if (advGroups !== 9) {
+  problems.push(`advanced mode shows ${advGroups} groups, expected 9`);
 }
 
 /** Opens the group holding a setting and returns its control. */
@@ -738,6 +738,98 @@ await tab.waitForTimeout(50);
 const pgbAfterReset = await pgbSaInput.inputValue();
 if (pgbAfterReset !== "0") {
   problems.push(`the reset button left the PGB field at "${pgbAfterReset}", expected "0"`);
+}
+
+// Partiellt uttag: "Andel uttag, inkomstpension/premiepension" and
+// "Definitivt uttag vid ålder" simulate combining part-time work with a
+// partial pension for a few years -- manual 3.7's own example, a "jobbonär
+// under en viss period". `withdrawalShare` ties Lön to whichever share is
+// drawn by default, so the point of each check is that setting the share
+// alone moves both Lön (which the setting never mentions) and the pension
+// columns together, and that "Definitivt vid" actually bounds the period
+// rather than leaving it open-ended.
+const pwGroup = tab.locator('details[data-group="partialWithdrawal"]');
+if (!(await pwGroup.evaluate((node) => node.open))) {
+  await pwGroup.locator("summary").click();
+}
+const pwHeaders = await tab.locator(".table2 thead th").allTextContents();
+const pwAlderCol = pwHeaders.findIndex((t) => t === "Ålder");
+const pwLonCol = pwHeaders.findIndex((t) => t === "Lön");
+const pwIncomeCol = pwHeaders.findIndex((t) => t === "Inkomst- och tilläggspension");
+const pwPremiumCol = pwHeaders.findIndex((t) => t === "Premiepension");
+
+async function rowForAge(age) {
+  const rows = await tab.locator(".table2 tbody tr").count();
+  for (let i = 0; i < rows; i += 1) {
+    if ((await table2Cell(i, pwAlderCol)) === age) return i;
+  }
+  return -1;
+}
+
+// The default typfall draws its pension in full right at the retirement age
+// (66), so Lön at 67 already reads 0 -- the baseline a partial withdrawal has
+// to move away from.
+const row67 = await rowForAge(67);
+if (row67 === -1) problems.push("could not find age 67 in Table 2 to test partial withdrawal against");
+const lonBefore = row67 === -1 ? Number.NaN : await table2Cell(row67, pwLonCol);
+const incomeBefore = row67 === -1 ? Number.NaN : await table2Cell(row67, pwIncomeCol);
+const premiumBefore = row67 === -1 ? Number.NaN : await table2Cell(row67, pwPremiumCol);
+console.log(`age 67, full    : lön ${lonBefore}, inkomst-/tilläggspension ${incomeBefore}, premiepension ${premiumBefore}`);
+if (lonBefore !== 0) {
+  problems.push(`the default typfall already shows a nonzero salary at 67 (${lonBefore}) before touching partial withdrawal`);
+}
+
+await tab.locator('[data-setting="defAr"]').fill("70");
+await tab.locator('[data-setting="defAr"]').dispatchEvent("change");
+await tab.locator('[data-setting="uttagIp"]').selectOption("0.5");
+await tab.locator('[data-setting="uttagPp"]').selectOption("0.5");
+await tab.waitForTimeout(80);
+
+const lonDuring = row67 === -1 ? Number.NaN : await table2Cell(row67, pwLonCol);
+const incomeDuring = row67 === -1 ? Number.NaN : await table2Cell(row67, pwIncomeCol);
+const premiumDuring = row67 === -1 ? Number.NaN : await table2Cell(row67, pwPremiumCol);
+console.log(`age 67, 50%     : lön ${lonDuring}, inkomst-/tilläggspension ${incomeDuring}, premiepension ${premiumDuring}`);
+if (!(lonDuring > 0)) {
+  problems.push(
+    `a 50% partial withdrawal still shows no salary at 67 (${lonDuring}) -- work should follow the ` +
+      "withdrawal and continue part-time",
+  );
+}
+if (!(incomeDuring > 0 && incomeDuring < incomeBefore)) {
+  problems.push(
+    `a 50% partial withdrawal did not reduce inkomst-/tilläggspension at 67 (${incomeBefore} -> ${incomeDuring})`,
+  );
+}
+if (!(premiumDuring > 0 && premiumDuring < premiumBefore)) {
+  problems.push(`a 50% partial withdrawal did not reduce premiepension at 67 (${premiumBefore} -> ${premiumDuring})`);
+}
+
+// "Definitivt vid" bounds the partial period: at and after that age, Lön and
+// the pension are back to what a full retirement always looked like.
+const row70 = await rowForAge(70);
+const lonFinal = row70 === -1 ? Number.NaN : await table2Cell(row70, pwLonCol);
+const incomeFinal = row70 === -1 ? Number.NaN : await table2Cell(row70, pwIncomeCol);
+console.log(`age 70, final   : lön ${lonFinal}, inkomst-/tilläggspension ${incomeFinal}`);
+if (lonFinal !== 0) {
+  problems.push(`salary is still nonzero at 70 (${lonFinal}), the age "Definitivt vid" was set to`);
+}
+if (!(incomeFinal >= incomeDuring)) {
+  problems.push(
+    `inkomst-/tilläggspension at 70 (${incomeFinal}) is not back up to a full withdrawal's level ` +
+      `(${incomeDuring} during the partial period)`,
+  );
+}
+
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const uttagIpAfterReset = await tab.locator('[data-setting="uttagIp"]').inputValue();
+const defArAfterReset = await tab.locator('[data-setting="defAr"]').inputValue();
+console.log(`partial withdrawal reset: uttagIp ${uttagIpAfterReset}, defAr ${defArAfterReset}`);
+if (uttagIpAfterReset !== "1") {
+  problems.push(`reset left "Andel uttag, inkomstpension" at "${uttagIpAfterReset}", expected "1" (100%)`);
+}
+if (defArAfterReset !== "0") {
+  problems.push(`reset left "Definitivt uttag vid ålder" at "${defArAfterReset}", expected "0"`);
 }
 
 // Back to normal mode for the screenshots, and to leave the page as found.

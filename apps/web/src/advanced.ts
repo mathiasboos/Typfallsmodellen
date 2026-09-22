@@ -8,8 +8,10 @@
  * first alone, which is why `main.ts` could get this far passing an empty
  * settings map. This panel is the second.
  *
- * Twenty-five of the sheet's seventy-six rows are here, grouped as sections 3.2
- * to 3.8 of the user manual group them. The rest are left out on purpose: some
+ * Twenty-eight of the sheet's seventy-six rows are here, grouped as sections 3.2
+ * to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag" half --
+ * its "Barnår" half, `rng_Född_Barn1..4`, stays unexposed backlog). The rest are
+ * left out on purpose: some
  * are Excel's own business (`Visa_process`, `rngTurboMode`, `Verbose`), some
  * feed a sheet this port does not have (`Rng_belopp12`, `Alt_p_age`,
  * `Rng_compareTo` are Mikrosim's), some are not ported (`Wealth` and the
@@ -27,7 +29,13 @@
  * workbook. The manual's own prose is the better source, so each setting below
  * quotes the sheet's wording in a comment and carries its row number, and the
  * mapping stays checkable by eye. Values are still never retyped: every default
- * comes from `defaultContext()`, which reads options.json.
+ * comes from `defaultContext()`, which reads options.json -- except `tjpPar`,
+ * `uttagIp` and `uttagPp`, whose row on the sheet does not follow the sheet's
+ * usual name-in-column-9 layout `extract_options.py` reads (`ModelContext`'s
+ * own comment on `tjpPar` says why), so `buildContext` gives them a literal
+ * default instead. That default is still the sheet's own, read by hand off
+ * `Adv_settings` rather than the extractor -- see each setting's own comment
+ * below for the row it came from.
  */
 import { defaultContext } from "@typfallsmodellen/engine";
 import type { ModelContext } from "@typfallsmodellen/engine";
@@ -95,6 +103,20 @@ const percent = { kind: "percent" } as const;
 
 /** Whole kronor per month or year; nobody's typfall needs more than this. */
 const MONEY = 100_000_000;
+
+/**
+ * "Partiellt uttag IP"/"...PP", rows 82/83: the sheet offers exactly these
+ * four shares, not an open percent field -- confirmed against the sheet
+ * itself (`Adv_settings!D82`/`D83`), since neither row follows the
+ * name-in-column-9 layout `extract_options.py` reads and so neither made it
+ * into `options.json`.
+ */
+const WITHDRAWAL_SHARE: readonly Choice[] = [
+  { value: 1, label: text("100 %", "100%") },
+  { value: 0.75, label: text("75 %", "75%") },
+  { value: 0.5, label: text("50 %", "50%") },
+  { value: 0.25, label: text("25 %", "25%") },
+];
 
 export const GROUPS: readonly Group[] = [
   {
@@ -313,6 +335,57 @@ export const GROUPS: readonly Group[] = [
         hint: text("kronor per månad", "kronor per month"),
         get: (c) => c.akasseavg,
         set: (akasseavg) => ({ akasseavg }),
+      },
+    ],
+  },
+  {
+    // Manual 3.7's own example: "Partiellt uttag av inkomstpensionen och
+    // premiepensionen kan läggas in här, för att till exempel simulera ett
+    // typfall som är jobbonär under en viss period" -- take out a reduced
+    // share of the public pension for a few years while still working
+    // part-time, then retire in full. `withdrawalShare` (packages/engine/
+    // src/income/wages.ts) ties Lön to whichever share is drawn by default,
+    // so these three fields are the whole feature -- nothing else has to
+    // move for "jobbonär" to show up in Table 2 as a reduced salary
+    // alongside a reduced pension.
+    key: "partialWithdrawal",
+    section: "3.7",
+    title: text("Partiellt uttag", "Partial withdrawal"),
+    settings: [
+      {
+        // row 82 "Partiellt uttag IP" / "... vid 66 med 100 % uttag"
+        key: "uttagIp",
+        row: 82,
+        control: { kind: "select", choices: WITHDRAWAL_SHARE },
+        label: text("Andel uttag, inkomstpension", "Income pension withdrawn"),
+        hint: text(
+          "mellan pensionsåldern och \"Definitivt vid\" nedan",
+          "between the retirement age and \"Final at\" below",
+        ),
+        get: (c) => c.uttagIp,
+        set: (uttagIp) => ({ uttagIp }),
+      },
+      {
+        // row 83 "Partiellt uttag PP" / "... vid 66 med 100 % uttag"
+        key: "uttagPp",
+        row: 83,
+        control: { kind: "select", choices: WITHDRAWAL_SHARE },
+        label: text("Andel uttag, premiepension", "Premium pension withdrawn"),
+        get: (c) => c.uttagPp,
+        set: (uttagPp) => ({ uttagPp }),
+      },
+      {
+        // row 81 "Definitivt vid" / "års ålder"
+        key: "defAr",
+        row: 81,
+        control: years(0, 100),
+        label: text("Definitivt uttag vid ålder", "Withdrawal becomes final at age"),
+        hint: text(
+          "0 eller pensionsåldern = fullt uttag direkt, som idag",
+          "0 or the retirement age = full withdrawal right away, as today",
+        ),
+        get: (c) => c.defAr,
+        set: (defAr) => ({ defAr }),
       },
     ],
   },
