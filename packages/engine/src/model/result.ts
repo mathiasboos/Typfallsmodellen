@@ -15,7 +15,7 @@ import { recomputeAtRetirement } from "./atRetirement.js";
 import { deltal, incomePensionYear } from "../pension/incomePension.js";
 import { tpFaktor } from "../pension/atp.js";
 import { vbaInt, wsMax, wsMin } from "../vba/math.js";
-import type { Run } from "./mcalc.js";
+import type { Run, ResolvedPgbYear } from "./mcalc.js";
 import type { OwnIncomeYear } from "./input.js";
 import type { MvaluesRow } from "./state.js";
 import type { Warning } from "./setup.js";
@@ -115,11 +115,25 @@ export interface TypfallResult {
    * share of.
    */
   readonly wagePath: readonly OwnIncomeYear[];
+  /**
+   * `TypfallInput.pgbManual`/`pgbConscription`, resolved to kronor per age --
+   * the same figures `earnPgb` adds into the pension, handed back so the PGB
+   * grid can show the conscription date range's and the study semester
+   * count's own arithmetic (days and kronor) rather than just the pension
+   * figures they eventually move. One entry per age that has any of sa, vpl
+   * or studier, not the whole working-life range.
+   */
+  readonly pgbBreakdown: readonly PgbBreakdownYear[];
   readonly lifeIncome: LifeIncome;
   /** Years with a pension right, capped at 40, which labels the IPT row. */
   readonly qualifyingYears: number;
   /** Corrections the run made to the inputs it was given. */
   readonly warnings: readonly Warning[];
+}
+
+/** One age's whole PGB sheet, resolved to kronor (and, for conscription, days). */
+export interface PgbBreakdownYear extends ResolvedPgbYear {
+  readonly age: number;
 }
 
 /**
@@ -512,6 +526,13 @@ export function buildWagePath(run: Run): OwnIncomeYear[] {
   return path.slice(0, last);
 }
 
+/** `run.pgbManual`, flattened to an array and sorted by age for display. */
+function buildPgbBreakdown(run: Run): PgbBreakdownYear[] {
+  return [...run.pgbManual.entries()]
+    .map(([age, row]) => ({ age, ...row }))
+    .sort((a, b) => a.age - b.age);
+}
+
 /** Assembles the whole result, after the loop has run. */
 export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResult {
   if (run.context.lastPensionRight > 0) creditLastPensionRight(run);
@@ -530,6 +551,7 @@ export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResu
     table2: buildTable2(run),
     rows: run.s.rows,
     wagePath: buildWagePath(run),
+    pgbBreakdown: buildPgbBreakdown(run),
     lifeIncome: lifeIncome(run),
     qualifyingYears: wsMin(run.s.pgiYears, 40),
     warnings,

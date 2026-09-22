@@ -367,7 +367,11 @@ body {
 .adv-grid thead th:nth-child(3), .adv-grid td:nth-child(3),
 .adv-grid thead th:nth-child(4), .adv-grid td:nth-child(4) { width: 30%; } /* Inkomst, Varav lön */
 .adv-grid th, .adv-grid td { padding: 2px 4px; font-size: 0.75rem; }
-.adv-grid thead th { position: sticky; top: 0; z-index: 1; }
+/* On `thead` itself rather than each `th` -- pgb.ts's grid has a two-row
+   header (a group row above a sub-column row), and sticking the whole group
+   keeps both rows pinned together, rather than each needing its own `top`
+   offset computed from the other row's height. */
+.adv-grid thead { position: sticky; top: 0; z-index: 1; }
 /* pgb.ts's three amount headers are longer, unbroken compound words (no space
    to wrap at) that would otherwise overflow their fixed-width cell and bleed
    into the next one -- salaryPath.ts's two-word headers never hit this, but
@@ -392,25 +396,29 @@ body {
 .adv-grid td > input[type="number"] { -moz-appearance: textfield; }
 
 /*
- * pgb.ts's grid has five columns, not salaryPath.ts's four -- three amount
- * columns instead of two, in the same sidebar width. Splitting that width
- * five ways at the same proportions left each amount input around 45px,
- * measured to clip a sixth digit that salaryPath.ts's own 30%-wide, ~62px
- * amount columns do not. Rather than shrink the type further, the table gets
- * a min-width instead: percentages still add up to 100% of that width, so
- * every column keeps the same proportions and just renders bigger, and the
- * grid scrolls horizontally the same way `.adv-grid-scroll` already lets a
- * tall grid scroll vertically -- inside the sidebar, which is the one place
- * this rule still applies once `.pgb-dialog` below gives the same table
- * somewhere wider to render without the floor at all.
+ * pgb.ts's grid has seven columns, not salaryPath.ts's four, and a two-row
+ * header (a group row above a sub-column row for Studier and Värnplikt) --
+ * so `thead th:nth-child` can no longer double as the column selector the
+ * way `.adv-grid`'s own rule works: a header cell's position among its own
+ * row's cells no longer matches its column index once earlier cells span
+ * two rows or two columns. `<colgroup>`'s `<col>` elements are never
+ * spanned that way -- one per physical column, always -- and `col` width
+ * takes precedence over any cell's own width in fixed layout regardless, so
+ * `pgb.ts` renders one and every width lives here instead. The table still
+ * gets a min-width, for the same reason `.adv-grid`'s own comment above
+ * gives: splitting the sidebar's width seven ways clips digits fixed layout
+ * would otherwise leave room for, and `.pgb-dialog` below gives the same
+ * table somewhere wider to render without the floor at all.
  */
-.pgb-grid { min-width: 380px; }
-.pgb-grid thead th:nth-child(1), .pgb-grid td:nth-child(1) { width: 16%; }  /* År */
-.pgb-grid thead th:nth-child(2), .pgb-grid td:nth-child(2) { width: 12%; }  /* Ålder */
-.pgb-grid thead th:nth-child(3), .pgb-grid td:nth-child(3),
-.pgb-grid thead th:nth-child(4), .pgb-grid td:nth-child(4),
-.pgb-grid thead th:nth-child(5), .pgb-grid td:nth-child(5) { width: 24%; } /* Sjuk-/aktivitetsersättning, Antal terminer, PGB studier */
-.pgb-study-kr { color: var(--text-secondary); }
+.pgb-grid { min-width: 460px; }
+.pgb-grid col:nth-child(1) { width: 13%; }  /* År */
+.pgb-grid col:nth-child(2) { width: 10%; }  /* Ålder */
+.pgb-grid col:nth-child(3) { width: 18%; }  /* Sjuk-/aktivitetsersättning */
+.pgb-grid col:nth-child(4) { width: 15%; }  /* Antal terminer */
+.pgb-grid col:nth-child(5) { width: 16%; }  /* PGB studier, kr */
+.pgb-grid col:nth-child(6) { width: 12%; }  /* Värnplikt, dagar */
+.pgb-grid col:nth-child(7) { width: 16%; }  /* PGB värnplikt, kr */
+.pgb-computed { color: var(--text-secondary); }
 
 /* Värnplikt: two date fields plus a day-split readout, above the per-age
    grid -- a single wsPGB!H4/H5 range, not a row-per-age entry. */
@@ -436,7 +444,11 @@ body {
  * table.
  */
 .pgb-dialog {
-  width: min(94vw, 480px);
+  /* 480px comfortably fit the grid's original five columns; seven need more
+     room, or the header text that gave each column its name wraps down to
+     single syllables instead of words -- the point of moving the table here
+     at all is to stop that, not just to stop the horizontal scrollbar. */
+  width: min(94vw, 760px);
   max-width: 94vw;
   padding: 12px;
   border: 1px solid var(--border);

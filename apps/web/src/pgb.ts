@@ -13,6 +13,27 @@
  * model/pgb.ts` is where the conscription and study kronor actually get
  * computed; this file only collects the dates and the semester counts.
  *
+ * The grid has two grouped columns, "Studier" and "Värnplikt", each an input
+ * beside the kronor (and, for Värnplikt, the days) it produces -- mirroring
+ * the sheet's own PGB tab, which lays conscription and study out as Year,
+ * Age, Days, PGB amount and Year, Age, Semesters, PGB amount respectively,
+ * rather than as a single line of text summarising the whole period. The
+ * conscription dates themselves stay above the grid as a single date-range
+ * pair (`vplBox`) rather than one date-per-row cell: `wsPGB!H4`/`H5` are a
+ * single period, not a per-age entry, and the sheet's own instruction is
+ * "Lägg in datum", nothing about a grid -- but the days and kronor it
+ * produces are shown per touched year, in the grid, the same as the sheet.
+ *
+ * The conscription kronor need `medelPgi`, an economic projection that
+ * depends on the run's own inflation/growth/price-basis assumptions --
+ * unlike study's kronor, which are a pure function of a year and a semester
+ * count and so are still computed client-side. There is no reaching that
+ * projection from here without duplicating a chunk of `setup.ts`, so the
+ * conscription column instead reads back `TypfallResult.pgbBreakdown`, the
+ * same figures `earnPgb` used in the pension it just computed -- `setBaseline`
+ * takes it as a third argument, refreshed on every render the way
+ * `salaryPath.ts`'s own baseline is.
+ *
  * Unlike `salaryPath.ts`'s grid, there is no computed path to fill from or
  * fall back to -- every cell starts at zero (or empty, for the dates), and
  * only the nonzero/non-empty entries are ever handed to the engine.
@@ -27,7 +48,11 @@
  * values never have to be reconciled) when unrelated inputs change.
  */
 import { conscriptionDaysByYear, studyPgb } from "@typfallsmodellen/engine";
-import type { PgbConscriptionPeriod, PgbManualYear } from "@typfallsmodellen/engine";
+import type {
+  PgbBreakdownYear,
+  PgbConscriptionPeriod,
+  PgbManualYear,
+} from "@typfallsmodellen/engine";
 
 import type { Lang } from "./i18n.js";
 
@@ -38,9 +63,10 @@ const MAX_SEMESTERS = 2;
 export interface PgbGridHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
-  /** Keeps the year column, and the study readout, in step with the Start
-   * sheet's birth year and the "Marginal, avrundningar" setting. */
-  setBaseline(born: number, marginal: number): void;
+  /** Keeps the year column, the study readout and the conscription
+   * days/kronor columns in step with the Start sheet's birth year, the
+   * "Marginal, avrundningar" setting, and the latest run's own PGB figures. */
+  setBaseline(born: number, marginal: number, pgbBreakdown: readonly PgbBreakdownYear[]): void;
   /** Clears every cell, and the conscription dates, back to empty. */
   reset(): void;
 }
@@ -62,6 +88,8 @@ export function createPgbGrid(
 ): PgbGridHandle {
   let born = 0;
   let marginal = 0;
+  let breakdown = new Map<number, PgbBreakdownYear>();
+  let breakdownDigest = "";
   let rows: Row[] = [];
   for (let age = FIRST_AGE; age <= LAST_AGE; age += 1) rows.push({ age, sa: 0, studySemesters: 0 });
 
@@ -113,9 +141,9 @@ export function createPgbGrid(
   vplReadout.className = "field-hint pgb-vpl-readout";
   vplBox.append(vplFields, vplReadout);
 
-  // Five columns split across the sidebar's own width clip a sixth digit
+  // Seven columns split across the sidebar's own width clip the later ones
   // (see `.pgb-grid`'s own comment in styles.css), so `.pgb-grid` carries a
-  // 380px floor and the grid scrolls sideways in its narrow `.adv-grid-scroll`
+  // min-width floor and the grid scrolls sideways in its narrow `.adv-grid-scroll`
   // box to show it all -- reported as having to scroll to see the rest of the
   // table. `expandBtn` moves the same table (same nodes, same listeners, no
   // duplicated state) into a `<dialog>` instead: freed from the sidebar, the
@@ -130,17 +158,42 @@ export function createPgbGrid(
   scroll.className = "adv-grid-scroll";
   const table = document.createElement("table");
   table.className = "table adv-grid pgb-grid";
+
+  // One <col> per physical column, in order -- styles.css sets every width
+  // on these rather than on the header cells, since the two-row header below
+  // means a header cell's position in its own row no longer lines up with
+  // its column index once earlier cells start spanning rows or columns.
+  const colgroup = document.createElement("colgroup");
+  for (let i = 0; i < 7; i += 1) colgroup.append(document.createElement("col"));
+  table.append(colgroup);
+
+  // Two header rows: Year/Age/Sjuk- span both (`rowSpan`, so their own label
+  // is not repeated), and Studier/Värnplikt each span two columns in the top
+  // row -- the input beside the kronor (and, for Värnplikt, the days) it
+  // produces -- so the pairing reads as one group rather than two unrelated
+  // columns that happen to sit next to each other.
   const head = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  const headCells = [
-    document.createElement("th"),
-    document.createElement("th"),
-    document.createElement("th"),
-    document.createElement("th"),
-    document.createElement("th"),
-  ];
-  headRow.append(...headCells);
-  head.append(headRow);
+  const groupRow = document.createElement("tr");
+  const yearHead = document.createElement("th");
+  yearHead.rowSpan = 2;
+  const ageHead = document.createElement("th");
+  ageHead.rowSpan = 2;
+  const saHead = document.createElement("th");
+  saHead.rowSpan = 2;
+  const studyGroupHead = document.createElement("th");
+  studyGroupHead.colSpan = 2;
+  const vplGroupHead = document.createElement("th");
+  vplGroupHead.colSpan = 2;
+  groupRow.append(yearHead, ageHead, saHead, studyGroupHead, vplGroupHead);
+
+  const subRow = document.createElement("tr");
+  const semesterHead = document.createElement("th");
+  const studyKrHead = document.createElement("th");
+  const vplDaysHead = document.createElement("th");
+  const vplKrHead = document.createElement("th");
+  subRow.append(semesterHead, studyKrHead, vplDaysHead, vplKrHead);
+
+  head.append(groupRow, subRow);
   const tbody = document.createElement("tbody");
   table.append(head, tbody);
   scroll.append(table);
@@ -185,6 +238,10 @@ export function createPgbGrid(
     return { start: startInput.value, end: endInput.value };
   }
 
+  // Only the one case the grid itself cannot show: a period too short to earn
+  // anything has no touched-year rows to display a zero in. A valid period's
+  // own days and kronor show in the grid, per year, so this stays blank then
+  // rather than repeating the same figures as a line of text above it.
   function updateVplReadout(l: Lang): void {
     const period = conscriptionPeriod();
     if (period === undefined) {
@@ -192,18 +249,14 @@ export function createPgbGrid(
       return;
     }
     const days = conscriptionDaysByYear(period);
-    if (days.size === 0) {
-      vplReadout.textContent = say(
-        l,
-        "Perioden är kortare än 120 dagar och ger ingen pensionsrätt.",
-        "The period is under 120 days and earns no pension rights.",
-      );
-      return;
-    }
-    const perYear = [...days.entries()]
-      .map(([year, count]) => `${year}: ${Math.round(count)} ${say(l, "dagar", "days")}`)
-      .join(", ");
-    vplReadout.textContent = say(l, `Registrerat: ${perYear}.`, `Recorded: ${perYear}.`);
+    vplReadout.textContent =
+      days.size === 0
+        ? say(
+            l,
+            "Perioden är kortare än 120 dagar och ger ingen pensionsrätt.",
+            "The period is under 120 days and earns no pension rights.",
+          )
+        : "";
   }
 
   function emit(): void {
@@ -265,7 +318,7 @@ export function createPgbGrid(
       semesterInput.step = "1";
       semesterInput.value = String(row.studySemesters);
       const studyCell = document.createElement("td");
-      studyCell.className = "num pgb-study-kr";
+      studyCell.className = "num pgb-computed";
       const updateStudyReadout = () => {
         const year = born > 0 ? Math.trunc(born) + rows[index]!.age : 0;
         const kr = born > 0 ? studyPgb(year, rows[index]!.studySemesters, marginal) : 0;
@@ -286,7 +339,19 @@ export function createPgbGrid(
       semesterCell.append(semesterInput);
       updateStudyReadout();
 
-      tr.append(year, age, saCell, semesterCell, studyCell);
+      // Read back, not computed here: conscription's kronor need `medelPgi`,
+      // an economic projection this file has no way to reach on its own (see
+      // the file's own top comment) -- `breakdown` is the latest run's own
+      // figures, refreshed by `setBaseline` on every render.
+      const entry = breakdown.get(row.age);
+      const vplDaysCell = document.createElement("td");
+      vplDaysCell.className = "num pgb-computed";
+      vplDaysCell.textContent = entry && entry.vplDays > 0 ? String(Math.round(entry.vplDays)) : "";
+      const vplKrCell = document.createElement("td");
+      vplKrCell.className = "num pgb-computed";
+      vplKrCell.textContent = entry && entry.vpl > 0 ? entry.vpl.toLocaleString("sv-SE") : "";
+
+      tr.append(year, age, saCell, semesterCell, studyCell, vplDaysCell, vplKrCell);
       tbody.append(tr);
     }
   }
@@ -315,14 +380,15 @@ export function createPgbGrid(
       "not before 1995-01-01; only earns pension rights 1995-2010 and from 2018 on",
     );
     endLabel.textContent = say(l, "Muck (slutdatum)", "End date");
-    const heads = [
-      say(l, "År", "Year"),
-      say(l, "Ålder", "Age"),
-      say(l, "Sjuk-/aktivitetsersättning", "Sickness/activity comp."),
-      say(l, "Antal terminer", "Semesters"),
-      say(l, "PGB studier, kr", "Study PGB, kr"),
-    ];
-    for (const [i, cell] of headCells.entries()) cell.textContent = heads[i]!;
+    yearHead.textContent = say(l, "År", "Year");
+    ageHead.textContent = say(l, "Ålder", "Age");
+    saHead.textContent = say(l, "Sjuk-/aktivitetsersättning", "Sickness/activity comp.");
+    studyGroupHead.textContent = say(l, "Studier", "Study");
+    vplGroupHead.textContent = say(l, "Värnplikt", "Conscription");
+    semesterHead.textContent = say(l, "Antal terminer", "Semesters");
+    studyKrHead.textContent = say(l, "PGB studier, kr", "Study PGB, kr");
+    vplDaysHead.textContent = say(l, "Dagar", "Days");
+    vplKrHead.textContent = say(l, "PGB värnplikt, kr", "Conscription PGB, kr");
     updateVplReadout(l);
   };
   applyText(lang);
@@ -333,20 +399,31 @@ export function createPgbGrid(
       currentLang = l;
       applyText(l);
     },
-    setBaseline(bornYear, marginalValue) {
-      if (bornYear === born && marginalValue === marginal) return;
+    setBaseline(bornYear, marginalValue, pgbBreakdown) {
+      // `pgbBreakdown` is a handful of entries at most (only touched ages),
+      // so a stringified comparison is cheap -- and it is what actually
+      // decides whether the conscription columns need to change, since
+      // `medelPgi` can move with the run's own economic assumptions without
+      // `born` or `marginal` moving at all.
+      const digest = JSON.stringify(pgbBreakdown);
+      if (bornYear === born && marginalValue === marginal && digest === breakdownDigest) return;
       born = bornYear;
       marginal = marginalValue;
+      breakdown = new Map(pgbBreakdown.map((row) => [row.age, row]));
+      breakdownDigest = digest;
       // Every cell's own study readout reads `born`/`marginal` from this
-      // closure, so a rebuild is the only way either change reaches it --
-      // relabelling the year column in place, the way `salaryPath.ts` does,
-      // would leave the study kronor stale.
+      // closure, and the conscription cells read `breakdown`, so a rebuild
+      // is the only way any of the three reaches them -- relabelling the
+      // year column in place, the way `salaryPath.ts` does, would leave the
+      // rest stale.
       drawGrid();
     },
     reset() {
       rows = rows.map((row) => ({ ...row, sa: 0, studySemesters: 0 }));
       startInput.value = "";
       endInput.value = "";
+      breakdown = new Map();
+      breakdownDigest = "";
       updateVplReadout(currentLang);
       drawGrid();
     },

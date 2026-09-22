@@ -653,20 +653,71 @@ if (pgbRows !== 55) {
   problems.push(`the PGB grid has ${pgbRows} rows, expected 55 (ages 16-70)`);
 }
 
+// Studier's own semester count and its kronor, and Värnplikt's own days and
+// kronor, are grouped under one named header each -- reported as unclear
+// that "Antal terminer" and "PGB studier, kr" were even related fields.
+const pgbColCount = await pgbGrid.first().locator("td").count();
+if (pgbColCount !== 7) {
+  problems.push(
+    `a PGB grid row has ${pgbColCount} cells, expected 7 (Year, Age, SA, semesters, study kr, days, conscription kr)`,
+  );
+}
+const pgbGroupHeads = await pgbGroup.locator(".pgb-grid thead tr").first().locator("th").allTextContents();
+console.log(`pgb group heads : ${pgbGroupHeads.join(" | ")}`);
+if (!pgbGroupHeads.some((h) => /studier/i.test(h))) {
+  problems.push(`the PGB grid's header row has no "Studier" group over Antal terminer/PGB studier, got: ${pgbGroupHeads.join(" | ")}`);
+}
+if (!pgbGroupHeads.some((h) => /värnplikt/i.test(h))) {
+  problems.push(`the PGB grid's header row has no "Värnplikt" group over Dagar/PGB värnplikt, got: ${pgbGroupHeads.join(" | ")}`);
+}
+
 // Värnplikt: wsPGB!H4/H5, a single date range rather than a row-per-age
-// entry -- the readout is the same year-by-year day split
-// conscriptionDaysByYear computes, so it has to name the year typed in
-// before the pension itself is checked to have moved from it.
+// entry -- the days and the kronor it earns show per touched year in the
+// grid itself (columns 6 and 7, "Dagar" / "PGB värnplikt, kr"), the same
+// way the sheet shows them, and the standalone readout above the grid is
+// left for the one thing the grid cannot show: a period too short to earn
+// anything, with no touched-year row to hold a zero.
 const pensionBeforeVpl = await kpiValue(0);
+const vplRow1998 = pgbGrid.nth(1998 - 1959 - 16); // this typfall's born 1959
 await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').fill("1998-01-01");
 await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').dispatchEvent("change");
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31");
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-02-01"); // 31 days, under the 120 minimum
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplShortReadout = await pgbGroup.locator(".pgb-vpl-readout").textContent();
+console.log(`vpl short period: "${vplShortReadout}"`);
+if (!vplShortReadout || !/120/.test(vplShortReadout)) {
+  problems.push(`a conscription period under 120 days reads "${vplShortReadout}", expected the "under 120 days" warning`);
+}
+const vplDaysTooShort = await vplRow1998.locator("td").nth(5).textContent();
+if (vplDaysTooShort !== "") {
+  problems.push(`a conscription period under 120 days still shows "${vplDaysTooShort}" in the grid's days column, expected blank`);
+}
+const pensionAfterShortVpl = await kpiValue(0);
+if (pensionAfterShortVpl !== pensionBeforeVpl) {
+  problems.push(
+    `a conscription period under 120 days moved the pension (${pensionBeforeVpl} -> ${pensionAfterShortVpl}), expected no change`,
+  );
+}
+
+await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31"); // now a full year, well over 120 days
 await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
 await tab.waitForTimeout(80);
 const vplReadout = await pgbGroup.locator(".pgb-vpl-readout").textContent();
-console.log(`vpl readout     : ${vplReadout}`);
-if (!vplReadout || !/1998/.test(vplReadout)) {
-  problems.push(`the conscription date range's own readout reads "${vplReadout}", expected it to name 1998`);
+if (vplReadout !== "") {
+  problems.push(
+    `the conscription readout reads "${vplReadout}" for a valid period, expected empty -- the grid's own ` +
+      "Dagar/PGB värnplikt columns show the detail instead of a line of text above it",
+  );
+}
+const vplDays = await vplRow1998.locator("td").nth(5).textContent();
+const vplKr = await vplRow1998.locator("td").nth(6).textContent();
+console.log(`vpl days/kr row : ${vplDays} dagar, ${vplKr} kr (1998)`);
+if (!vplDays || Number(vplDays.replace(/[^\d]/g, "")) !== 364) {
+  problems.push(`the 1998 row's own days cell reads "${vplDays}", expected 364`);
+}
+if (!vplKr || !(Number(vplKr.replace(/[^\d]/g, "")) > 0)) {
+  problems.push(`the 1998 row's own PGB värnplikt cell reads "${vplKr}", expected a positive kronor figure`);
 }
 const pensionAfterVpl = await kpiValue(0);
 console.log(`pension w/ vpl  : ${pensionBeforeVpl} -> ${pensionAfterVpl} kr after a conscription period`);

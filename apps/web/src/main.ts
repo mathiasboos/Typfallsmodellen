@@ -376,7 +376,7 @@ function render(): void {
     const { ownIncome, ...withoutOwnIncome } = typfall;
     const baseline = ownIncome === undefined ? result : run(withoutOwnIncome, context, { deaths });
     salaryPath.setBaseline(baseline.wagePath, input.born);
-    pgbGrid.setBaseline(input.born, context.marginal);
+    pgbGrid.setBaseline(input.born, context.marginal, result.pgbBreakdown);
   }
 
   results.replaceChildren();

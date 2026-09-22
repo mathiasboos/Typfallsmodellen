@@ -342,36 +342,73 @@ Three findings shaped the port:
   and 15 unit tests in `packages/engine/test/pgb.test.ts` pin the day counts by hand for periods within
   one year, crossing one boundary, and crossing two.
 
-Three amount-shaped columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
-~45px-wide inputs, clipping a sixth digit that the salary grid's own ~62px inputs do not — so the
-table gets a `min-width` wider than the sidebar, scrolling horizontally the same way the grid already
-scrolls vertically, keeping every column's proportions and just rendering them bigger. Its longest
-header, "Sjuk-/aktivitetsersättning", is also one unbroken compound word with no space to wrap at,
-which measured as overflowing its fixed-width cell into the next one — `overflow-wrap: break-word` on
+Five amount-shaped columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
+narrow inputs, clipping digits that the salary grid's own wider inputs do not — so the table gets a
+`min-width` wider than the sidebar, scrolling horizontally the same way the grid already scrolls
+vertically, keeping every column's proportions and just rendering them bigger. Its longest header,
+"Sjuk-/aktivitetsersättning", is also one unbroken compound word with no space to wrap at, which
+measured as overflowing its fixed-width cell into the next one — `overflow-wrap: break-word` on
 `.adv-grid th` lets it wrap mid-word instead, harmlessly, since none of `salaryPath.ts`'s own shorter
 headers were ever close to their column's width.
 
+**Studier and Värnplikt are named column groups, not two unrelated pairs that happen to sit next to
+each other** — reported as unclear that a typed semester count and the kronor beside it were even
+related fields. The header is two rows (`<thead>` with two `<tr>`s, following `renderCompareTable`'s
+own precedent in `tables.ts`): År, Ålder and Sjuk-/aktivitetsersättning each `rowSpan="2"` so their own
+label is written once, while Studier and Värnplikt each `colSpan="2"` over their own pair in the row
+above it. `table-layout: fixed` ordinarily takes its column widths from `thead th:nth-child`/`tbody
+td:nth-child` pairs at the same position, which breaks the moment a header row's cells no longer line
+up with the body's own columns one-for-one — exactly what `rowSpan`/`colSpan` here does. `pgb.ts`
+renders an explicit `<colgroup>` of seven `<col>` elements instead, one per physical column and never
+spanned, and every width lives in `styles.css` against `.pgb-grid col:nth-child(N)` — `<col>` width
+takes precedence over any cell's own in the fixed-layout algorithm regardless of what row structure
+sits below it, which is what makes it the robust choice here rather than a coincidence.
+
+**Värnplikt's own days and kronor are a real column each, per touched year, the same shape the sheet
+itself shows** — until this round, the date range's own confirmation was a single line of text above
+the grid ("Registrerat: 1998: 364 dagar"), with no equivalent of Studier's own per-row kronor column.
+Two changes closed that gap: `mcalc.ts`'s internal `ResolvedPgbYear` (already computed by
+`buildPgbManual` for every touched age) gained a `vplDays` field alongside the kronor it already
+carried, and `result.ts` exposes the whole map back out as `TypfallResult.pgbBreakdown` — a new,
+small, read-only array the UI can show without ever recomputing conscription's own arithmetic itself.
+That last part matters: study's kronor are a pure function of a year and a semester count, cheap and
+side-effect-free to compute again client-side, but conscription's need `medelPgi`, an economic
+projection this file has no way to reach on its own without duplicating a slice of `setup.ts` — reading
+it back from the run that just used it is the only path that does not either duplicate that logic or
+drift from it. `main.ts`'s `render()` already computes a full run before touching advanced mode at all,
+so `pgbGrid.setBaseline(input.born, context.marginal, result.pgbBreakdown)` costs nothing extra; `pgb.ts`
+digest-compares the incoming breakdown (a handful of entries at most) against what it last drew, since
+`medelPgi` can move with the run's own economic assumptions without `born` or `marginal` moving at all,
+and a naive born/marginal-only check would leave the two new columns stale. The readout above the grid
+keeps exactly the one thing the grid itself cannot show — a period under 120 days has no touched-year
+row to display a zero in — and goes blank once a valid period's own detail has somewhere to live.
+
 **"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
-`min-width` above trades a legible column for a horizontal scrollbar confined to the sidebar's own
+`min-width` above trades legible columns for a horizontal scrollbar confined to the sidebar's own
 ~280px `.adv-grid-scroll` box — reported as having to scroll sideways just to see Värnplikt and
 Studier. `pgb.ts`'s `expandBtn` moves the same `scroll` div (the same `<table>`, same inputs, same
 `change` listeners — not a rebuilt copy that would need its own state to stay in sync) into a
 `<dialog>` opened with `showModal()`, and moves it back on the dialog's own `close` event, whichever
 of the three ways that fires: the dialog's close button, the browser's own Escape handling, or a click
 on the backdrop (`event.target === dialog`, the same test a click anywhere *inside* the dialog fails).
-Freed from the sidebar, the dialog alone (`width: min(94vw, 480px)`) is wider than the grid's 380px
-floor on any realistic screen, so `.pgb-dialog .pgb-grid { min-width: 0; }` lets the table settle back
-to a plain 100%-wide fixed layout and needs no horizontal scrollbar of its own — measured at three
-widths (1280px desktop, 390px, and 375px — an iPhone SE, the narrowest realistic phone) with
-`scrollWidth <= clientWidth` on `.adv-grid-scroll` before this shipped. Only the 375px case is checked
-on every push: at the suite's standard 1280px, the dialog's own cap already clears the 380px floor
-whether or not `min-width: 0` is even there, so that width alone would never catch a regression in the
-one rule this feature actually adds — the desktop check instead covers what the dialog itself moves
-and restores. `reset()` — "Använd normala inställningar" — cannot also close the dialog if it happens
-to be open: a modal `<dialog>` makes the rest of the page inert by design, intercepting every pointer
-event outside itself, so that button is never reachable while the dialog is open in the first place
-(confirmed the hard way — an earlier draft of the offline check tried exactly that and Playwright
-timed out with "dialog intercepts pointer events" rather than the click ever landing).
+The dialog's own width cap (`width: min(94vw, 760px)`) grew with the grid: 480px comfortably fit the
+original five columns, but adding Värnplikt's two left the same longest headers wrapping down to
+single syllables instead of words at that width — legible under `scrollWidth <= clientWidth` (fixed
+layout never grows past its container regardless of what its content needs) is not the same thing as
+legible to read, which only a screenshot actually caught. Freed from the sidebar, the dialog is wider
+than the grid's own `min-width` floor on any realistic screen, so `.pgb-dialog .pgb-grid { min-width:
+0; }` lets the table settle back to a plain 100%-wide fixed layout and needs no horizontal scrollbar of
+its own — measured at three widths (1280px desktop, 390px, and 375px — an iPhone SE, the narrowest
+realistic phone) with `scrollWidth <= clientWidth` on `.adv-grid-scroll` before this shipped. Only the
+375px case is checked on every push: at the suite's standard 1280px, the dialog's own cap already
+clears the floor whether or not `min-width: 0` is even there, so that width alone would never catch a
+regression in the one rule this feature actually adds — the desktop check instead covers what the
+dialog itself moves and restores. `reset()` — "Använd normala inställningar" — cannot also close the
+dialog if it happens to be open: a modal `<dialog>` makes the rest of the page inert by design,
+intercepting every pointer event outside itself, so that button is never reachable while the dialog is
+open in the first place (confirmed the hard way — an earlier draft of the offline check tried exactly
+that and Playwright timed out with "dialog intercepts pointer events" rather than the click ever
+landing).
 
 ### Partiellt uttag: a fourth field the extractor never saw
 
@@ -641,3 +678,34 @@ document. Proven to fail first the ordinary way -- reverting just these two file
 reproduces the exact `<script type="module">` this check now catches, and (checked separately, by
 testing `<script defer>` against the same reverted build) `defer` alone does not fix the ordering
 problem for an inline script even though it looks like it should.
+
+### A "$&" that only sometimes breaks the build
+
+Adding the PGB grid's conscription columns (below) turned a clean build into one where the offline
+check's very first `waitForSelector` timed out -- the page never rendered at all. Chromium's own
+`pageerror` named it exactly: `Unexpected token '<'`, a JavaScript syntax error, in a file that had
+just built without complaint and passed `tsc --noEmit`. Bisecting the built HTML itself (not the
+source -- nothing in it was wrong) found two stray, literal `</body>` strings sitting in the *middle*
+of the minified script, in place of what unminified `fflate` (the zip library `xlsxExportButton`
+bundles) writes as `$&` -- a variable named `$`, immediately followed by a bitwise AND.
+
+The cause was `inline-single-file.mjs`'s own `html.replace("</body>", \`${inlineScript}</body>\`)`.
+`String.replace`'s *string* form treats a handful of `$`-prefixed sequences in the replacement
+specially -- `$&` above all, meaning "insert the matched substring", which here was the literal text
+`"</body>"` being searched for. A one-character variable name next to the AND operator is unremarkable
+in output this size, and the two had never landed adjacent to each other in a build before -- until
+code elsewhere in the same bundle (unrelated to `fflate` itself) shifted esbuild's own minified-name
+allocation just enough to produce that exact two-character `$&` somewhere inside it. Nothing about the
+PGB feature touches `fflate` or the inliner; it only changed how one identifier elsewhere in the same
+scope-hoisted bundle got named, which is enough to make a latent bug like this fire on one build and
+not the one before it.
+
+The fix is the standard one for this exact gotcha: a replacer *function* instead of a string --
+`html.replace("</body>", () => \`${inlineScript}</body>\`)`. A function's return value is spliced in
+literally, with no reinterpretation of anything it contains, whatever the bundle happens to say.
+Proven against the actual failure, not assumed: reverting just this one line and rebuilding reproduces
+the same `</body>`-for-`$&` corruption and the same blank-page `pageerror`, restoring it makes both
+disappear. Nothing catches this at the type or unit level -- it depends on what the minifier's own
+name allocation happens to produce for a given bundle -- so it is exactly the kind of thing
+`verify-offline.mjs`'s own "open the real built file in a real browser" check exists for, even though
+no new assertion was added for it specifically; the very first `waitForSelector` already covers it.
