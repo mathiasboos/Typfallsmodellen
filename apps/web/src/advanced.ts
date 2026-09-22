@@ -8,7 +8,7 @@
  * first alone, which is why `main.ts` could get this far passing an empty
  * settings map. This panel is the second.
  *
- * Twenty-eight of the sheet's seventy-six rows are here, grouped as sections 3.2
+ * Thirty of the sheet's seventy-six rows are here, grouped as sections 3.2
  * to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag" half --
  * its "Barnår" half, `rng_Född_Barn1..4`, stays unexposed backlog). The rest are
  * left out on purpose: some
@@ -494,6 +494,25 @@ export const GROUPS: readonly Group[] = [
         label: text("Pensionering samma år som slutlönen", "Retire in the same year as the final salary"),
         get: (c) => c.pensionSameYearAsFinalSalary,
         set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
+      },
+      {
+        // row 46 "Flexpension för ITP 1 och SAF-LO från och med 2014". Manual
+        // 3.6: "lägger till en extra premie till de ovan nämnda
+        // tjänstepensionsavtalen från 2014 och framåt. Anges 0 läggs ingen
+        // premie till, om större procentsats än 0 läggs den angivna premien
+        // till" -- already wired into itp.ts/safLo.ts (`flexPension`, added
+        // straight onto both agreements' own premium rates for `year > 2013`),
+        // just not reachable from this panel before now.
+        key: "flexPension",
+        row: 46,
+        control: percent,
+        label: text("Flexpension, ITP 1 och SAF-LO", "Flex pension, ITP 1 and SAF-LO"),
+        hint: text(
+          "Extra premie från och med 2014, 0 = ingen premie",
+          "Extra premium from 2014 onward, 0 = no premium",
+        ),
+        get: (c) => c.flexPension,
+        set: (flexPension) => ({ flexPension }),
       },
     ],
   },

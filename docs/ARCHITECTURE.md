@@ -309,6 +309,16 @@ otherwise have shown up a second time in the one field a user explicitly flagged
 whole toggle widget and cannot follow which of its two modes is active, so this one is its own small
 row (`.adv-ips-share`) instead.
 
+**"Flexpension för ITP 1 och SAF-LO" (row 46) needed no engine work, only a control** —
+`context.flexPension` (`rng_FlexPens`) was already read by `itp.ts` and `safLo.ts`, added straight
+onto both agreements' own premium rates for `year > 2013`, exactly the manual's own 3.6 description:
+"lägger till en extra premie till de ovan nämnda tjänstepensionsavtalen från 2014 och framåt. Anges 0
+läggs ingen premie till, om större procentsats än 0 läggs den angivna premien till." The setting simply
+did not have a row in `advanced.ts`'s own descriptor table yet. It sits in the "Övrigt" group (section
+3.6), the same group the manual's own table of contents puts it in — the group already existing there
+for `finalSalaryYears`/`pensionSameYearAsFinalSalary` is coincidence, not evidence the group was
+mislabelled.
+
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for

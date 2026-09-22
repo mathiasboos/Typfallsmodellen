@@ -1040,6 +1040,37 @@ if (defArAfterReset !== "0") {
   problems.push(`reset left "Definitivt uttag vid ålder" at "${defArAfterReset}", expected "0"`);
 }
 
+// "Flexpension för ITP 1 och SAF-LO från och med 2014": an extra premium
+// added to both agreements' own rates from 2014 onward -- already wired into
+// the engine (itp.ts/safLo.ts) before this panel exposed it, so the check is
+// that the field actually reaches `flexPension`, not that the maths is new.
+// The default typfall carries no occupational scheme ("Saknar
+// tjänstepension"), so this is the one place in the script that switches the
+// normal-mode scheme select, to SAF-LO, and switches it back after -- nothing
+// later may see it moved.
+await tab.getByLabel("Välj tjänstepension").selectOption("4");
+await tab.waitForTimeout(80);
+const tjpBeforeFlex = await shown("tjp", "monthly");
+const flexPensionField = await setting("flexPension");
+await flexPensionField.fill("10");
+await flexPensionField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const tjpAfterFlex = await shown("tjp", "monthly");
+console.log(`flexpension     : tjp ${tjpBeforeFlex} -> ${tjpAfterFlex} kr/month at 10% (SAF-LO)`);
+if (!(tjpAfterFlex > tjpBeforeFlex)) {
+  problems.push(
+    `setting flexpension to 10% did not raise SAF-LO's occupational pension (${tjpBeforeFlex} -> ${tjpAfterFlex})`,
+  );
+}
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const flexPensionAfterReset = await flexPensionField.inputValue();
+if (flexPensionAfterReset !== "0") {
+  problems.push(`the reset button left flexpension at "${flexPensionAfterReset}", expected "0"`);
+}
+await tab.getByLabel("Välj tjänstepension").selectOption("1");
+await tab.waitForTimeout(50);
+
 // Back to normal mode for the screenshots, and to leave the page as found.
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
