@@ -410,21 +410,51 @@ body {
  * would otherwise leave room for, and `.pgb-dialog` below gives the same
  * table somewhere wider to render without the floor at all.
  */
-.pgb-grid { min-width: 460px; }
-.pgb-grid col:nth-child(1) { width: 13%; }  /* År */
-.pgb-grid col:nth-child(2) { width: 10%; }  /* Ålder */
-.pgb-grid col:nth-child(3) { width: 18%; }  /* Sjuk-/aktivitetsersättning */
-.pgb-grid col:nth-child(4) { width: 15%; }  /* Antal terminer */
-.pgb-grid col:nth-child(5) { width: 16%; }  /* PGB studier, kr */
-.pgb-grid col:nth-child(6) { width: 12%; }  /* Värnplikt, dagar */
-.pgb-grid col:nth-child(7) { width: 16%; }  /* PGB värnplikt, kr */
+.pgb-grid { min-width: 500px; }
+.pgb-grid col:nth-child(1) { width: 12%; }  /* År */
+.pgb-grid col:nth-child(2) { width: 9%; }   /* Ålder */
+.pgb-grid col:nth-child(3) { width: 17%; }  /* Sjuk-/aktivitetsersättning */
+.pgb-grid col:nth-child(4) { width: 14%; }  /* Antal terminer */
+.pgb-grid col:nth-child(5) { width: 15%; }  /* PGB studier, kr */
+.pgb-grid col:nth-child(6) { width: 15%; }  /* Värnplikt, dagar */
+.pgb-grid col:nth-child(7) { width: 18%; }  /* PGB värnplikt, kr */
 .pgb-computed { color: var(--text-secondary); }
 
-/* Värnplikt: two date fields plus a day-split readout, above the per-age
-   grid -- a single wsPGB!H4/H5 range, not a row-per-age entry. */
-.pgb-vpl { display: grid; gap: 8px; margin-bottom: 4px; }
-.pgb-vpl-fields { display: flex; gap: 8px; flex-wrap: wrap; }
-.pgb-vpl-fields .field { flex: 1 1 140px; }
+/*
+ * Värnplikt's own group header cell, not a box above the grid -- reported as
+ * unintuitive that typing a date range somewhere else changed a table
+ * further down the page. `text-align: left` overrides `.table thead
+ * th:not(:first-child) { text-align: right }`, wrong for a stacked label;
+ * `vertical-align: top` keeps it from centring in a row now much taller
+ * than "Studier"'s plain text beside it.
+ */
+.pgb-vpl-head { text-align: left; vertical-align: top; }
+.pgb-vpl-title { display: block; margin-bottom: 4px; }
+/* Label above input, not beside it -- a native date input already needs
+   most of the column's own width on its own; beside a label it would
+   overflow the column in the sidebar's own narrower view. */
+.pgb-vpl-date { display: block; margin-bottom: 3px; font-weight: 400; }
+.pgb-vpl-date:last-of-type { margin-bottom: 0; }
+.pgb-vpl-date span { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 1px; }
+.pgb-vpl-date input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 1px 2px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.pgb-vpl-date input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pgb-vpl-readout {
+  margin: 4px 0 0;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  white-space: normal;
+}
 .pgb-vpl-readout:empty { display: none; }
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would

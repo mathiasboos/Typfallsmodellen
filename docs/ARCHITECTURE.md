@@ -379,9 +379,25 @@ drift from it. `main.ts`'s `render()` already computes a full run before touchin
 so `pgbGrid.setBaseline(input.born, context.marginal, result.pgbBreakdown)` costs nothing extra; `pgb.ts`
 digest-compares the incoming breakdown (a handful of entries at most) against what it last drew, since
 `medelPgi` can move with the run's own economic assumptions without `born` or `marginal` moving at all,
-and a naive born/marginal-only check would leave the two new columns stale. The readout above the grid
-keeps exactly the one thing the grid itself cannot show — a period under 120 days has no touched-year
-row to display a zero in — and goes blank once a valid period's own detail has somewhere to live.
+and a naive born/marginal-only check would leave the two new columns stale. The readout keeps exactly
+the one thing the grid itself cannot show — a period under 120 days has no touched-year row to display
+a zero in — and goes blank once a valid period's own detail has somewhere to live.
+
+**The two date inputs live in Värnplikt's own header cell, not in a box above the grid** — reported as
+unintuitive that typing a date range somewhere else on the page changed a table further down it, with
+nothing visually tying the two together. `wsPGB!H4`/`H5` are still a single period, not a per-age entry
+(the sheet's own instruction is "Lägg in datum", nothing about a grid), so the inputs stay singular
+rather than becoming two more per-row columns; what moved is only *where* that one pair sits — from a
+separate `<div>` above the table into `vplGroupHead`, the same `<th>` that already names the Dagar/PGB
+värnplikt columns the dates fill in. End to end, filling in a date now happens in the same table whose
+numbers it changes, which is the point: cause and effect share one visual container instead of a gap a
+reader has to bridge by trust. Each date field's own visible label ("Från"/"Till") stacks above its
+input rather than beside it — a native date input already claims most of the column group's own width
+on its own, and a label beside it measured as overflowing the column in the sidebar's own narrower view
+before this. The longer original wording ("Värnplikt, startdatum", "Muck (slutdatum)") survives as each
+input's own `aria-label`, and the eligibility window that used to sit under the start date as a hint now
+reads from the group's own intro paragraph instead, which also now says outright where to look: "fylls i
+uppe i tabellen, under Värnplikt."
 
 **"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
 `min-width` above trades legible columns for a horizontal scrollbar confined to the sidebar's own

@@ -17,12 +17,17 @@
  * beside the kronor (and, for Värnplikt, the days) it produces -- mirroring
  * the sheet's own PGB tab, which lays conscription and study out as Year,
  * Age, Days, PGB amount and Year, Age, Semesters, PGB amount respectively,
- * rather than as a single line of text summarising the whole period. The
- * conscription dates themselves stay above the grid as a single date-range
- * pair (`vplBox`) rather than one date-per-row cell: `wsPGB!H4`/`H5` are a
- * single period, not a per-age entry, and the sheet's own instruction is
- * "Lägg in datum", nothing about a grid -- but the days and kronor it
- * produces are shown per touched year, in the grid, the same as the sheet.
+ * rather than as a single line of text summarising the whole period.
+ *
+ * The two conscription dates live in the Värnplikt group's own header cell,
+ * not in a box above the grid -- reported as unintuitive that typing a date
+ * range somewhere else changed a table further down the page, with nothing
+ * visually tying the two together. `wsPGB!H4`/`H5` are still a single
+ * period, not a per-age entry (the sheet's own instruction is "Lägg in
+ * datum", nothing about a grid), so the inputs stay singular rather than
+ * becoming two more per-row columns; what moved is only *where* that single
+ * pair sits, from a separate `<div>` to the same `<th>` that already names
+ * the Dagar/PGB värnplikt columns the dates fill in, right there in the table.
  *
  * The conscription kronor need `medelPgi`, an economic projection that
  * depends on the run's own inflation/growth/price-basis assumptions --
@@ -104,43 +109,6 @@ export function createPgbGrid(
   const intro = document.createElement("p");
   intro.className = "field-hint";
 
-  // Värnplikt: `wsPGB!H4`/`H5` are a single date range, not a per-age row --
-  // the sheet's own instruction is "Cell H4 och H5: Lägg in datum", nothing
-  // about a grid. `startInput`/`endInput` feed `PgbConscriptionPeriod`
-  // straight through to the engine; `vplReadout` shows the same
-  // year-by-year day split `conscriptionDaysByYear` computes there, so
-  // typing a date pair reads back as confirmation before it ever shows up
-  // in the pension figures.
-  const vplBox = document.createElement("div");
-  vplBox.className = "pgb-vpl";
-  const vplFields = document.createElement("div");
-  vplFields.className = "pgb-vpl-fields";
-  const startWrap = document.createElement("label");
-  startWrap.className = "field";
-  const startLabel = document.createElement("span");
-  startLabel.className = "field-label";
-  const startInput = document.createElement("input");
-  startInput.type = "date";
-  startInput.min = "1995-01-01";
-  startInput.dataset.setting = "pgbConscriptionStart";
-  const startHint = document.createElement("span");
-  startHint.className = "field-hint";
-  startWrap.append(startLabel, startInput, startHint);
-
-  const endWrap = document.createElement("label");
-  endWrap.className = "field";
-  const endLabel = document.createElement("span");
-  endLabel.className = "field-label";
-  const endInput = document.createElement("input");
-  endInput.type = "date";
-  endInput.dataset.setting = "pgbConscriptionEnd";
-  endWrap.append(endLabel, endInput);
-
-  vplFields.append(startWrap, endWrap);
-  const vplReadout = document.createElement("p");
-  vplReadout.className = "field-hint pgb-vpl-readout";
-  vplBox.append(vplFields, vplReadout);
-
   // Seven columns split across the sidebar's own width clip the later ones
   // (see `.pgb-grid`'s own comment in styles.css), so `.pgb-grid` carries a
   // min-width floor and the grid scrolls sideways in its narrow `.adv-grid-scroll`
@@ -184,7 +152,38 @@ export function createPgbGrid(
   studyGroupHead.colSpan = 2;
   const vplGroupHead = document.createElement("th");
   vplGroupHead.colSpan = 2;
+  vplGroupHead.className = "pgb-vpl-head";
   groupRow.append(yearHead, ageHead, saHead, studyGroupHead, vplGroupHead);
+
+  // The one pair of date inputs `wsPGB!H4`/`H5` are, right in the Värnplikt
+  // group's own header cell -- reported as unintuitive that typing a date
+  // range in a box elsewhere on the page changed a table further down,
+  // nothing showing the two were connected. `startInput`/`endInput` feed
+  // `PgbConscriptionPeriod` straight through to the engine; `vplReadout`
+  // covers the one case the Dagar/PGB värnplikt columns below cannot show on
+  // their own -- a period under 120 days has no touched-year row for a zero.
+  const vplTitle = document.createElement("span");
+  vplTitle.className = "pgb-vpl-title";
+  const startLabel = document.createElement("span");
+  const startInput = document.createElement("input");
+  startInput.type = "date";
+  startInput.min = "1995-01-01";
+  startInput.dataset.setting = "pgbConscriptionStart";
+  const startWrap = document.createElement("label");
+  startWrap.className = "pgb-vpl-date";
+  startWrap.append(startLabel, startInput);
+
+  const endLabel = document.createElement("span");
+  const endInput = document.createElement("input");
+  endInput.type = "date";
+  endInput.dataset.setting = "pgbConscriptionEnd";
+  const endWrap = document.createElement("label");
+  endWrap.className = "pgb-vpl-date";
+  endWrap.append(endLabel, endInput);
+
+  const vplReadout = document.createElement("p");
+  vplReadout.className = "pgb-vpl-readout";
+  vplGroupHead.append(vplTitle, startWrap, endWrap, vplReadout);
 
   const subRow = document.createElement("tr");
   const semesterHead = document.createElement("th");
@@ -230,7 +229,7 @@ export function createPgbGrid(
     dialog.showModal();
   });
 
-  body.append(intro, vplBox, expandBtn, scroll);
+  body.append(intro, expandBtn, scroll);
   element.append(summary, body);
 
   function conscriptionPeriod(): PgbConscriptionPeriod | undefined {
@@ -369,22 +368,22 @@ export function createPgbGrid(
     intro.textContent = say(
       l,
       "Sjuk- eller aktivitetsersättning, värnplikt och studier ger pensionsrätt utöver " +
-        "barnår, som modellen redan räknar med.",
+        "barnår, som modellen redan räknar med. Värnpliktens datum fylls i uppe i tabellen, " +
+        "under Värnplikt (ger bara pensionsrätt 1995–2010 och från 2018).",
       "Sickness or activity compensation, conscription and study earn pension rights on " +
-        "top of childcare years, which the model already accounts for.",
+        "top of childcare years, which the model already accounts for. Conscription's own " +
+        "dates are filled in up in the table, under Värnplikt (only earns pension rights " +
+        "1995-2010 and from 2018 on).",
     );
-    startLabel.textContent = say(l, "Värnplikt, startdatum", "Conscription, start date");
-    startHint.textContent = say(
-      l,
-      "ej före 1995-01-01; ger bara pensionsrätt 1995–2010 och från 2018",
-      "not before 1995-01-01; only earns pension rights 1995-2010 and from 2018 on",
-    );
-    endLabel.textContent = say(l, "Muck (slutdatum)", "End date");
+    startLabel.textContent = say(l, "Från", "From");
+    startInput.setAttribute("aria-label", say(l, "Värnplikt, startdatum", "Conscription, start date"));
+    endLabel.textContent = say(l, "Till", "To");
+    endInput.setAttribute("aria-label", say(l, "Muck (slutdatum)", "End date"));
     yearHead.textContent = say(l, "År", "Year");
     ageHead.textContent = say(l, "Ålder", "Age");
     saHead.textContent = say(l, "Sjuk-/aktivitetsersättning", "Sickness/activity comp.");
     studyGroupHead.textContent = say(l, "Studier", "Study");
-    vplGroupHead.textContent = say(l, "Värnplikt", "Conscription");
+    vplTitle.textContent = say(l, "Värnplikt", "Conscription");
     semesterHead.textContent = say(l, "Antal terminer", "Semesters");
     studyKrHead.textContent = say(l, "PGB studier, kr", "Study PGB, kr");
     vplDaysHead.textContent = say(l, "Dagar", "Days");
