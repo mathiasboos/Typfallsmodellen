@@ -508,8 +508,8 @@ export const GROUPS: readonly Group[] = [
         control: percent,
         label: text("Flexpension, ITP 1 och SAF-LO", "Flex pension, ITP 1 and SAF-LO"),
         hint: text(
-          "Extra premie från och med 2014, 0 = ingen premie",
-          "Extra premium from 2014 onward, 0 = no premium",
+          "Extra premie i %, från och med 2014. 0 = ingen premie",
+          "Extra premium in %, from 2014 onward. 0 = no premium",
         ),
         get: (c) => c.flexPension,
         set: (flexPension) => ({ flexPension }),
