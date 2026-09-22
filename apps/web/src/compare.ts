@@ -11,14 +11,15 @@
  * run against four scenarios than one.
  *
  * A variant is not a diff against the baseline in the sense of "undefined
- * means inherit" -- it is a plain copy of the baseline's salary, retirement
- * age and occupational scheme, taken the moment the variant is added, that
- * the three controls below then edit independently. That is simpler than an
- * inherit/override state machine and reads the same way to whoever is using
- * it: a new scenario starts out identical to the baseline, and diverges only
- * where it is typed into. Every other field -- birth year, inflation, any
- * advanced setting, a typed salary vector -- keeps coming from the live
- * baseline on every run, so only these three are ever "frozen" per scenario.
+ * means inherit" -- it is a plain copy of the baseline's salary, start-of-work
+ * age, retirement age and occupational scheme, taken the moment the variant
+ * is added, that the four controls below then edit independently. That is
+ * simpler than an inherit/override state machine and reads the same way to
+ * whoever is using it: a new scenario starts out identical to the baseline,
+ * and diverges only where it is typed into. Every other field -- birth year,
+ * inflation, any advanced setting, a typed salary vector -- keeps coming from
+ * the live baseline on every run, so only these four are ever "frozen" per
+ * scenario.
  *
  * Results used to live inside each scenario's own card (a KPI row plus a full
  * Table 1) until a reviewer found that layout hard to actually compare row by
@@ -37,7 +38,7 @@ import type {
 
 import { renderCompareChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
-import { fieldSet, span } from "./controls.js";
+import { fieldSet, rangeHint, span } from "./controls.js";
 import { csvExportButton, xlsxExportButton } from "./export.js";
 import type { Lang } from "./i18n.js";
 import { t } from "./i18n.js";
@@ -46,6 +47,10 @@ import { compareTableToCsv, compareTableToXlsxRows, renderCompareTable } from ".
 import type { ScenarioColumn } from "./tables.js";
 
 const RETIREMENT = span(RETIREMENT_AGES);
+// `Börjar arbeta vid ålder` has no extracted list; the sheet offers 15 to 40 --
+// the same bound form.ts's own field uses, duplicated rather than imported
+// since form.ts doesn't export it either (see RETIREMENT above).
+const START_WORK = { min: 15, max: 40 };
 const SCHEMES = options.choices.occupationalPension as readonly { value: number; label: string }[];
 const MAX_VARIANTS = 3;
 
@@ -64,15 +69,17 @@ export interface ScenarioOverride {
   label: string;
   monthlySalary: number;
   retirementAge: number;
+  startWorkAge: number;
   scheme: SchemeId;
 }
 
-/** The baseline, with just a variant's three fields laid over it. */
+/** The baseline, with just a variant's four fields laid over it. */
 export function applyScenario(baseline: TypfallInput, s: ScenarioOverride): TypfallInput {
   return {
     ...baseline,
     monthlySalary: s.monthlySalary,
     retirementAge: s.retirementAge,
+    startWorkAge: s.startWorkAge,
     scheme: s.scheme,
   };
 }
@@ -83,6 +90,7 @@ function newVariant(id: string, label: string, baseline: TypfallInput): Scenario
     label,
     monthlySalary: Math.round(baseline.monthlySalary),
     retirementAge: baseline.retirementAge,
+    startWorkAge: baseline.startWorkAge,
     scheme: baseline.scheme,
   };
 }
@@ -203,6 +211,13 @@ export function createComparePanel(
       }).element,
       (l) => ({ label: t("retirementAge", l) }),
     );
+    field(
+      number(variant.startWorkAge, { ...START_WORK, step: 1 }, (v) => {
+        variant.startWorkAge = v;
+        onChange();
+      }).element,
+      (l) => ({ label: t("startWorkAge", l), hint: rangeHint(START_WORK) }),
+    );
 
     const schemeSelect = document.createElement("select");
     for (const choice of SCHEMES) {
@@ -256,9 +271,11 @@ export function createComparePanel(
     intro.textContent = say(
       l,
       "Jämför upp till tre alternativa scenarier mot utgångsläget till vänster -- var och ett " +
-        "med sin egen månadslön, pensionsålder och tjänstepension, allt annat oförändrat.",
+        "med sin egen månadslön, pensionsålder, ålder vid arbetslivets start och tjänstepension, " +
+        "allt annat oförändrat.",
       "Compare up to three alternative scenarios against the baseline on the left -- each with " +
-        "its own monthly salary, retirement age and occupational pension, everything else unchanged.",
+        "its own monthly salary, retirement age, start-of-work age and occupational pension, " +
+        "everything else unchanged.",
     );
     addButton.textContent = say(l, "+ Lägg till scenario", "+ Add scenario");
   };

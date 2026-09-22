@@ -675,11 +675,11 @@ await tab.waitForTimeout(50);
 // ---- Jamfor scenarier -----------------------------------------------------
 //
 // A second top-level view, not a workbook mode: the baseline plus up to three
-// variants, each overriding only salary, retirement age and occupational
-// scheme, compared in one shared table and chart rather than a KPI row and a
-// full Table 1 repeated inside every scenario's own card. The point of each
-// check, as with Avancerat above, is that a variant's own controls reach its
-// own run and nothing else's.
+// variants, each overriding only salary, retirement age, start-of-work age
+// and occupational scheme, compared in one shared table and chart rather than
+// a KPI row and a full Table 1 repeated inside every scenario's own card. The
+// point of each check, as with Avancerat above, is that a variant's own
+// controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
 if (screenButtons !== 2) {
@@ -738,6 +738,33 @@ if (baselinePensionAfter !== baselinePension) {
   problems.push(
     `raising a scenario's salary changed the baseline's own pension in the table ("${baselinePension}" -> ` +
       `"${baselinePensionAfter}")`,
+  );
+}
+
+// Start-of-work age is the fourth override, added on request -- a later start
+// shortens a scenario's own working life (setup.ts: startage = min(modelStartAge,
+// startWorkAge)), so it has to move that scenario's pension on its own, with
+// salary and retirement age held fixed, not just ride along with the salary
+// control already proven above.
+const scenario1StartWork = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(2);
+await scenario1StartWork.fill("35");
+await scenario1StartWork.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const scenario1PensionAfterStartWork = await compareCell("Scenario 1", "kpi-pension", "monthly");
+const baselinePensionAfterStartWork = await compareCell("Utgångsläge", "kpi-pension", "monthly");
+console.log(
+  `scenario start-work raised: pension ${scenario1PensionAfter} -> ${scenario1PensionAfterStartWork}`,
+);
+if (scenario1PensionAfterStartWork === scenario1PensionAfter) {
+  problems.push(
+    `raising a scenario's own start-of-work age did not move its pension in the table (still ` +
+      `"${scenario1PensionAfterStartWork}")`,
+  );
+}
+if (baselinePensionAfterStartWork !== baselinePension) {
+  problems.push(
+    `raising a scenario's start-of-work age changed the baseline's own pension in the table ` +
+      `("${baselinePension}" -> "${baselinePensionAfterStartWork}")`,
   );
 }
 

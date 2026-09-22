@@ -348,12 +348,12 @@ machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` alrea
 render in Avancerat with no debounce), so running it up to four times per change costs nothing extra.
 
 A variant is **not** an inherit/override state machine — `undefined` fields, a placeholder empty
-state, and so on. `newVariant` copies the baseline's salary, retirement age and occupational scheme
-the moment a scenario is added; the three controls on that card then edit their own copy
-independently, and `applyScenario` lays those three fields over whatever the baseline currently is on
-every run. Everything else about the baseline — birth year, the economic assumptions, any advanced
+state, and so on. `newVariant` copies the baseline's salary, retirement age, start-of-work age and
+occupational scheme the moment a scenario is added; the four controls on that card then edit their own
+copy independently, and `applyScenario` lays those four fields over whatever the baseline currently is
+on every run. Everything else about the baseline — birth year, the economic assumptions, any advanced
 setting, a typed salary or PGB vector — keeps flowing into every scenario's run live, since only these
-three fields are ever "frozen" per card. This is simpler than a real inherit/override design and reads
+four fields are ever "frozen" per card. This is simpler than a real inherit/override design and reads
 the same way to whoever is using it: a new scenario starts out identical to the baseline and diverges
 only where it is typed into.
 
@@ -399,6 +399,14 @@ input-only:
   bug, since nothing in `replacementRate`'s own arithmetic (a plain ratio) can produce that from a real
   run. `verify-offline.mjs` asserts no cell in that row reaches 100% after raising a scenario's salary,
   closing the loop on that question rather than leaving it merely asserted in a comment.
+- **Start-of-work age** joined the other three overrides as a fourth card control, on request. It reuses
+  `t("startWorkAge", l)` and the same 15–40 bound `form.ts`'s own field uses (`START_WORK`, duplicated
+  rather than imported since `form.ts` doesn't export it either — the same reasoning already covers
+  `RETIREMENT`). It is not cosmetic: `setup.ts` derives `startage` as
+  `Math.min(context.modelStartAge, input.startWorkAge)`, so a later start genuinely shortens a
+  scenario's own working life and lowers its accrued pension, independent of everything else on that
+  card — `verify-offline.mjs` moves it on its own, holding salary and retirement age fixed, to prove
+  that rather than only the salary control's already-covered path.
 
 Two CSS fixes came out of measuring the built page rather than assuming, both from the same cause: a
 flex item's or grid item's default `min-width: auto` lets its content's own width win over an intended
