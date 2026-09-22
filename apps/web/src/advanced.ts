@@ -130,7 +130,6 @@ export const GROUPS: readonly Group[] = [
         row: 11,
         control: kr(0, MONEY),
         label: text("Privat pensionssparande", "Private pension saving"),
-        hint: text("kronor per månad", "kronor per month"),
         get: (c) => c.ipsMonthly,
         set: (ipsMonthly) => ({ ipsMonthly }),
       },
@@ -647,6 +646,133 @@ function churchBurialSelect(
   return { element: wrap, relabel, select };
 }
 
+/**
+ * "Privat pensionssparande" (row 11): `ipsMonthly` means two different things
+ * depending on its own size -- `earnPrivateSaving` (packages/engine/src/
+ * model/mcalc.ts) reads a value over 1 as kronor per month and a value at or
+ * below 1 as a share of income instead, one cell's dual meaning inherited
+ * from the workbook. `options.json`'s own `IPS_start` entry carries a
+ * giveaway hint straight off `Adv_settings!C12` in the real sheet, "0 procent
+ * av årsinkomsten, sedan 2026" -- sitting on row 12's own line there, whether
+ * by design or by how the original sheet happens to be laid out, rather than
+ * on row 11's where the setting it explains actually lives. Neither this
+ * project's own extractor nor this file ever carried that hint into either
+ * field's own UI before now, so the second meaning was reachable only by
+ * already knowing to type a fraction into a box labelled "kronor per månad".
+ *
+ * This toggle makes both meanings their own labelled choice, each with its
+ * own kind of field (kronor, percent) rather than one box whose meaning
+ * silently depends on how big the number typed into it happens to be.
+ * Switching resets the value to 0 rather than converting between them: a
+ * kronor figure and a share of a still-varying income have no single right
+ * conversion, and 0 means "nothing set" the same way under either reading.
+ *
+ * The underlying landmine survives on purpose, faithfully: typing exactly
+ * "1" into the kronor field is still 1 kr/month by the field's own label,
+ * but `ipsMonthly > 1` reads it as the *share* branch instead (100% of
+ * income) -- the workbook's own off-by-one, not smoothed over here, and
+ * vanishingly unlikely in practice since every real kronor figure in this
+ * app is a multiple of 100.
+ */
+function savingAmountOrShare(
+  lang: Lang,
+  initial: number,
+  onChange: (v: number) => void,
+): { element: HTMLElement; relabel: Relabel; setValue: (v: number) => void } {
+  const wrap = document.createElement("div");
+  wrap.className = "adv-ips";
+  wrap.dataset.setting = "ipsMonthly";
+
+  const toggle = document.createElement("div");
+  toggle.className = "panel-toggle";
+  toggle.setAttribute("role", "group");
+  const amountBtn = document.createElement("button");
+  amountBtn.type = "button";
+  amountBtn.dataset.mode = "amount";
+  const shareBtn = document.createElement("button");
+  shareBtn.type = "button";
+  shareBtn.dataset.mode = "share";
+  toggle.append(amountBtn, shareBtn);
+
+  const amountInput = document.createElement("input");
+  amountInput.type = "number";
+  amountInput.inputMode = "numeric";
+  amountInput.min = "0";
+  amountInput.max = String(MONEY);
+  amountInput.step = "100";
+  amountInput.dataset.setting = "ipsMonthly-amount";
+
+  const shareInput = document.createElement("input");
+  shareInput.type = "number";
+  shareInput.inputMode = "decimal";
+  shareInput.min = "0";
+  shareInput.max = "100";
+  shareInput.step = "0.1";
+  shareInput.className = "percent";
+  shareInput.dataset.setting = "ipsMonthly-share";
+
+  // A value at or below 1 already means "share" to the engine; use the same
+  // rule here to decide which mode a freshly loaded or reset value opens in.
+  let mode: "amount" | "share" = initial > 0 && initial <= 1 ? "share" : "amount";
+
+  const applyMode = () => {
+    amountBtn.className = mode === "amount" ? "panel-btn active" : "panel-btn";
+    shareBtn.className = mode === "share" ? "panel-btn active" : "panel-btn";
+    amountInput.hidden = mode !== "amount";
+    shareInput.hidden = mode !== "share";
+  };
+
+  const setValue = (v: number) => {
+    mode = v > 0 && v <= 1 ? "share" : "amount";
+    amountInput.value = String(mode === "amount" ? Math.round(v) : 0);
+    shareInput.value = mode === "share" ? String(Math.round(v * 1000) / 10) : "0";
+    applyMode();
+  };
+  setValue(initial);
+
+  const switchTo = (next: "amount" | "share") => {
+    if (mode === next) return;
+    mode = next;
+    amountInput.value = "0";
+    shareInput.value = "0";
+    applyMode();
+    onChange(0);
+  };
+  amountBtn.addEventListener("click", () => switchTo("amount"));
+  shareBtn.addEventListener("click", () => switchTo("share"));
+
+  amountInput.addEventListener("change", () => {
+    const typed = Number(amountInput.value);
+    if (!Number.isFinite(typed) || amountInput.value.trim() === "") {
+      amountInput.value = "0";
+      return;
+    }
+    const clamped = Math.min(Math.max(Math.round(typed), 0), MONEY);
+    amountInput.value = String(clamped);
+    onChange(clamped);
+  });
+
+  shareInput.addEventListener("change", () => {
+    const typed = Number(shareInput.value);
+    if (!Number.isFinite(typed) || shareInput.value.trim() === "") {
+      shareInput.value = "0";
+      return;
+    }
+    const clamped = Math.min(Math.max(typed, 0), 100);
+    shareInput.value = String(clamped);
+    onChange(clamped / 100);
+  });
+
+  const relabel = (l: Lang) => {
+    amountBtn.textContent = l === "sv" ? "Belopp" : "Amount";
+    shareBtn.textContent = l === "sv" ? "Andel av inkomst" : "Share of income";
+  };
+  relabel(lang);
+
+  wrap.append(toggle, amountInput, shareInput);
+  return { element: wrap, relabel, setValue };
+}
+
 export interface AdvancedHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
@@ -702,7 +828,14 @@ export function createAdvancedPanel(
         ...(setting.hint ? { hint: setting.hint(l) } : {}),
       });
 
-      if (setting.control.kind === "number") {
+      if (setting.control.kind === "number" && setting.key === "ipsMonthly") {
+        // field-wide: a toggle plus a number needs a whole row, not the
+        // 104px second column every other field's control gets.
+        const widget = savingAmountOrShare(lang, initial, (v) => onChange(setting.set(v)));
+        relabels.push(widget.relabel);
+        field(widget.element, label, "field field-wide");
+        restores.push(() => widget.setValue(initial));
+      } else if (setting.control.kind === "number") {
         const { min, max, step } = setting.control;
         const control = number(initial, { min, max, step }, (v) => onChange(setting.set(v)));
         control.element.dataset.setting = setting.key;

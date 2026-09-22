@@ -878,6 +878,41 @@ if (pgbDialogSecondSaKept !== "100000") {
   );
 }
 
+// "Privat pensionssparande": the same number means kronor/month or a share of
+// income depending on its own size -- exposed as an explicit toggle now,
+// rather than a single box whose meaning depended on how big the typed value
+// happened to be. Starts in "Belopp" (amount) mode with the share input
+// hidden; switching modes has to show the other input and hide this one, and
+// a percentage typed after switching has to reach the model the same way an
+// amount would. The default "Sparandet börjar år" (2026) is after this
+// typfall's own retirement, so nothing would ever accrue regardless of mode
+// unless it moves earlier first -- that part is unrelated to the toggle
+// itself, just what the eligibility window needs to actually open. Run here,
+// with the PGB checks above already done and the full reset below still to
+// come, so raising private saving cannot perturb any earlier assumption.
+const ipsStart = await setting("ipsStart");
+await ipsStart.fill("1990");
+await ipsStart.dispatchEvent("change");
+const ipsAmountInput = await setting("ipsMonthly-amount");
+const ipsShareInput = tab.locator('[data-setting="ipsMonthly-share"]');
+if (!(await ipsAmountInput.isVisible()) || (await ipsShareInput.isVisible())) {
+  problems.push("the private-saving toggle does not open in amount mode with the share input hidden");
+}
+const ipsBefore = await shown("ips", "monthly");
+await tab.locator('.adv-ips [data-mode="share"]').click();
+await tab.waitForTimeout(50);
+if ((await ipsAmountInput.isVisible()) || !(await ipsShareInput.isVisible())) {
+  problems.push('switching to "Andel av inkomst" did not hide the amount input and show the share input');
+}
+await ipsShareInput.fill("5");
+await ipsShareInput.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const ipsAfter = await shown("ips", "monthly");
+console.log(`private saving  : ${ipsBefore} -> ${ipsAfter} kr/month at 5% of income`);
+if (!(ipsAfter > ipsBefore)) {
+  problems.push(`setting private saving to 5% of income did not raise it (${ipsBefore} -> ${ipsAfter})`);
+}
+
 // "Nollställ alla värden": every row's own income and wage cell has to read
 // 0, not just the ten already zeroed above. Not a pension-direction check --
 // a whole working life at 0 kr leans on garantipension, whose own means-

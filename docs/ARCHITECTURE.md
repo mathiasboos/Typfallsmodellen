@@ -274,6 +274,26 @@ workbook** — the workbook never translated that sheet (59 of its 90 rows have 
 string) and what Swedish it carries is maintainer shorthand. The *values* are still never retyped:
 every default comes from `defaultContext()`.
 
+**"Privat pensionssparande" (row 11) is a toggle, not a single kronor field, because `ipsMonthly`
+means two different things depending on its own size.** `earnPrivateSaving` (packages/engine/src/
+model/mcalc.ts) reads a value over 1 as kronor per month and a value at or below 1 as a share of
+income instead — one cell's dual meaning, inherited from the workbook. `options.json`'s own
+`IPS_start` entry (row 12, "Privat pensionssparande sedan när") happens to carry the giveaway hint,
+"0 procent av årsinkomsten, sedan 2026", read straight off `Adv_settings!C12` in the real sheet — on
+row 12's own line there, whether by the workbook's own design or its layout, rather than on row 11's
+where the setting it explains actually lives. Neither this port's own extractor nor `advanced.ts`
+ever carried that hint into either field's UI before this, so the share-of-income meaning was
+reachable only by already knowing to type a fraction into a box labelled "kronor per månad" — a real
+user asked directly whether the field could be simplified, which is what surfaced the gap.
+`savingAmountOrShare` gives each meaning its own labelled choice ("Belopp" / "Andel av inkomst") and
+its own kind of field (kronor, percent), still writing the same single `ipsMonthly` either way;
+switching resets the value to 0 rather than converting between them, since a kronor figure and a
+share of a still-varying income have no single right conversion and 0 means "nothing set" under
+either reading. The underlying landmine survives on purpose: typing exactly "1" into the kronor field
+is still 1 kr/month by its own label, but `ipsMonthly > 1` reads it as the share branch instead (100%
+of income) — the workbook's own off-by-one, not smoothed over here, and vanishingly unlikely in
+practice since every real kronor figure in this app is a multiple of 100.
+
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for

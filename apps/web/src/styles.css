@@ -599,6 +599,29 @@ body {
 .field-wide { grid-template-columns: minmax(0, 1fr); }
 .field-wide > select { grid-column: 1; grid-row: 2; text-align: left; }
 .field-wide > .field-hint { grid-row: 3; }
+.field-wide > .adv-ips { grid-column: 1; grid-row: 2; }
+
+/*
+ * "Privat pensionssparande": the same underlying number reads as kronor per
+ * month or a share of income depending on its own size (advanced.ts's own
+ * comment on `savingAmountOrShare` says why), so this is a toggle plus
+ * whichever one of two inputs the toggle currently means, not a single box.
+ * `.panel-toggle`/`.panel-btn` are already styled for the mode/screen/scale
+ * toggles elsewhere; reused here rather than a second toggle style.
+ */
+.adv-ips .panel-toggle { margin-bottom: 4px; }
+.adv-ips input {
+  width: 100%;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.adv-ips input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .field-check { grid-template-columns: auto minmax(0, 1fr); }
 .field-check > input {
