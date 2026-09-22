@@ -303,6 +303,28 @@ which measured as overflowing its fixed-width cell into the next one — `overfl
 `.adv-grid th` lets it wrap mid-word instead, harmlessly, since none of `salaryPath.ts`'s own shorter
 headers were ever close to their column's width.
 
+**"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
+`min-width` above trades a legible column for a horizontal scrollbar confined to the sidebar's own
+~280px `.adv-grid-scroll` box — reported as having to scroll sideways just to see Värnplikt and
+Studier. `pgb.ts`'s `expandBtn` moves the same `scroll` div (the same `<table>`, same inputs, same
+`change` listeners — not a rebuilt copy that would need its own state to stay in sync) into a
+`<dialog>` opened with `showModal()`, and moves it back on the dialog's own `close` event, whichever
+of the three ways that fires: the dialog's close button, the browser's own Escape handling, or a click
+on the backdrop (`event.target === dialog`, the same test a click anywhere *inside* the dialog fails).
+Freed from the sidebar, the dialog alone (`width: min(94vw, 480px)`) is wider than the grid's 380px
+floor on any realistic screen, so `.pgb-dialog .pgb-grid { min-width: 0; }` lets the table settle back
+to a plain 100%-wide fixed layout and needs no horizontal scrollbar of its own — measured at three
+widths (1280px desktop, 390px, and 375px — an iPhone SE, the narrowest realistic phone) with
+`scrollWidth <= clientWidth` on `.adv-grid-scroll` before this shipped. Only the 375px case is checked
+on every push: at the suite's standard 1280px, the dialog's own cap already clears the 380px floor
+whether or not `min-width: 0` is even there, so that width alone would never catch a regression in the
+one rule this feature actually adds — the desktop check instead covers what the dialog itself moves
+and restores. `reset()` — "Använd normala inställningar" — cannot also close the dialog if it happens
+to be open: a modal `<dialog>` makes the rest of the page inert by design, intercepting every pointer
+event outside itself, so that button is never reachable while the dialog is open in the first place
+(confirmed the hard way — an earlier draft of the offline check tried exactly that and Playwright
+timed out with "dialog intercepts pointer events" rather than the click ever landing).
+
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 
 `apps/web/src/kommunalskatt.ts` gives the two tax-basis settings a friendlier starting point than a

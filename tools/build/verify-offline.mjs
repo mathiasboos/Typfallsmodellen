@@ -658,8 +658,81 @@ if (!(pensionAfterPgb > pensionBeforePgb)) {
   );
 }
 
+// "Visa alla kolumner" moves the same table into a <dialog> -- reported as
+// having to scroll sideways to see Värnplikt and Studier in the sidebar's own
+// ~280px-wide scroller. The point of each check below is that it is the same
+// table (the 200 000 typed above is still there, and a further edit still
+// reaches the model), not a copy, and that the dialog itself never needs that
+// horizontal scrollbar.
+await pgbGroup.locator('[data-action="pgb-expand"]').click();
+await tab.waitForTimeout(100);
+const pgbDialog = tab.locator(".pgb-dialog");
+const pgbDialogOpen = await pgbDialog.evaluate((node) => node.open);
+console.log(`pgb dialog open : ${pgbDialogOpen}`);
+if (!pgbDialogOpen) problems.push("clicking \"Visa alla kolumner\" did not open the PGB dialog");
+
+const pgbDialogScroll = pgbDialog.locator(".adv-grid-scroll");
+const pgbDialogMetrics = await pgbDialogScroll.evaluate((el) => ({
+  scrollWidth: el.scrollWidth,
+  clientWidth: el.clientWidth,
+}));
+console.log(`pgb dialog fit  : scrollWidth ${pgbDialogMetrics.scrollWidth} <= clientWidth ${pgbDialogMetrics.clientWidth}?`);
+if (pgbDialogMetrics.scrollWidth > pgbDialogMetrics.clientWidth) {
+  problems.push(
+    `the PGB dialog still needs horizontal scroll (scrollWidth ${pgbDialogMetrics.scrollWidth} > ` +
+      `clientWidth ${pgbDialogMetrics.clientWidth}) -- the whole point of "Visa alla kolumner" is to avoid that`,
+  );
+}
+
+const pgbDialogFirstSa = await pgbDialog.locator(".pgb-grid tbody tr").first().locator("td").nth(2).locator("input").inputValue();
+if (pgbDialogFirstSa !== "200000") {
+  problems.push(
+    `the PGB dialog shows "${pgbDialogFirstSa}" for the value typed before it opened, expected "200000" -- ` +
+      "it should be the same table, not a copy",
+  );
+}
+// A second edit, made from inside the dialog this time, still has to reach
+// the model -- the dialog is not a read-only preview.
+const pgbDialogSecondSa = pgbDialog.locator(".pgb-grid tbody tr").nth(1).locator("td").nth(2).locator("input");
+await pgbDialogSecondSa.fill("100000");
+await pgbDialogSecondSa.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const pensionAfterDialogEdit = await kpiValue(0);
+console.log(`pension w/ dialog edit: ${pensionAfterPgb} -> ${pensionAfterDialogEdit}`);
+if (!(pensionAfterDialogEdit > pensionAfterPgb)) {
+  problems.push(
+    `entering a PGB amount from inside the dialog did not raise the pension further ` +
+      `(${pensionAfterPgb} -> ${pensionAfterDialogEdit})`,
+  );
+}
+
+// A native modal <dialog> blocks pointer events on the rest of the page by
+// design (confirmed the hard way: a first draft of this check tried to click
+// "Använd normala inställningar" while the dialog was still open and Playwright
+// timed out with "dialog intercepts pointer events") -- so the only way out is
+// its own close button, same as a person has.
+await pgbDialog.locator(".dialog-close").click();
+await tab.waitForTimeout(80);
+const pgbDialogClosed = await pgbDialog.evaluate((node) => !node.open);
+const pgbBackInPanel = await pgbGrid.count();
+const pgbDialogSecondSaKept = await pgbGrid.nth(1).locator("td").nth(2).locator("input").inputValue();
+console.log(`pgb dialog closed: ${pgbDialogClosed}, rows back in panel: ${pgbBackInPanel}, edit kept: ${pgbDialogSecondSaKept}`);
+if (!pgbDialogClosed) problems.push("clicking the PGB dialog's own close button did not close it");
+if (pgbBackInPanel !== pgbRows) {
+  problems.push(
+    `after the dialog closed, the PGB grid shows ${pgbBackInPanel} rows back in its panel, expected ${pgbRows}`,
+  );
+}
+if (pgbDialogSecondSaKept !== "100000") {
+  problems.push(
+    `after the dialog closed, the panel shows "${pgbDialogSecondSaKept}" for the amount typed inside the ` +
+      'dialog, expected "100000" -- the grid moved back with the table it is, not a copy of it',
+  );
+}
+
 // Aterstall clears the grid back to zero, the same as every other
-// advanced-mode field.
+// advanced-mode field -- checked with the dialog closed, since it is not
+// reachable any other way (see above).
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
 const pgbAfterReset = await pgbSaInput.inputValue();
@@ -1020,6 +1093,38 @@ if (shots) {
   await tab.screenshot({ path: join(shots, "dark.png"), fullPage: true });
   console.log(`screenshots     : ${shots}`);
 }
+
+// The PGB dialog's own fit was checked above at this suite's standard 1280px
+// desktop width, where its ~480px cap already clears the grid's old 380px
+// floor on its own -- not a meaningful check of `.pgb-dialog .pgb-grid {
+// min-width: 0; }` specifically, since that rule only matters once the
+// dialog itself is narrower than the floor it removes, which only happens on
+// a phone. Re-checked here at 375px (iPhone SE, the narrowest of the widths
+// this was hand-verified at before this check existed: 375, 390, 1280) in its
+// own short-lived context, rather than resizing `tab` and disturbing every
+// assertion above that assumes the 1280px layout.
+const narrowContext = await browser.newContext({ viewport: { width: 375, height: 700 } });
+const narrowTab = await narrowContext.newPage();
+await narrowTab.goto(pathToFileURL(page).href);
+await narrowTab.waitForSelector("#app");
+await narrowTab.locator('.mode-toggle .panel-btn[data-mode="advanced"]').click();
+await narrowTab.locator('.adv-group[data-group="pgb"] summary').click();
+await narrowTab.locator('[data-action="pgb-expand"]').click();
+await narrowTab.waitForTimeout(120);
+const narrowMetrics = await narrowTab.locator(".pgb-dialog .adv-grid-scroll").evaluate((el) => ({
+  scrollWidth: el.scrollWidth,
+  clientWidth: el.clientWidth,
+}));
+console.log(
+  `pgb dialog @375px: scrollWidth ${narrowMetrics.scrollWidth} <= clientWidth ${narrowMetrics.clientWidth}?`,
+);
+if (narrowMetrics.scrollWidth > narrowMetrics.clientWidth) {
+  problems.push(
+    `at a 375px phone width, the PGB dialog still needs horizontal scroll (scrollWidth ` +
+      `${narrowMetrics.scrollWidth} > clientWidth ${narrowMetrics.clientWidth})`,
+  );
+}
+await narrowContext.close();
 
 await browser.close();
 

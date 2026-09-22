@@ -59,6 +59,19 @@ export function createPgbGrid(
   const intro = document.createElement("p");
   intro.className = "field-hint";
 
+  // Five columns split across the sidebar's own width clip a sixth digit
+  // (see `.pgb-grid`'s own comment in styles.css), so `.pgb-grid` carries a
+  // 380px floor and the grid scrolls sideways in its narrow `.adv-grid-scroll`
+  // box to show it all -- reported as having to scroll to see the rest of the
+  // table. `expandBtn` moves the same table (same nodes, same listeners, no
+  // duplicated state) into a `<dialog>` instead: freed from the sidebar, the
+  // dialog is wide enough on its own that the grid needs no min-width floor
+  // and no horizontal scroll to show every column at once.
+  const expandBtn = document.createElement("button");
+  expandBtn.type = "button";
+  expandBtn.className = "export-btn";
+  expandBtn.dataset.action = "pgb-expand";
+
   const scroll = document.createElement("div");
   scroll.className = "adv-grid-scroll";
   const table = document.createElement("table");
@@ -78,7 +91,38 @@ export function createPgbGrid(
   table.append(head, tbody);
   scroll.append(table);
 
-  body.append(intro, scroll);
+  const dialog = document.createElement("dialog");
+  dialog.className = "pgb-dialog";
+  const dialogHead = document.createElement("div");
+  dialogHead.className = "pgb-dialog-head";
+  const dialogTitle = document.createElement("h3");
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "dialog-close";
+  closeBtn.textContent = "×";
+  closeBtn.addEventListener("click", () => dialog.close());
+  dialogHead.append(dialogTitle, closeBtn);
+  dialog.append(dialogHead);
+  // Clicking the backdrop -- a click landing on the <dialog> element itself
+  // rather than anything inside it -- closes it the same way Escape does.
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  // Fires for every path out (the close button, the backdrop, Escape), so the
+  // grid always ends up back where it started, never stranded in a closed
+  // dialog: `intro.after(scroll)` rather than `body.append(scroll)` so a
+  // future field appended after `scroll` would not silently reorder it.
+  dialog.addEventListener("close", () => {
+    intro.after(scroll);
+  });
+  document.body.append(dialog);
+
+  expandBtn.addEventListener("click", () => {
+    dialog.append(scroll);
+    dialog.showModal();
+  });
+
+  body.append(intro, expandBtn, scroll);
   element.append(summary, body);
 
   function emit(): void {
@@ -151,7 +195,11 @@ export function createPgbGrid(
   drawGrid();
 
   const applyText = (l: Lang) => {
-    summary.textContent = say(l, "Pensionsgrundande belopp (PGB)", "Pension-qualifying amounts (PGB)");
+    const title = say(l, "Pensionsgrundande belopp (PGB)", "Pension-qualifying amounts (PGB)");
+    summary.textContent = title;
+    dialogTitle.textContent = title;
+    closeBtn.setAttribute("aria-label", say(l, "Stäng", "Close"));
+    expandBtn.textContent = say(l, "Visa alla kolumner", "Show all columns");
     intro.textContent = say(
       l,
       "Sjuk- eller aktivitetsersättning, värnplikt och studier ger pensionsrätt utöver " +
