@@ -319,18 +319,26 @@ did not have a row in `advanced.ts`'s own descriptor table yet. It sits in the "
 for `finalSalaryYears`/`pensionSameYearAsFinalSalary` is coincidence, not evidence the group was
 mislabelled.
 
-**"Pensionering sker efter slutlönen" (row 43) was exposed as a checkbox, which was a real bug, not
-just an unexposed setting.** The sheet's own row comment, "(1)-> Pensioneringen sker samma år som
-slutlönen", reads like a flag, and the field was wired as one (`check`, writing only 0 or 1) — but the
-manual's own 3.6 prose is explicit that it isn't: "Om 0 anges sker pensionering samma år som slutlön.
-Om större siffra än 0 anges sker pensionering så många år efter slutlönen" (0 = pension starts the
-same year as the final salary; any larger number = that many years after it). `adjustmentFactors`
-(`packages/engine/src/model/result.ts`) reads it as `timeLag`, added directly into the retirement-age
-index math (`par - 1 + timeLag + korr`) that feeds the "Slutlön" row's own price-adjusted column — a
-year count, never a boolean. A checkbox here could only ever write 0 or 1, so "stop working in 2025,
-first pension payment in 2030" (a five-year gap) was unreachable no matter how the box was clicked.
-Fixed by giving it a plain `years(0, 40)` control instead, the same kind `tempTjpUttag`/`tempIpsUttag`
-already use for an analogous "count of years" input.
+**"Slutlönens referensår efter pensioneringen" (row 43) was exposed as a checkbox, which was a real
+bug — but it is a narrower setting than its own name suggests, and does not do what its first read
+implies.** The sheet's own row comment, "(1)-> Pensioneringen sker samma år som slutlönen", reads
+like a flag, and the field was wired as one (`check`, writing only 0 or 1). Manual 3.6's prose reads,
+at first glance, like a real deferred-retirement control: "Om 0 anges sker pensionering samma år som
+slutlön. Om större siffra än 0 anges sker pensionering så många år efter slutlönen" (0 = pension
+starts the same year as the final salary; any larger number = that many years after it) — but the
+manual's own next sentence scopes it: "[Detta] påverkar resultatet som skrivs ut i Tabell 1" (this
+affects the result printed in Table 1). `adjustmentFactors` (`packages/engine/src/model/result.ts`)
+reads it as `timeLag`, feeding only the price-index lookup behind `beforeRetirement` — which rescales
+the *price-adjusted* ("Fasta priser") column of Table 1's Slutlön/Lön efter skatt/Disponibel inkomst
+rows. **It does not move `par` (the retirement age) or anything in Table 2**: raising it to 5 does not
+delay Income/Premium/Occupational pension by five years, confirmed against a user's own test after
+this control first shipped with the "stop working in 2025, first pension payment in 2030" framing —
+that framing was wrong and has been corrected in the field's own label, hint and code comment. A
+checkbox here could still only ever write 0 or 1, so fixing it to a plain `years(0, 40)` control (the
+same kind `tempTjpUttag`/`tempIpsUttag` use) remains the right fix — this setting genuinely is a year
+count in the sheet, just a narrower one than "when does the pension start" — but a real
+stop-working-before-the-pension-starts scenario is modeled today by setting "Går i pension vid ålder"
+to the later age and zeroing the gap years in the own salary-path grid instead.
 
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the

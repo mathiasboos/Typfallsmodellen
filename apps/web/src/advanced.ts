@@ -491,18 +491,34 @@ export const GROUPS: readonly Group[] = [
         // row's own "(1)->" shorthand reads like a flag, but manual 3.6 is
         // explicit that it is not one: "Om 0 anges sker pensionering samma år
         // som slutlön. Om större siffra än 0 anges sker pensionering så många
-        // år efter slutlönen." (0 = same year as the final salary, any larger
-        // number = that many years after it). `adjustmentFactors` (packages/
-        // engine/src/model/result.ts) reads it as `timeLag`, added straight
-        // into the retirement-age index math, not compared to 1 -- so a
-        // checkbox here (writing only 0 or 1) could never reach "stop working
-        // in 2025, first pension payment in 2030" (timeLag = 5), only a
-        // one-year shift at most.
+        // år efter slutlönen. [Detta] påverkar resultatet som skrivs ut i
+        // Tabell 1." (0 = same year as the final salary, any larger number =
+        // that many years after it; the manual's own last sentence scopes the
+        // whole effect to Table 1.) `adjustmentFactors` (packages/engine/src/
+        // model/result.ts) reads it as `timeLag`, added into the price-index
+        // lookup that feeds `beforeRetirement` -- which only rescales the
+        // *price-adjusted* ("Fasta priser") column of Table 1's Slutlön/Lön
+        // efter skatt/Disponibel inkomst rows. It does not move `par` (the
+        // retirement age) or anything in Table 2: raising this to 5 does NOT
+        // delay when Income/Premium/Occupational pension start being paid by
+        // five years, confirmed against a user's own test after this control
+        // first shipped -- only Table 1's own real-terms Slutlön figure moves.
+        // A genuine "stop working before the pension starts" scenario is
+        // modeled today by setting "Går i pension vid ålder" to the later age
+        // and zeroing the gap years in the own salary-path grid instead; this
+        // setting is a narrower price-basis knob the manual itself scopes to
+        // Table 1, not a withdrawal-timing control. A checkbox here (writing
+        // only 0 or 1) could still only ever reach a one-year shift, which is
+        // why it is a plain year count now -- that part of the fix stands
+        // regardless of the setting's own narrow real-world scope.
         key: "pensionSameYearAsFinalSalary",
         row: 43,
         control: years(0, 40),
-        label: text("Pensionering sker efter slutlönen", "Pension starts after the final salary"),
-        hint: text("antal år efter slutlönen, 0 = samma år", "number of years after the final salary, 0 = the same year"),
+        label: text("Slutlönens referensår efter pensioneringen", "Final salary's reference year after retiring"),
+        hint: text(
+          "Justerar bara Slutlönens belopp i Tabell 1 (Fasta priser) -- flyttar inte när pensionen betalas ut",
+          "Only adjusts the Slutlön figure in Table 1 (Fasta priser) -- does not move when the pension itself starts",
+        ),
         get: (c) => c.pensionSameYearAsFinalSalary,
         set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
       },

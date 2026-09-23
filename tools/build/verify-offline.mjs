@@ -1071,14 +1071,14 @@ if (flexPensionAfterReset !== "0") {
 await tab.getByLabel("Välj tjänstepension").selectOption("1");
 await tab.waitForTimeout(50);
 
-// "Pensionering sker efter slutlönen" (manual 3.6): 0 = pension starts the
-// same year as the final salary, N = N years after it -- a plain year count,
-// not a flag (advanced.ts's own comment on this setting explains why the
-// row's "(1)->" shorthand reads like one but isn't). `adjustmentFactors`'s
-// own `beforeRetirement` factor (packages/engine/src/model/result.ts) is fed
-// straight by this setting and, in turn, feeds the "Slutlön" row's own
-// price-adjusted ("Fasta priser") column -- the one figure a five-year gap
-// between stopping work and the first pension payment has to move.
+// "Slutlönens referensår efter pensioneringen" (manual 3.6, row 43): a plain
+// year count, not a flag (advanced.ts's own comment on this setting explains
+// why the row's "(1)->" shorthand reads like one but isn't). It is a narrower
+// setting than its name suggests -- see advanced.ts's comment -- feeding only
+// `adjustmentFactors`'s `beforeRetirement` factor (packages/engine/src/model/
+// result.ts), which rescales the "Slutlön" row's own price-adjusted ("Fasta
+// priser") column in Table 1. It does not delay when the pension itself is
+// paid (Table 2), so this checks only the one figure it does move.
 const finalSalaryAdjustedBefore = await shown("slutlon", "adjusted");
 const pensionGapField = await setting("pensionSameYearAsFinalSalary");
 await pensionGapField.fill("5");
@@ -1086,12 +1086,11 @@ await pensionGapField.dispatchEvent("change");
 await tab.waitForTimeout(80);
 const finalSalaryAdjustedAfter = await shown("slutlon", "adjusted");
 console.log(
-  `pension gap     : slutlön (fasta priser) ${finalSalaryAdjustedBefore} -> ${finalSalaryAdjustedAfter} at 5 years`,
+  `slutlön ref year: slutlön (fasta priser) ${finalSalaryAdjustedBefore} -> ${finalSalaryAdjustedAfter} at 5 years`,
 );
 if (finalSalaryAdjustedAfter === finalSalaryAdjustedBefore) {
   problems.push(
-    "setting the pension-starts-after-final-salary gap to 5 years did not change the adjusted " +
-      '"Slutlön" figure',
+    'setting the "Slutlönens referensår" gap to 5 years did not change the adjusted "Slutlön" figure',
   );
 }
 
@@ -1100,7 +1099,7 @@ await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
 const pensionGapAfterReset = await pensionGapField.inputValue();
 if (pensionGapAfterReset !== "0") {
-  problems.push(`the reset button left the pension-starts-after gap at "${pensionGapAfterReset}", expected "0"`);
+  problems.push(`the reset button left "Slutlönens referensår" at "${pensionGapAfterReset}", expected "0"`);
 }
 await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
 await tab.waitForTimeout(50);
