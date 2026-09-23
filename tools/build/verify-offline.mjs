@@ -916,6 +916,29 @@ if (!(ipsAfter > ipsBefore)) {
   problems.push(`setting private saving to 5% of income did not raise it (${ipsBefore} -> ${ipsAfter})`);
 }
 
+// "Barnår": up to four children, each a birth year, living under "Pension-
+// qualifying amounts (PGB)" alongside the sheet's other three PGB sources --
+// already wired into PGB childcare-year credits (earnPgb) and child/housing
+// benefits (benefits), just unreachable from this panel before now. Checked
+// with a birth year old enough that earnPgb's own gate (the parent's age at
+// the birth, > 15) is satisfied for the default typfall (born 1959). Run
+// here, in the same "last, right before the full reset" spot every other
+// test that raises the model's own pension figures runs in.
+const totalBrutoBeforeChild = await shown("totBrutto", "monthly");
+const firstChildField = pgbGroup.locator('[data-setting="childBirthYear1"]');
+await firstChildField.fill("1990");
+await firstChildField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const totalBrutoAfterChild = await shown("totBrutto", "monthly");
+console.log(
+  `child year 1    : total pension ${totalBrutoBeforeChild} -> ${totalBrutoAfterChild} kr/month after a 1990 birth year`,
+);
+if (!(totalBrutoAfterChild > totalBrutoBeforeChild)) {
+  problems.push(
+    `setting the first child's birth year to 1990 did not raise total pension (${totalBrutoBeforeChild} -> ${totalBrutoAfterChild})`,
+  );
+}
+
 // "Nollställ alla värden": every row's own income and wage cell has to read
 // 0, not just the ten already zeroed above. Not a pension-direction check --
 // a whole working life at 0 kr leans on garantipension, whose own means-
@@ -947,6 +970,10 @@ const vplStartAfterReset = await pgbGroup.locator('[data-setting="pgbConscriptio
 if (vplStartAfterReset !== "") {
   problems.push(`the reset button left the conscription start date at "${vplStartAfterReset}", expected empty`);
 }
+const childYear1AfterReset = await firstChildField.inputValue();
+if (childYear1AfterReset !== "0") {
+  problems.push(`the reset button left the first child's birth year at "${childYear1AfterReset}", expected "0"`);
+}
 
 // Partiellt uttag: "Andel uttag, inkomstpension/premiepension" and
 // "Definitivt uttag vid ålder" simulate combining part-time work with a
@@ -959,29 +986,6 @@ if (vplStartAfterReset !== "") {
 const pwGroup = tab.locator('details[data-group="partialWithdrawal"]');
 if (!(await pwGroup.evaluate((node) => node.open))) {
   await pwGroup.locator("summary").click();
-}
-
-// "Barnår": up to four children, each a birth year -- manual 3.7's other
-// half, sharing this group with "Partiellt uttag" the same way the manual's
-// own "Barnår och partiellt uttag" section does. Already wired into PGB
-// childcare-year credits (earnPgb) and child/housing benefits (benefits),
-// just unreachable from this panel before now. Checked with a birth year
-// old enough that earnPgb's own gate (the parent's age at the birth, > 15)
-// is satisfied for the default typfall (born 1959) -- run first, before the
-// partial-withdrawal fields below touch the same Table 2 columns.
-const totalBrutoBeforeChild = await shown("totBrutto", "monthly");
-const firstChildField = pwGroup.locator('[data-setting="childBirthYear1"]');
-await firstChildField.fill("1990");
-await firstChildField.dispatchEvent("change");
-await tab.waitForTimeout(80);
-const totalBrutoAfterChild = await shown("totBrutto", "monthly");
-console.log(
-  `child year 1    : total pension ${totalBrutoBeforeChild} -> ${totalBrutoAfterChild} kr/month after a 1990 birth year`,
-);
-if (!(totalBrutoAfterChild > totalBrutoBeforeChild)) {
-  problems.push(
-    `setting the first child's birth year to 1990 did not raise total pension (${totalBrutoBeforeChild} -> ${totalBrutoAfterChild})`,
-  );
 }
 
 const pwHeaders = await tab.locator(".table2 thead th").allTextContents();
@@ -1054,10 +1058,6 @@ if (!(incomeFinal >= incomeDuring)) {
 
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
-const childYear1AfterReset = await firstChildField.inputValue();
-if (childYear1AfterReset !== "0") {
-  problems.push(`reset left the first child's birth year at "${childYear1AfterReset}", expected "0"`);
-}
 const uttagIpAfterReset = await tab.locator('[data-setting="uttagIp"]').inputValue();
 const defArAfterReset = await tab.locator('[data-setting="defAr"]').inputValue();
 console.log(`partial withdrawal reset: uttagIp ${uttagIpAfterReset}, defAr ${defArAfterReset}`);

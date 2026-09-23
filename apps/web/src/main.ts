@@ -126,6 +126,10 @@ const pgbGrid = createPgbGrid(view.lang, (patch) => {
   if (patch.pgbConscription === undefined) delete next.pgbConscription;
   else next.pgbConscription = patch.pgbConscription;
   advancedInput = next;
+  // `childBirthYears` is a ModelContext (Adv_settings) field, unlike the two
+  // above (TypfallInput, the Start sheet) -- it rides in the same patch
+  // since it lives in the same panel, but goes into `advanced` instead.
+  advanced = { ...advanced, childBirthYears: patch.childBirthYears };
   render();
 });
 

@@ -52,7 +52,7 @@
  * A fixed range also means the row list never has to be rebuilt (and typed
  * values never have to be reconciled) when unrelated inputs change.
  */
-import { conscriptionDaysByYear, studyPgb } from "@typfallsmodellen/engine";
+import { conscriptionDaysByYear, defaultContext, studyPgb } from "@typfallsmodellen/engine";
 import type {
   PgbBreakdownYear,
   PgbConscriptionPeriod,
@@ -89,6 +89,7 @@ export function createPgbGrid(
   onChange: (patch: {
     pgbManual: readonly PgbManualYear[] | undefined;
     pgbConscription: PgbConscriptionPeriod | undefined;
+    childBirthYears: readonly [number, number, number, number];
   }) => void,
 ): PgbGridHandle {
   let born = 0;
@@ -98,6 +99,22 @@ export function createPgbGrid(
   let rows: Row[] = [];
   for (let age = FIRST_AGE; age <= LAST_AGE; age += 1) rows.push({ age, sa: 0, studySemesters: 0 });
 
+  // "Barnår" (manual 3.7's other half, sharing the section with "Partiellt
+  // uttag" but not the concern -- this is another pension-qualifying-amount
+  // source, so it lives here instead): up to four children, one birth year
+  // each -- `rng_Född_Barn1..4`, already read by `earnPgb` (packages/engine/
+  // src/model/mcalc.ts) for childcare-year PGB credits and by `benefits`
+  // (packages/engine/src/model/taxAndBenefits.ts) for child allowance and
+  // housing benefit, both well before this had a UI row. The real workbook
+  // cell is a date, but every VBA consumer (VBA_go.bas) takes `Year(...)`
+  // off it immediately and never touches month or day, so a plain year
+  // field is faithful. It is a `ModelContext` field (Adv_settings), unlike
+  // `pgbManual`/`pgbConscription` below (`TypfallInput`, the Start sheet) --
+  // `onChange`'s own patch carries both kinds, and it is main.ts's job to
+  // route each into the right one, the same split `createAdvancedPanel` and
+  // `createPgbGrid` already answer to separately for every other field.
+  let childBirthYears = [...defaultContext().childBirthYears] as [number, number, number, number];
+
   const element = document.createElement("details");
   element.className = "adv-group";
   element.dataset.group = "pgb";
@@ -106,8 +123,50 @@ export function createPgbGrid(
   const body = document.createElement("div");
   body.className = "adv-body";
 
+  // Not `.field-hint`: that class carries a hardcoded `grid-row: 2` meant for
+  // a `.field`'s own two-row grid (`controls.ts`'s `fieldSet`), and `.adv-body`
+  // is itself a CSS grid -- reusing it here let `.adv-body`'s auto-placement
+  // slot every unpositioned sibling (the "Visa alla kolumner" button, and now
+  // `barnBox`) into row 1, *above* this paragraph, regardless of DOM order.
+  // `.pgb-intro` is the same look with no row of its own to fight over.
   const intro = document.createElement("p");
-  intro.className = "field-hint";
+  intro.className = "pgb-intro";
+
+  const barnBox = document.createElement("div");
+  barnBox.className = "pgb-barn";
+  const barnLabel = [
+    document.createElement("span"),
+    document.createElement("span"),
+    document.createElement("span"),
+    document.createElement("span"),
+  ];
+  const barnInputs = barnLabel.map((labelSpan, slot) => {
+    const wrap = document.createElement("label");
+    wrap.className = "pgb-barn-field";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.inputMode = "numeric";
+    input.min = "0";
+    input.max = "2100";
+    input.step = "1";
+    input.value = String(childBirthYears[slot] ?? 0);
+    input.dataset.setting = `childBirthYear${slot + 1}`;
+    input.addEventListener("change", () => {
+      const typed = Number(input.value);
+      if (!Number.isFinite(typed) || input.value.trim() === "") {
+        input.value = String(childBirthYears[slot] ?? 0);
+        return;
+      }
+      const value = Math.min(Math.max(Math.round(typed), 0), 2100);
+      childBirthYears = [...childBirthYears] as [number, number, number, number];
+      childBirthYears[slot] = value;
+      input.value = String(value);
+      emit();
+    });
+    wrap.append(labelSpan, input);
+    return { wrap, input };
+  });
+  barnBox.append(...barnInputs.map((b) => b.wrap));
 
   // Seven columns split across the sidebar's own width clip the later ones
   // (see `.pgb-grid`'s own comment in styles.css), so `.pgb-grid` carries a
@@ -247,7 +306,7 @@ export function createPgbGrid(
     dialog.showModal();
   });
 
-  body.append(intro, expandBtn, scroll);
+  body.append(intro, barnBox, expandBtn, scroll);
   element.append(summary, body);
 
   function conscriptionPeriod(): PgbConscriptionPeriod | undefined {
@@ -282,6 +341,7 @@ export function createPgbGrid(
     onChange({
       pgbManual: nonzero.length > 0 ? nonzero.map((r) => ({ ...r })) : undefined,
       pgbConscription: conscriptionPeriod(),
+      childBirthYears,
     });
   }
 
@@ -386,14 +446,28 @@ export function createPgbGrid(
     expandBtn.textContent = say(l, "Visa alla kolumner", "Show all columns");
     intro.textContent = say(
       l,
-      "Sjuk- eller aktivitetsersättning, värnplikt och studier ger pensionsrätt utöver " +
-        "barnår, som modellen redan räknar med. Värnpliktens datum fylls i uppe i tabellen, " +
-        "under Värnplikt (ger bara pensionsrätt 1995–2010 och från 2018).",
-      "Sickness or activity compensation, conscription and study earn pension rights on " +
-        "top of childcare years, which the model already accounts for. Conscription's own " +
-        "dates are filled in up in the table, under Värnplikt (only earns pension rights " +
-        "1995-2010 and from 2018 on).",
+      "Barnår, sjuk- eller aktivitetsersättning, värnplikt och studier ger alla pensionsrätt " +
+        "utöver den vanliga inkomsten. Fyll i barnens födelseår nedan (upp till fyra); " +
+        "värnpliktens datum fylls i uppe i tabellen, under Värnplikt (ger bara pensionsrätt " +
+        "1995–2010 och från 2018).",
+      "Child years, sickness or activity compensation, conscription and study all earn " +
+        "pension rights on top of ordinary income. Fill in the children's birth years below " +
+        "(up to four); conscription's own dates are filled in up in the table, under Värnplikt " +
+        "(only earns pension rights 1995-2010 and from 2018 on).",
     );
+    const childOrdinal = [
+      say(l, "1:a barnet", "1st child"),
+      say(l, "2:a barnet", "2nd child"),
+      say(l, "3:e barnet", "3rd child"),
+      say(l, "4:e barnet", "4th child"),
+    ];
+    const birthYearHint = say(l, "Födelseår, 0 = inget barn", "Year of birth, 0 = no child");
+    for (const [slot, labelSpan] of barnLabel.entries()) {
+      labelSpan.textContent = childOrdinal[slot]!;
+      const barnInput = barnInputs[slot]!.input;
+      barnInput.setAttribute("aria-label", `${childOrdinal[slot]!}, ${birthYearHint}`);
+      barnInput.title = birthYearHint;
+    }
     startLabel.textContent = say(l, "Från", "From");
     startInput.setAttribute("aria-label", say(l, "Värnplikt, startdatum", "Conscription, start date"));
     endLabel.textContent = say(l, "Till", "To");
@@ -447,6 +521,8 @@ export function createPgbGrid(
       endInput.value = "";
       breakdown = new Map();
       breakdownDigest = "";
+      childBirthYears = [...defaultContext().childBirthYears] as [number, number, number, number];
+      for (const [slot, { input }] of barnInputs.entries()) input.value = String(childBirthYears[slot] ?? 0);
       updateVplReadout(currentLang);
       drawGrid();
     },

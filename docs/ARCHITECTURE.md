@@ -379,6 +379,10 @@ since the port's earliest phases, cross-checked against the workbook's own `Brut
 UI for it was ever missing, and only sickness/activity compensation stayed a typed kronor figure once
 that UI arrived — see below.
 
+This same file also exposes Barnår, the fourth PGB source (childcare years) — a `ModelContext` field,
+unlike the two above, so `pgb.ts`'s own `onChange` patch carries both kinds now; see the "Barnår,
+section 3.7's other half" entry further down for the detail on why and how.
+
 The grid's shape follows `salaryPath.ts`'s, with one real difference: there is no computed path to
 open with, since a default run has none of this (`pgbManual`'s own comment: "the shipped workbook has
 none, so childcare years are the only PGB a default run earns"), so every cell starts at zero and only
@@ -558,20 +562,25 @@ exposed in the "saving" group (occupational pension and private saving's own wit
 for later — not needed for the manual's own example to work end to end, and each wants its own look
 rather than riding in on this one.
 
-**Barnår, section 3.7's other half, is exposed too** — four independent birth-year fields writing into
-`context.childBirthYears` (`rng_Född_Barn1..4`), a real, already-wired feature: `earnPgb` (packages/
-engine/src/model/mcalc.ts) credits PGB for childcare years off it, and `benefits` (packages/engine/
-src/model/taxAndBenefits.ts) reads it for child allowance and housing benefit, both well before this
-panel had a row for it. The real workbook cell is a date (`Date` in VBA_go.bas), but every VBA
+**Barnår, section 3.7's other half, is exposed too — under "Pension-qualifying amounts (PGB)" in
+`apps/web/src/pgb.ts`, not in this file's own `GROUPS` table.** Four independent birth-year fields
+write into `context.childBirthYears` (`rng_Född_Barn1..4`), a real, already-wired feature: `earnPgb`
+(packages/engine/src/model/mcalc.ts) credits PGB for childcare years off it, and `benefits` (packages/
+engine/src/model/taxAndBenefits.ts) reads it for child allowance and housing benefit, both well before
+either panel had a row for it. The real workbook cell is a date (`Date` in VBA_go.bas), but every VBA
 consumer takes `Year(...)` off it immediately and never touches month or day, so a plain year field is
-faithful. It cannot be a `Setting` like everything else in this table: all four children share one
-context field (a 4-tuple), and a `Setting.set` only ever owns the single field it is responsible for,
-with no way to carry the other three years along unchanged. `createAdvancedPanel` builds it directly
-instead, right where the "partialWithdrawal" group is assembled, with its own local copy of the tuple
-that each field's own change updates one slot of — the same "group built by hand around the loop"
-pattern `municipalitySelect`/`churchBurialSelect` already use for the "tax" group. The group's own
-title changed to "Barnår och partiellt uttag", matching the manual's own combined section name, since
-the two topics were never really under separate headings there.
+faithful. It first shipped here, in this file's "partialWithdrawal" group (renamed "Barnår och
+partiellt uttag" to match the manual's own combined section name) — moved to `pgb.ts` on request,
+since Barnår is a pension-qualifying-amount source like the grid's other three (sickness/activity
+compensation, conscription, study), not a partial-withdrawal setting, and the manual's section number
+grouping the two together was never evidence they were the same concern. It still cannot be a
+`Setting` the way this file's own fields are: all four children share one context field (a 4-tuple),
+and a `Setting.set` only ever owns the single field it is responsible for. `createPgbGrid` (`pgb.ts`)
+holds its own local copy of the tuple instead, that each field's own change updates one slot of, and
+its `onChange` patch now carries a `ModelContext` field (`childBirthYears`) alongside the two
+`TypfallInput` ones (`pgbManual`/`pgbConscription`) it already carried — `main.ts` is what splits the
+patch, routing `childBirthYears` into `advanced` and the other two into `advancedInput`, the same
+per-field routing `createAdvancedPanel`'s own `onChange` already does for every other setting.
 
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 

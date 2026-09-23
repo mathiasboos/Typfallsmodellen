@@ -472,6 +472,30 @@ body {
   color: var(--text-secondary);
   white-space: normal;
 }
+
+/* "Barnår": four birth-year fields above the grid, not a grid row -- each
+   one a small labelled box, wrapping onto a second line at the sidebar's
+   own narrow width rather than clipping. */
+/* Not `.field-hint`: see pgb.ts's own comment on `intro` for why that class's
+   hardcoded `grid-row: 2` is wrong outside a `.field`'s own grid. */
+.pgb-intro { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 8px; }
+.pgb-barn { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 2px 0 10px; }
+.pgb-barn-field { display: block; flex: 1 1 80px; min-width: 72px; font-weight: 400; }
+.pgb-barn-field span { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 1px; }
+.pgb-barn-field input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 4px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.pgb-barn-field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .pgb-vpl-readout:empty { display: none; }
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would
