@@ -119,6 +119,15 @@ describe("pensionsgrundande belopp", () => {
     expect(state.pgbYears).toBeGreaterThan(0);
   });
 
+  it("breaks the childcare credit out on its own array, matching what pgb absorbs", () => {
+    const { state } = plain({}, { childBirthYears: [1990, 0, 0, 0] });
+    const ageAtBirth = 1990 - 1959;
+    for (let n = 0; n <= 3; n += 1) {
+      expect(state.pgbBarn.get(ageAtBirth + n)).toBe(state.pgb.get(ageAtBirth + n));
+    }
+    expect(state.pgbBarn.get(ageAtBirth - 1)).toBe(0);
+  });
+
   it("takes the PGB sheet's manual entries where they are given", () => {
     const { state } = plain({
       pgbManual: [{ age: 30, sa: 50_000, studySemesters: 0 }],

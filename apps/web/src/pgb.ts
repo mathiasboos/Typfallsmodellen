@@ -2,87 +2,142 @@
  * Pensionsgrundande belopp -- the PGB sheet.
  *
  * The workbook credits pension rights for years without ordinary income four
- * ways: childcare years, which the model computes on its own from the Start
- * sheet's `childBirthYears`; sickness/activity compensation, hand-typed
- * kronor (PGB!row 4: "Ange manuellt"); conscription, a single date range the
- * sheet turns into kronor itself (PGB!row 5: "Lägg in datum"); and study, a
- * semester count the sheet turns into kronor from a per-year grant rate
- * (PGB!row 6: "Lägg in antingen antal terminer eller bidragsbelopp" -- the
- * "or a kronor amount" half of that instruction is not ported; a semester
- * count is what the manual's own example asks for). `packages/engine/src/
- * model/pgb.ts` is where the conscription and study kronor actually get
- * computed; this file only collects the dates and the semester counts.
+ * ways: childcare years, computed from the Start sheet's `childBirthYears`;
+ * sickness/activity compensation, hand-typed kronor (PGB!row 4: "Ange
+ * manuellt"); conscription, a single date range the sheet turns into kronor
+ * itself (PGB!row 5: "Lägg in datum"); and study, a semester count the sheet
+ * turns into kronor from a per-year grant rate (PGB!row 6). `packages/
+ * engine/src/model/pgb.ts` is where the conscription and study kronor
+ * actually get computed; this file only collects the raw inputs.
  *
- * The grid has two grouped columns, "Studier" and "Värnplikt", each an input
- * beside the kronor (and, for Värnplikt, the days) it produces -- mirroring
- * the sheet's own PGB tab, which lays conscription and study out as Year,
- * Age, Days, PGB amount and Year, Age, Semesters, PGB amount respectively,
- * rather than as a single line of text summarising the whole period.
+ * This used to be an always-visible 55-row grid (ages 16-70), mostly blank,
+ * with the four child-birth-year fields above it -- reported as hard to use:
+ * almost every cell is empty for almost every user, and the one thing anyone
+ * actually wants (which years have a PGB credit, and how much) was buried in
+ * a wall of zeros. This is a small add-entry form instead -- pick a type,
+ * fill in that type's own fields, click "Lägg till" -- plus a summary table
+ * that only ever shows years and categories that actually have data, per the
+ * user's own mockup.
  *
- * The two conscription dates live in the Värnplikt group's own header cell,
- * not in a box above the grid -- reported as unintuitive that typing a date
- * range somewhere else changed a table further down the page, with nothing
- * visually tying the two together. `wsPGB!H4`/`H5` are still a single
- * period, not a per-age entry (the sheet's own instruction is "Lägg in
- * datum", nothing about a grid), so the inputs stay singular rather than
- * becoming two more per-row columns; what moved is only *where* that single
- * pair sits, from a separate `<div>` to the same `<th>` that already names
- * the Dagar/PGB värnplikt columns the dates fill in, right there in the table.
+ * Showing a "Child PGB, kr" column needed a real engine change, not just a
+ * client-side read: `context.childBirthYears` already drove a per-age credit
+ * inside `earnPgb` (`packages/engine/src/model/mcalc.ts`), but it was folded
+ * straight into `RunState.pgb` with no way to tell it apart from the other
+ * three sources, and `TypfallResult.pgbBreakdown` only ever flattened
+ * `TypfallInput.pgbManual` -- which structurally can't see a `ModelContext`
+ * field. `RunState.pgbBarn` and `PgbBreakdownYear.barn` (both new) expose it.
  *
- * The conscription kronor need `medelPgi`, an economic projection that
- * depends on the run's own inflation/growth/price-basis assumptions --
- * unlike study's kronor, which are a pure function of a year and a semester
- * count and so are still computed client-side. There is no reaching that
- * projection from here without duplicating a chunk of `setup.ts`, so the
- * conscription column instead reads back `TypfallResult.pgbBreakdown`, the
- * same figures `earnPgb` used in the pension it just computed -- `setBaseline`
- * takes it as a third argument, refreshed on every render the way
- * `salaryPath.ts`'s own baseline is.
+ * A single child's credit can land in up to four consecutive calendar years
+ * (the birth year and the three after), and if two children's four-year
+ * windows overlap the same year, only the higher-priority child's credit
+ * counts for that year -- the other is silently dropped (`pgbBarn`,
+ * `packages/engine/src/pension/incomePension.ts`, original workbook
+ * behaviour, not a bug). The "Child PGB, kr" column header carries a short
+ * info tooltip explaining this, matching `tables.ts`'s own `TABLE2_COLUMNS`
+ * pattern -- the column shows a number either way, so this is not otherwise
+ * visible.
  *
- * Unlike `salaryPath.ts`'s grid, there is no computed path to fill from or
- * fall back to -- every cell starts at zero (or empty, for the dates), and
- * only the nonzero/non-empty entries are ever handed to the engine.
- *
- * The row range is a fixed 16 through 70, not tied to the wage path the way
- * `salaryPath.ts`'s rows are: `earnPgb` (packages/engine/src/model/mcalc.ts)
- * only ever reads a manual entry for `age > 15 && age <= riktalder`, and
- * `context.riktage` -- the only riktålder this port has today -- defaults to
- * 66 for every cohort ("cohort table pending"), so 70 leaves a safe margin
- * without inventing a per-cohort range the workbook itself does not model yet.
- * A fixed range also means the row list never has to be rebuilt (and typed
- * values never have to be reconciled) when unrelated inputs change.
+ * Sickness/activity compensation and study are each keyed by (year, that
+ * type), so re-adding the same year replaces whatever was there -- editing
+ * is "type it again, or remove and re-add". Conscription stays a single
+ * period, same as before. Children live in their own small list beside the
+ * form, one always-editable birth-year field per filled slot -- the summary
+ * table's own "Child PGB, kr" column stays read-only, since attributing a
+ * given year's credit back to a specific child for removal would mean
+ * duplicating `pgbBarn`'s own window/priority logic client-side just to
+ * target a click.
  */
-import { conscriptionDaysByYear, defaultContext, studyPgb } from "@typfallsmodellen/engine";
+import { conscriptionDaysByYear, defaultContext } from "@typfallsmodellen/engine";
 import type {
   PgbBreakdownYear,
   PgbConscriptionPeriod,
   PgbManualYear,
 } from "@typfallsmodellen/engine";
 
+import { fieldSet } from "./controls.js";
+import { kronor } from "./format.js";
 import type { Lang } from "./i18n.js";
+import { t } from "./i18n.js";
+import { cell, headCell } from "./tables.js";
 
 const FIRST_AGE = 16;
 const LAST_AGE = 70;
 const MAX_SEMESTERS = 2;
 
+const TYPE_CHILD = 0;
+const TYPE_CONSCRIPTION = 1;
+const TYPE_SICKNESS = 2;
+const TYPE_STUDY = 3;
+type PgbEntryType = typeof TYPE_CHILD | typeof TYPE_CONSCRIPTION | typeof TYPE_SICKNESS | typeof TYPE_STUDY;
+
 export interface PgbGridHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
-  /** Keeps the year column, the study readout and the conscription
-   * days/kronor columns in step with the Start sheet's birth year, the
-   * "Marginal, avrundningar" setting, and the latest run's own PGB figures. */
+  /** Keeps the age readout and the summary table in step with the Start
+   * sheet's birth year and the latest run's own PGB figures. */
   setBaseline(born: number, marginal: number, pgbBreakdown: readonly PgbBreakdownYear[]): void;
-  /** Clears every cell, and the conscription dates, back to empty. */
+  /** Clears every entry, the conscription period and the children list. */
   reset(): void;
 }
 
-interface Row {
-  age: number;
-  sa: number;
-  studySemesters: number;
+const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
+
+const childOrdinal = (slot: number, l: Lang): string =>
+  [
+    say(l, "1:a barnet", "1st child"),
+    say(l, "2:a barnet", "2nd child"),
+    say(l, "3:e barnet", "3rd child"),
+    say(l, "4:e barnet", "4th child"),
+  ][slot] ?? "";
+
+const TYPE_CHOICES: readonly { value: PgbEntryType; label: (l: Lang) => string }[] = [
+  { value: TYPE_CHILD, label: (l) => say(l, "Barn", "Child") },
+  { value: TYPE_CONSCRIPTION, label: (l) => say(l, "Värnplikt", "Conscription") },
+  { value: TYPE_SICKNESS, label: (l) => say(l, "Sjuk-/aktivitetsersättning", "Sickness/activity comp.") },
+  { value: TYPE_STUDY, label: (l) => say(l, "Studier", "Study") },
+];
+
+const SLOT_CHOICES: readonly { value: number; label: (l: Lang) => string }[] = [1, 2, 3, 4].map((n) => ({
+  value: n,
+  label: (l: Lang) => childOrdinal(n - 1, l),
+}));
+
+interface SummaryRow {
+  readonly age: number;
+  readonly year: number;
+  readonly sa: number;
+  readonly vpl: number;
+  readonly studier: number;
+  readonly barn: number;
+  readonly total: number;
 }
 
-const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
+const CHILD_INFO = (l: Lang) =>
+  say(
+    l,
+    "Ett barns pensionsgrundande belopp kan falla ut för upp till fyra år (födelseåret och de tre " +
+      "följande). Om flera barns fyraårsperioder överlappar samma år räknas bara ett barns belopp det året.",
+    "A child's PGB credit can land in up to four years (the birth year and the three after). If more " +
+      "than one child's four-year window overlaps the same year, only one child's credit counts that year.",
+  );
+
+const SUMMARY_COLUMNS: readonly {
+  readonly key: "barn" | "studier" | "vpl" | "sa";
+  readonly head: (l: Lang) => string;
+  readonly info?: (l: Lang) => string;
+  readonly get: (r: SummaryRow) => number;
+}[] = [
+  { key: "barn", head: (l) => say(l, "Barn-PGB, kr", "Child PGB, kr"), info: CHILD_INFO, get: (r) => r.barn },
+  { key: "studier", head: (l) => say(l, "PGB studier, kr", "Study PGB, kr"), get: (r) => r.studier },
+  { key: "vpl", head: (l) => say(l, "PGB värnplikt, kr", "Conscription PGB, kr"), get: (r) => r.vpl },
+  {
+    key: "sa",
+    head: (l) => say(l, "Sjuk-/aktivitetsersättning, kr", "Sickness/activity comp, kr"),
+    get: (r) => r.sa,
+  },
+];
+
+const clampAge = (age: number): number => Math.min(Math.max(Math.round(age), FIRST_AGE), LAST_AGE);
 
 export function createPgbGrid(
   lang: Lang,
@@ -94,26 +149,19 @@ export function createPgbGrid(
 ): PgbGridHandle {
   let born = 0;
   let marginal = 0;
-  let breakdown = new Map<number, PgbBreakdownYear>();
+  let breakdown: readonly PgbBreakdownYear[] = [];
   let breakdownDigest = "";
-  let rows: Row[] = [];
-  for (let age = FIRST_AGE; age <= LAST_AGE; age += 1) rows.push({ age, sa: 0, studySemesters: 0 });
 
-  // "Barnår" (manual 3.7's other half, sharing the section with "Partiellt
-  // uttag" but not the concern -- this is another pension-qualifying-amount
-  // source, so it lives here instead): up to four children, one birth year
-  // each -- `rng_Född_Barn1..4`, already read by `earnPgb` (packages/engine/
-  // src/model/mcalc.ts) for childcare-year PGB credits and by `benefits`
-  // (packages/engine/src/model/taxAndBenefits.ts) for child allowance and
-  // housing benefit, both well before this had a UI row. The real workbook
-  // cell is a date, but every VBA consumer (VBA_go.bas) takes `Year(...)`
-  // off it immediately and never touches month or day, so a plain year
-  // field is faithful. It is a `ModelContext` field (Adv_settings), unlike
-  // `pgbManual`/`pgbConscription` below (`TypfallInput`, the Start sheet) --
-  // `onChange`'s own patch carries both kinds, and it is main.ts's job to
-  // route each into the right one, the same split `createAdvancedPanel` and
-  // `createPgbGrid` already answer to separately for every other field.
+  let sicknessByAge = new Map<number, number>();
+  let studyByAge = new Map<number, number>();
+  let conscription: PgbConscriptionPeriod | undefined;
   let childBirthYears = [...defaultContext().childBirthYears] as [number, number, number, number];
+
+  let typeValue: PgbEntryType = TYPE_CHILD;
+  let yearValue = 0;
+  let slotValue = 1;
+  let amountValue = 0;
+  let semesterValue = 1;
 
   const element = document.createElement("details");
   element.className = "adv-group";
@@ -123,408 +171,451 @@ export function createPgbGrid(
   const body = document.createElement("div");
   body.className = "adv-body";
 
-  // Not `.field-hint`: that class carries a hardcoded `grid-row: 2` meant for
-  // a `.field`'s own two-row grid (`controls.ts`'s `fieldSet`), and `.adv-body`
-  // is itself a CSS grid -- reusing it here let `.adv-body`'s auto-placement
-  // slot every unpositioned sibling (the "Visa alla kolumner" button, and now
-  // `barnBox`) into row 1, *above* this paragraph, regardless of DOM order.
-  // `.pgb-intro` is the same look with no row of its own to fight over.
   const intro = document.createElement("p");
   intro.className = "pgb-intro";
 
-  const barnBox = document.createElement("div");
-  barnBox.className = "pgb-barn";
-  const barnLabel = [
-    document.createElement("span"),
-    document.createElement("span"),
-    document.createElement("span"),
-    document.createElement("span"),
-  ];
-  const barnInputs = barnLabel.map((labelSpan, slot) => {
-    const wrap = document.createElement("label");
-    wrap.className = "pgb-barn-field";
-    const input = document.createElement("input");
-    input.type = "number";
-    input.inputMode = "numeric";
-    input.min = "0";
-    input.max = "2100";
-    input.step = "1";
-    input.value = String(childBirthYears[slot] ?? 0);
-    input.dataset.setting = `childBirthYear${slot + 1}`;
-    input.addEventListener("change", () => {
-      const typed = Number(input.value);
-      if (!Number.isFinite(typed) || input.value.trim() === "") {
-        input.value = String(childBirthYears[slot] ?? 0);
-        return;
-      }
-      const value = Math.min(Math.max(Math.round(typed), 0), 2100);
-      childBirthYears = [...childBirthYears] as [number, number, number, number];
-      childBirthYears[slot] = value;
-      input.value = String(value);
-      emit();
-    });
-    wrap.append(labelSpan, input);
-    return { wrap, input };
+  // ---------------------------------------------------------------- form --
+  const formBox = document.createElement("div");
+  formBox.className = "pgb-form";
+  const relabels: ((l: Lang) => void)[] = [];
+  const { field, number, select } = fieldSet(formBox, relabels, lang);
+
+  const typeSelect = select(TYPE_CHOICES, typeValue, (v) => {
+    typeValue = v as PgbEntryType;
+    onTypeChange();
   });
-  barnBox.append(...barnInputs.map((b) => b.wrap));
+  typeSelect.element.dataset.setting = "pgbEntryType";
+  relabels.push(typeSelect.relabel);
+  field(typeSelect.element, (l) => ({ label: say(l, "Typ", "Type") }), "field field-wide");
 
-  // Seven columns split across the sidebar's own width clip the later ones
-  // (see `.pgb-grid`'s own comment in styles.css), so `.pgb-grid` carries a
-  // min-width floor and the grid scrolls sideways in its narrow `.adv-grid-scroll`
-  // box to show it all -- reported as having to scroll to see the rest of the
-  // table. `expandBtn` moves the same table (same nodes, same listeners, no
-  // duplicated state) into a `<dialog>` instead: freed from the sidebar, the
-  // dialog is wide enough on its own that the grid needs no min-width floor
-  // and no horizontal scroll to show every column at once.
-  const expandBtn = document.createElement("button");
-  expandBtn.type = "button";
-  expandBtn.className = "export-btn";
-  expandBtn.dataset.action = "pgb-expand";
+  // Year (or, for a child, the birth year itself) plus a read-only age
+  // readout beside it -- its own composite row, the same reason
+  // `savingAmountOrShare` (advanced.ts) hand-builds one for the IPS toggle:
+  // the standard field shape has no room for a second, dependent readout.
+  const yearRow = document.createElement("div");
+  yearRow.className = "pgb-year";
+  const yearField = number(0, { min: 1900, max: 2100, step: 1 }, (v) => {
+    yearValue = v;
+    updateAgeReadout();
+  });
+  yearField.element.dataset.setting = "pgbEntryYear";
+  const ageReadout = document.createElement("span");
+  ageReadout.className = "pgb-year-age";
+  yearRow.append(yearField.element, ageReadout);
+  const yearCaption = (l: Lang) => ({
+    label: typeValue === TYPE_CHILD ? say(l, "Barnets födelseår", "Child's birth year") : say(l, "År", "Year"),
+  });
+  const relabelYear = field(yearRow, yearCaption, "field field-wide");
+  const yearWrap = formBox.lastElementChild as HTMLElement;
 
-  const scroll = document.createElement("div");
-  scroll.className = "adv-grid-scroll";
-  const table = document.createElement("table");
-  table.className = "table adv-grid pgb-grid";
+  const slotSelect = select(SLOT_CHOICES, slotValue, (v) => {
+    slotValue = v;
+  });
+  slotSelect.element.dataset.setting = "pgbEntryChildSlot";
+  relabels.push(slotSelect.relabel);
+  field(slotSelect.element, (l) => ({ label: say(l, "Vilket barn", "Which child") }), "field field-wide");
+  const slotWrap = formBox.lastElementChild as HTMLElement;
 
-  // One <col> per physical column, in order -- styles.css sets every width
-  // on these rather than on the header cells, since the two-row header below
-  // means a header cell's position in its own row no longer lines up with
-  // its column index once earlier cells start spanning rows or columns.
-  const colgroup = document.createElement("colgroup");
-  for (let i = 0; i < 7; i += 1) colgroup.append(document.createElement("col"));
-  table.append(colgroup);
+  const amountField = number(0, { min: 0, max: 10_000_000, step: 100 }, (v) => {
+    amountValue = v;
+  });
+  amountField.element.dataset.setting = "pgbEntryAmount";
+  field(amountField.element, (l) => ({ label: say(l, "Belopp, kr", "Amount, kr") }));
+  const amountWrap = formBox.lastElementChild as HTMLElement;
 
-  // Two header rows: Year/Age/Sjuk- span both (`rowSpan`, so their own label
-  // is not repeated), and Studier/Värnplikt each span two columns in the top
-  // row -- the input beside the kronor (and, for Värnplikt, the days) it
-  // produces -- so the pairing reads as one group rather than two unrelated
-  // columns that happen to sit next to each other.
-  const head = document.createElement("thead");
-  const groupRow = document.createElement("tr");
-  const yearHead = document.createElement("th");
-  yearHead.rowSpan = 2;
-  const ageHead = document.createElement("th");
-  ageHead.rowSpan = 2;
-  const saHead = document.createElement("th");
-  saHead.rowSpan = 2;
-  const studyGroupHead = document.createElement("th");
-  studyGroupHead.colSpan = 2;
-  const vplGroupHead = document.createElement("th");
-  vplGroupHead.colSpan = 2;
-  vplGroupHead.className = "pgb-vpl-head";
-  groupRow.append(yearHead, ageHead, saHead, studyGroupHead, vplGroupHead);
+  const semesterField = number(1, { min: 1, max: MAX_SEMESTERS, step: 1 }, (v) => {
+    semesterValue = v;
+  });
+  semesterField.element.dataset.setting = "pgbEntryStudySemesters";
+  field(semesterField.element, (l) => ({ label: say(l, "Antal terminer", "Semesters") }));
+  const semesterWrap = formBox.lastElementChild as HTMLElement;
 
-  // The one pair of date inputs `wsPGB!H4`/`H5` are, right in the Värnplikt
-  // group's own header cell -- reported as unintuitive that typing a date
-  // range in a box elsewhere on the page changed a table further down,
-  // nothing showing the two were connected. `startInput`/`endInput` feed
-  // `PgbConscriptionPeriod` straight through to the engine; `vplReadout`
-  // covers the one case the Dagar/PGB värnplikt columns below cannot show on
-  // their own -- a period under 120 days has no touched-year row for a zero.
-  const vplTitle = document.createElement("span");
-  vplTitle.className = "pgb-vpl-title";
+  // Conscription's own from/to pair, plus a "too short" readout and a way to
+  // clear a period that already exists -- carried over from the old grid's
+  // header-cell widget, just no longer glued to the Värnplikt table column.
+  const conscriptionRow = document.createElement("div");
+  conscriptionRow.className = "pgb-conscription";
   const startLabel = document.createElement("span");
   const startInput = document.createElement("input");
   startInput.type = "date";
   startInput.min = "1995-01-01";
-  startInput.dataset.setting = "pgbConscriptionStart";
+  startInput.dataset.setting = "pgbEntryConscriptionStart";
   const startWrap = document.createElement("label");
-  startWrap.className = "pgb-vpl-date";
+  startWrap.className = "pgb-conscription-date";
   startWrap.append(startLabel, startInput);
 
   const endLabel = document.createElement("span");
   const endInput = document.createElement("input");
   endInput.type = "date";
-  endInput.dataset.setting = "pgbConscriptionEnd";
+  endInput.dataset.setting = "pgbEntryConscriptionEnd";
   const endWrap = document.createElement("label");
-  endWrap.className = "pgb-vpl-date";
+  endWrap.className = "pgb-conscription-date";
   endWrap.append(endLabel, endInput);
 
-  // A native date input's own clear affordance -- Backspace, or a hover-only
-  // icon in Chromium -- is easy to miss squeezed into a header cell this
-  // small, and there was no way at all to clear just the period without
-  // "Använd normala inställningar" clearing the rest of advanced mode too.
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
-  clearBtn.className = "pgb-vpl-clear";
+  clearBtn.className = "pgb-conscription-clear";
+  clearBtn.dataset.action = "pgb-clear-conscription";
   clearBtn.addEventListener("click", () => {
+    conscription = undefined;
     startInput.value = "";
     endInput.value = "";
-    updateVplReadout(currentLang);
+    updateConscriptionReadout();
     emit();
   });
 
-  const vplTitleRow = document.createElement("div");
-  vplTitleRow.className = "pgb-vpl-title-row";
-  vplTitleRow.append(vplTitle, clearBtn);
+  const conscriptionReadout = document.createElement("p");
+  conscriptionReadout.className = "pgb-conscription-readout";
+  conscriptionRow.append(startWrap, endWrap, clearBtn, conscriptionReadout);
+  field(
+    conscriptionRow,
+    (l) => ({ label: say(l, "Värnplikt, period", "Conscription period") }),
+    "field field-wide",
+  );
+  const conscriptionWrap = formBox.lastElementChild as HTMLElement;
 
-  const vplReadout = document.createElement("p");
-  vplReadout.className = "pgb-vpl-readout";
-  vplGroupHead.append(vplTitleRow, startWrap, endWrap, vplReadout);
+  startInput.addEventListener("change", () => updateConscriptionReadout());
+  endInput.addEventListener("change", () => updateConscriptionReadout());
 
-  const subRow = document.createElement("tr");
-  const semesterHead = document.createElement("th");
-  const studyKrHead = document.createElement("th");
-  const vplDaysHead = document.createElement("th");
-  const vplKrHead = document.createElement("th");
-  subRow.append(semesterHead, studyKrHead, vplDaysHead, vplKrHead);
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "export-btn pgb-add";
+  addButton.dataset.action = "pgb-add-entry";
+  addButton.addEventListener("click", onAdd);
+  formBox.append(addButton);
 
-  head.append(groupRow, subRow);
-  const tbody = document.createElement("tbody");
-  table.append(head, tbody);
-  scroll.append(table);
+  // ------------------------------------------------------------ children --
+  const childrenBox = document.createElement("div");
+  childrenBox.className = "pgb-children";
+  const childrenHeading = document.createElement("h4");
+  const childrenList = document.createElement("div");
+  childrenList.className = "pgb-children-list";
+  childrenBox.append(childrenHeading, childrenList);
 
-  const dialog = document.createElement("dialog");
-  dialog.className = "pgb-dialog";
-  const dialogHead = document.createElement("div");
-  dialogHead.className = "pgb-dialog-head";
-  const dialogTitle = document.createElement("h3");
-  const closeBtn = document.createElement("button");
-  closeBtn.type = "button";
-  closeBtn.className = "dialog-close";
-  closeBtn.textContent = "×";
-  closeBtn.addEventListener("click", () => dialog.close());
-  dialogHead.append(dialogTitle, closeBtn);
-  dialog.append(dialogHead);
-  // Clicking the backdrop -- a click landing on the <dialog> element itself
-  // rather than anything inside it -- closes it the same way Escape does.
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) dialog.close();
-  });
-  // Fires for every path out (the close button, the backdrop, Escape), so the
-  // grid always ends up back where it started, never stranded in a closed
-  // dialog: `expandBtn.after(scroll)` puts it back in the one place it can
-  // go, right after the button that moves it, regardless of what else this
-  // body gains later.
-  dialog.addEventListener("close", () => {
-    expandBtn.after(scroll);
-  });
-  document.body.append(dialog);
+  // --------------------------------------------------------------- table --
+  const summaryBox = document.createElement("div");
+  summaryBox.className = "pgb-summary scroll";
+  const summaryTable = document.createElement("table");
+  summaryTable.className = "table pgb-summary-table";
+  const summaryThead = summaryTable.createTHead();
+  const theadRow = summaryThead.insertRow();
+  const summaryTbody = summaryTable.createTBody();
+  const summaryEmpty = document.createElement("p");
+  summaryEmpty.className = "pgb-summary-empty";
+  summaryBox.append(summaryTable, summaryEmpty);
 
-  expandBtn.addEventListener("click", () => {
-    dialog.append(scroll);
-    dialog.showModal();
-  });
-
-  body.append(intro, barnBox, expandBtn, scroll);
+  body.append(intro, formBox, childrenBox, summaryBox);
   element.append(summary, body);
 
-  function conscriptionPeriod(): PgbConscriptionPeriod | undefined {
-    if (!startInput.value || !endInput.value) return undefined;
-    return { start: startInput.value, end: endInput.value };
+  function onTypeChange(): void {
+    yearWrap.hidden = typeValue === TYPE_CONSCRIPTION;
+    slotWrap.hidden = typeValue !== TYPE_CHILD;
+    amountWrap.hidden = typeValue !== TYPE_SICKNESS;
+    semesterWrap.hidden = typeValue !== TYPE_STUDY;
+    conscriptionWrap.hidden = typeValue !== TYPE_CONSCRIPTION;
+    relabelYear(currentLang);
+    if (typeValue === TYPE_CONSCRIPTION) {
+      startInput.value = conscription?.start ?? "";
+      endInput.value = conscription?.end ?? "";
+      updateConscriptionReadout();
+    }
+    refreshChildSlotOptions();
+    refreshAddButtonState();
+    updateAgeReadout();
   }
 
-  // Only the one case the grid itself cannot show: a period too short to earn
-  // anything has no touched-year rows to display a zero in. A valid period's
-  // own days and kronor show in the grid, per year, so this stays blank then
-  // rather than repeating the same figures as a line of text above it.
-  function updateVplReadout(l: Lang): void {
-    clearBtn.hidden = !startInput.value && !endInput.value;
-    const period = conscriptionPeriod();
-    if (period === undefined) {
-      vplReadout.textContent = "";
+  function updateAgeReadout(): void {
+    ageReadout.textContent = born > 0 && yearValue > 0 ? String(yearValue - Math.trunc(born)) : "";
+  }
+
+  // Only the one case the table itself cannot show: a period too short to
+  // earn anything has no touched-year row to display a zero in.
+  function updateConscriptionReadout(): void {
+    clearBtn.hidden = conscription === undefined;
+    if (!startInput.value || !endInput.value) {
+      conscriptionReadout.textContent = "";
       return;
     }
-    const days = conscriptionDaysByYear(period);
-    vplReadout.textContent =
+    const days = conscriptionDaysByYear({ start: startInput.value, end: endInput.value });
+    conscriptionReadout.textContent =
       days.size === 0
         ? say(
-            l,
+            currentLang,
             "Perioden är kortare än 120 dagar och ger ingen pensionsrätt.",
             "The period is under 120 days and earns no pension rights.",
           )
         : "";
   }
 
-  function emit(): void {
-    const nonzero = rows.filter((r) => r.sa !== 0 || r.studySemesters !== 0);
-    onChange({
-      pgbManual: nonzero.length > 0 ? nonzero.map((r) => ({ ...r })) : undefined,
-      pgbConscription: conscriptionPeriod(),
-      childBirthYears,
-    });
-  }
-
-  startInput.addEventListener("change", () => {
-    updateVplReadout(currentLang);
-    emit();
-  });
-  endInput.addEventListener("change", () => {
-    updateVplReadout(currentLang);
-    emit();
-  });
-
-  function drawGrid(): void {
-    tbody.replaceChildren();
-    for (const [index, row] of rows.entries()) {
-      const tr = document.createElement("tr");
-
-      const year = document.createElement("td");
-      year.className = "num";
-      year.textContent = born > 0 ? String(Math.trunc(born) + row.age) : "";
-
-      const age = document.createElement("td");
-      age.className = "num";
-      age.textContent = String(row.age);
-
-      const saCell = document.createElement("td");
-      const saInput = document.createElement("input");
-      saInput.type = "number";
-      saInput.inputMode = "numeric";
-      saInput.min = "0";
-      saInput.step = "100";
-      saInput.value = String(row.sa);
-      saInput.addEventListener("change", () => {
-        const typed = Number(saInput.value);
-        if (!Number.isFinite(typed) || saInput.value.trim() === "") {
-          saInput.value = String(rows[index]!.sa);
-          return;
-        }
-        const value = Math.max(Math.round(typed), 0);
-        rows[index] = { ...rows[index]!, sa: value };
-        saInput.value = String(value);
-        emit();
-      });
-      saCell.append(saInput);
-
-      const semesterCell = document.createElement("td");
-      const semesterInput = document.createElement("input");
-      semesterInput.type = "number";
-      semesterInput.inputMode = "numeric";
-      semesterInput.min = "0";
-      semesterInput.max = String(MAX_SEMESTERS);
-      semesterInput.step = "1";
-      semesterInput.value = String(row.studySemesters);
-      const studyCell = document.createElement("td");
-      studyCell.className = "num pgb-computed";
-      const updateStudyReadout = () => {
-        const year = born > 0 ? Math.trunc(born) + rows[index]!.age : 0;
-        const kr = born > 0 ? studyPgb(year, rows[index]!.studySemesters, marginal) : 0;
-        studyCell.textContent = kr > 0 ? kr.toLocaleString("sv-SE") : "";
-      };
-      semesterInput.addEventListener("change", () => {
-        const typed = Number(semesterInput.value);
-        if (!Number.isFinite(typed) || semesterInput.value.trim() === "") {
-          semesterInput.value = String(rows[index]!.studySemesters);
-          return;
-        }
-        const value = Math.max(Math.min(Math.round(typed), MAX_SEMESTERS), 0);
-        rows[index] = { ...rows[index]!, studySemesters: value };
-        semesterInput.value = String(value);
-        updateStudyReadout();
-        emit();
-      });
-      semesterCell.append(semesterInput);
-      updateStudyReadout();
-
-      // Read back, not computed here: conscription's kronor need `medelPgi`,
-      // an economic projection this file has no way to reach on its own (see
-      // the file's own top comment) -- `breakdown` is the latest run's own
-      // figures, refreshed by `setBaseline` on every render.
-      const entry = breakdown.get(row.age);
-      const vplDaysCell = document.createElement("td");
-      vplDaysCell.className = "num pgb-computed";
-      vplDaysCell.textContent = entry && entry.vplDays > 0 ? String(Math.round(entry.vplDays)) : "";
-      const vplKrCell = document.createElement("td");
-      vplKrCell.className = "num pgb-computed";
-      vplKrCell.textContent = entry && entry.vpl > 0 ? entry.vpl.toLocaleString("sv-SE") : "";
-
-      tr.append(year, age, saCell, semesterCell, studyCell, vplDaysCell, vplKrCell);
-      tbody.append(tr);
+  function refreshChildSlotOptions(): void {
+    const options = slotSelect.element.options;
+    for (let i = 0; i < options.length; i += 1) options[i]!.disabled = (childBirthYears[i] ?? 0) !== 0;
+    if ((childBirthYears[slotValue - 1] ?? 0) !== 0) {
+      const free = childBirthYears.findIndex((y) => y === 0);
+      if (free !== -1) {
+        slotValue = free + 1;
+        slotSelect.element.value = String(slotValue);
+      }
     }
   }
 
-  drawGrid();
+  function refreshAddButtonState(): void {
+    addButton.disabled = typeValue === TYPE_CHILD && childBirthYears.every((y) => y !== 0);
+  }
+
+  function onAdd(): void {
+    switch (typeValue) {
+      case TYPE_CHILD: {
+        if (!Number.isFinite(yearValue) || yearValue <= 0) return;
+        const slot = slotValue - 1;
+        if ((childBirthYears[slot] ?? 0) !== 0) return;
+        childBirthYears = [...childBirthYears] as [number, number, number, number];
+        childBirthYears[slot] = yearValue;
+        break;
+      }
+      case TYPE_CONSCRIPTION: {
+        if (!startInput.value || !endInput.value) return;
+        conscription = { start: startInput.value, end: endInput.value };
+        break;
+      }
+      case TYPE_SICKNESS: {
+        if (!Number.isFinite(yearValue) || yearValue <= 0 || amountValue <= 0) return;
+        sicknessByAge.set(clampAge(yearValue - Math.trunc(born)), amountValue);
+        break;
+      }
+      case TYPE_STUDY: {
+        if (!Number.isFinite(yearValue) || yearValue <= 0 || semesterValue <= 0) return;
+        studyByAge.set(clampAge(yearValue - Math.trunc(born)), semesterValue);
+        break;
+      }
+    }
+    if (typeValue !== TYPE_CONSCRIPTION) {
+      yearValue = 0;
+      yearField.setValue(0);
+    }
+    if (typeValue === TYPE_SICKNESS) {
+      amountValue = 0;
+      amountField.setValue(0);
+    }
+    if (typeValue === TYPE_STUDY) {
+      semesterValue = 1;
+      semesterField.setValue(1);
+    }
+    updateAgeReadout();
+    refreshChildSlotOptions();
+    refreshAddButtonState();
+    drawChildrenList();
+    emit();
+  }
+
+  function removeEntry(category: "sa" | "studier", age: number): void {
+    if (category === "sa") sicknessByAge.delete(age);
+    else studyByAge.delete(age);
+    emit();
+  }
+
+  function removeChild(slot: number): void {
+    childBirthYears = [...childBirthYears] as [number, number, number, number];
+    childBirthYears[slot] = 0;
+    refreshChildSlotOptions();
+    refreshAddButtonState();
+    drawChildrenList();
+    emit();
+  }
+
+  function drawChildrenList(): void {
+    const any = childBirthYears.some((y) => y !== 0);
+    childrenBox.hidden = !any;
+    childrenList.replaceChildren();
+    childBirthYears.forEach((year, slot) => {
+      if (year === 0) return;
+      const row = document.createElement("div");
+      row.className = "pgb-child-row";
+      row.dataset.childSlot = String(slot + 1);
+
+      const label = document.createElement("span");
+      label.textContent = childOrdinal(slot, currentLang);
+
+      const input = document.createElement("input");
+      input.type = "number";
+      input.inputMode = "numeric";
+      input.min = "1900";
+      input.max = "2100";
+      input.step = "1";
+      input.value = String(year);
+      input.dataset.setting = `childBirthYear${slot + 1}`;
+      input.addEventListener("change", () => {
+        const typed = Math.round(Number(input.value));
+        if (!Number.isFinite(typed) || typed <= 0) {
+          input.value = String(childBirthYears[slot] ?? 0);
+          return;
+        }
+        childBirthYears = [...childBirthYears] as [number, number, number, number];
+        childBirthYears[slot] = typed;
+        input.value = String(typed);
+        emit();
+      });
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "pgb-remove";
+      removeBtn.dataset.action = "pgb-remove-child";
+      removeBtn.dataset.childSlot = String(slot + 1);
+      removeBtn.textContent = "×";
+      removeBtn.setAttribute("aria-label", say(currentLang, "Ta bort barn", "Remove child"));
+      removeBtn.addEventListener("click", () => removeChild(slot));
+
+      row.append(label, input, removeBtn);
+      childrenList.append(row);
+    });
+  }
+
+  function summaryRows(): SummaryRow[] {
+    return breakdown
+      .filter((r) => r.sa !== 0 || r.vpl !== 0 || r.studier !== 0 || r.barn !== 0)
+      .map((r) => ({
+        age: r.age,
+        year: born > 0 ? Math.trunc(born) + r.age : r.age,
+        sa: r.sa,
+        vpl: r.vpl,
+        studier: r.studier,
+        barn: r.barn,
+        total: r.sa + r.vpl + r.studier + r.barn,
+      }))
+      .sort((a, b) => a.age - b.age);
+  }
+
+  function drawSummary(): void {
+    const rows = summaryRows();
+    summaryEmpty.hidden = rows.length > 0;
+    summaryTable.hidden = rows.length === 0;
+    theadRow.replaceChildren();
+    summaryTbody.replaceChildren();
+    if (rows.length === 0) return;
+
+    const visibleColumns = SUMMARY_COLUMNS.filter((col) => rows.some((r) => col.get(r) > 0));
+    theadRow.append(
+      headCell(t("year", currentLang)),
+      headCell(t("age", currentLang)),
+      ...visibleColumns.map((col) => headCell(col.head(currentLang), col.info?.(currentLang))),
+      headCell(say(currentLang, "Summa PGB, kr", "Total PGB, kr")),
+    );
+
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      tr.dataset.year = String(r.year);
+      tr.append(cell(String(r.year)), cell(String(r.age)));
+      for (const col of visibleColumns) {
+        const value = col.get(r);
+        const td = cell(value > 0 ? kronor(value, currentLang) : "", "num");
+        if (value > 0 && (col.key === "sa" || col.key === "studier")) {
+          const category = col.key;
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "pgb-remove";
+          removeBtn.dataset.action = "pgb-remove";
+          removeBtn.dataset.category = category;
+          removeBtn.dataset.year = String(r.year);
+          removeBtn.textContent = "×";
+          removeBtn.setAttribute("aria-label", say(currentLang, "Ta bort", "Remove"));
+          removeBtn.addEventListener("click", () => removeEntry(category, r.age));
+          td.append(removeBtn);
+        }
+        tr.append(td);
+      }
+      tr.append(cell(kronor(r.total, currentLang), "num strong"));
+      summaryTbody.append(tr);
+    }
+  }
+
+  function emit(): void {
+    const ages = new Set([...sicknessByAge.keys(), ...studyByAge.keys()]);
+    const pgbManual: PgbManualYear[] = [...ages].map((age) => ({
+      age,
+      sa: sicknessByAge.get(age) ?? 0,
+      studySemesters: studyByAge.get(age) ?? 0,
+    }));
+    onChange({
+      pgbManual: pgbManual.length > 0 ? pgbManual : undefined,
+      pgbConscription: conscription,
+      childBirthYears,
+    });
+  }
 
   let currentLang = lang;
 
   const applyText = (l: Lang) => {
     const title = say(l, "Pensionsgrundande belopp (PGB)", "Pension-qualifying amounts (PGB)");
     summary.textContent = title;
-    dialogTitle.textContent = title;
-    closeBtn.setAttribute("aria-label", say(l, "Stäng", "Close"));
-    expandBtn.textContent = say(l, "Visa alla kolumner", "Show all columns");
     intro.textContent = say(
       l,
       "Barnår, sjuk- eller aktivitetsersättning, värnplikt och studier ger alla pensionsrätt " +
-        "utöver den vanliga inkomsten. Fyll i barnens födelseår nedan (upp till fyra); " +
-        "värnpliktens datum fylls i uppe i tabellen, under Värnplikt (ger bara pensionsrätt " +
-        "1995–2010 och från 2018).",
-      "Child years, sickness or activity compensation, conscription and study all earn " +
-        "pension rights on top of ordinary income. Fill in the children's birth years below " +
-        "(up to four); conscription's own dates are filled in up in the table, under Värnplikt " +
-        "(only earns pension rights 1995-2010 and from 2018 on).",
+        "utöver den vanliga inkomsten. Välj typ nedan, fyll i det som gäller och klicka Lägg till.",
+      "Child years, sickness or activity compensation, conscription and study all earn pension " +
+        "rights on top of ordinary income. Pick a type below, fill in what it needs and click Add.",
     );
-    const childOrdinal = [
-      say(l, "1:a barnet", "1st child"),
-      say(l, "2:a barnet", "2nd child"),
-      say(l, "3:e barnet", "3rd child"),
-      say(l, "4:e barnet", "4th child"),
-    ];
-    const birthYearHint = say(l, "Födelseår, 0 = inget barn", "Year of birth, 0 = no child");
-    for (const [slot, labelSpan] of barnLabel.entries()) {
-      labelSpan.textContent = childOrdinal[slot]!;
-      const barnInput = barnInputs[slot]!.input;
-      barnInput.setAttribute("aria-label", `${childOrdinal[slot]!}, ${birthYearHint}`);
-      barnInput.title = birthYearHint;
-    }
+    for (const fn of relabels) fn(l);
+    relabelYear(l);
     startLabel.textContent = say(l, "Från", "From");
     startInput.setAttribute("aria-label", say(l, "Värnplikt, startdatum", "Conscription, start date"));
     endLabel.textContent = say(l, "Till", "To");
     endInput.setAttribute("aria-label", say(l, "Muck (slutdatum)", "End date"));
-    yearHead.textContent = say(l, "År", "Year");
-    ageHead.textContent = say(l, "Ålder", "Age");
-    saHead.textContent = say(l, "Sjuk-/aktivitetsersättning", "Sickness/activity comp.");
-    studyGroupHead.textContent = say(l, "Studier", "Study");
-    vplTitle.textContent = say(l, "Värnplikt", "Conscription");
     clearBtn.textContent = say(l, "Rensa", "Clear");
-    clearBtn.setAttribute(
-      "aria-label",
-      say(l, "Rensa värnpliktsperiod", "Clear the conscription period"),
-    );
-    semesterHead.textContent = say(l, "Antal terminer", "Semesters");
-    studyKrHead.textContent = say(l, "PGB studier, kr", "Study PGB, kr");
-    vplDaysHead.textContent = say(l, "Dagar", "Days");
-    vplKrHead.textContent = say(l, "PGB värnplikt, kr", "Conscription PGB, kr");
-    updateVplReadout(l);
+    clearBtn.setAttribute("aria-label", say(l, "Rensa värnpliktsperiod", "Clear the conscription period"));
+    addButton.textContent = say(l, "Lägg till", "Add");
+    childrenHeading.textContent = say(l, "Barn", "Children");
+    summaryEmpty.textContent = say(l, "Inga poster ännu.", "No entries yet.");
+    updateConscriptionReadout();
+    drawChildrenList();
+    drawSummary();
   };
   applyText(lang);
+  onTypeChange();
 
   return {
     element,
     relabel(l) {
       currentLang = l;
       applyText(l);
+      onTypeChange();
     },
     setBaseline(bornYear, marginalValue, pgbBreakdown) {
       // `pgbBreakdown` is a handful of entries at most (only touched ages),
       // so a stringified comparison is cheap -- and it is what actually
-      // decides whether the conscription columns need to change, since
-      // `medelPgi` can move with the run's own economic assumptions without
+      // decides whether the summary table needs to change, since the run's
+      // own economic assumptions can move conscription's kronor without
       // `born` or `marginal` moving at all.
       const digest = JSON.stringify(pgbBreakdown);
       if (bornYear === born && marginalValue === marginal && digest === breakdownDigest) return;
       born = bornYear;
       marginal = marginalValue;
-      breakdown = new Map(pgbBreakdown.map((row) => [row.age, row]));
+      breakdown = pgbBreakdown;
       breakdownDigest = digest;
-      // Every cell's own study readout reads `born`/`marginal` from this
-      // closure, and the conscription cells read `breakdown`, so a rebuild
-      // is the only way any of the three reaches them -- relabelling the
-      // year column in place, the way `salaryPath.ts` does, would leave the
-      // rest stale.
-      drawGrid();
+      updateAgeReadout();
+      drawSummary();
     },
     reset() {
-      rows = rows.map((row) => ({ ...row, sa: 0, studySemesters: 0 }));
+      sicknessByAge = new Map();
+      studyByAge = new Map();
+      conscription = undefined;
+      childBirthYears = [...defaultContext().childBirthYears] as [number, number, number, number];
+      typeValue = TYPE_CHILD;
+      typeSelect.element.value = String(TYPE_CHILD);
+      yearValue = 0;
+      yearField.setValue(0);
+      slotValue = 1;
+      slotSelect.element.value = "1";
+      amountValue = 0;
+      amountField.setValue(0);
+      semesterValue = 1;
+      semesterField.setValue(1);
       startInput.value = "";
       endInput.value = "";
-      breakdown = new Map();
+      breakdown = [];
       breakdownDigest = "";
-      childBirthYears = [...defaultContext().childBirthYears] as [number, number, number, number];
-      for (const [slot, { input }] of barnInputs.entries()) input.value = String(childBirthYears[slot] ?? 0);
-      updateVplReadout(currentLang);
-      drawGrid();
+      onTypeChange();
+      drawChildrenList();
+      drawSummary();
     },
   };
 }

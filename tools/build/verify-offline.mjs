@@ -639,246 +639,239 @@ if (!(grossAfter < grossBefore)) {
 }
 
 
-// PGB: sickness/activity compensation is still hand-typed kronor; conscription
-// (a single date range) and study (a per-age semester count) compute their
-// own kronor instead, the same way the real PGB sheet does. The shipped
-// workbook has none of the three (`pgbManual`'s own comment: "childcare years
-// are the only PGB a default run earns"), so an untouched grid must not
-// silently change anything, and a filled-in one must.
+// PGB: a compact add-entry form (pick a type, fill in that type's own
+// fields, click "Lägg till") plus a summary table that only shows years and
+// categories that actually have data -- replacing the old always-visible
+// 55-row grid. The shipped workbook has no manual PGB entries at all
+// (`pgbManual`'s own comment: "childcare years are the only PGB a default
+// run earns"), so an untouched panel must show nothing, and each add below
+// must move both the table and the pension.
 const pgbGroup = tab.locator('details[data-group="pgb"]');
 if (!(await pgbGroup.evaluate((node) => node.open))) {
   await pgbGroup.locator("summary").click();
 }
-const pgbGrid = pgbGroup.locator(".pgb-grid tbody tr");
-const pgbRows = await pgbGrid.count();
-console.log(`pgb grid rows   : ${pgbRows}`);
-// Ages 16 through 70 -- see pgb.ts's own comment on that range.
-if (pgbRows !== 55) {
-  problems.push(`the PGB grid has ${pgbRows} rows, expected 55 (ages 16-70)`);
+const PGB_TYPE = { child: "0", conscription: "1", sickness: "2", study: "3" };
+async function pgbType(type) {
+  await pgbGroup.locator('[data-setting="pgbEntryType"]').selectOption(PGB_TYPE[type]);
+  await tab.waitForTimeout(30);
+}
+async function pgbYear(year) {
+  const el = pgbGroup.locator('[data-setting="pgbEntryYear"]');
+  await el.fill(String(year));
+  await el.dispatchEvent("change");
+}
+async function pgbAdd() {
+  await pgbGroup.locator('[data-action="pgb-add-entry"]').click();
+  await tab.waitForTimeout(80);
+}
+const pgbSummaryRows = pgbGroup.locator(".pgb-summary-table tbody tr");
+async function pgbHeads() {
+  return pgbGroup.locator(".pgb-summary-table thead th").allTextContents();
 }
 
-// Studier's own semester count and its kronor, and Värnplikt's own days and
-// kronor, are grouped under one named header each -- reported as unclear
-// that "Antal terminer" and "PGB studier, kr" were even related fields.
-const pgbColCount = await pgbGrid.first().locator("td").count();
-if (pgbColCount !== 7) {
+// 1. Empty state: nothing typed yet.
+const pgbEmptyBefore = await pgbGroup.locator(".pgb-summary-empty").isVisible();
+const pgbRowsBefore = await pgbSummaryRows.count();
+console.log(`pgb empty state : empty message visible=${pgbEmptyBefore}, rows=${pgbRowsBefore}`);
+if (!pgbEmptyBefore || pgbRowsBefore !== 0) {
   problems.push(
-    `a PGB grid row has ${pgbColCount} cells, expected 7 (Year, Age, SA, semesters, study kr, days, conscription kr)`,
+    `the PGB panel shows ${pgbRowsBefore} row(s) with the empty message visible=${pgbEmptyBefore} before any ` +
+      "entry, expected 0 rows and the empty message",
   );
 }
-const pgbGroupHeads = await pgbGroup.locator(".pgb-grid thead tr").first().locator("th").allTextContents();
-console.log(`pgb group heads : ${pgbGroupHeads.join(" | ")}`);
-if (!pgbGroupHeads.some((h) => /studier/i.test(h))) {
-  problems.push(`the PGB grid's header row has no "Studier" group over Antal terminer/PGB studier, got: ${pgbGroupHeads.join(" | ")}`);
+
+// The form's own fields show and hide with the selected type -- "Barn" (the
+// default) shows the birth-year field and the child-slot select; switching
+// to sickness swaps in the kronor field instead.
+const pgbYearField = pgbGroup.locator('[data-setting="pgbEntryYear"]');
+const pgbSlotField = pgbGroup.locator('[data-setting="pgbEntryChildSlot"]');
+const pgbAmountField = pgbGroup.locator('[data-setting="pgbEntryAmount"]');
+const pgbSemesterField = pgbGroup.locator('[data-setting="pgbEntryStudySemesters"]');
+const pgbStartField = pgbGroup.locator('[data-setting="pgbEntryConscriptionStart"]');
+if (
+  !(await pgbYearField.isVisible()) ||
+  !(await pgbSlotField.isVisible()) ||
+  (await pgbAmountField.isVisible())
+) {
+  problems.push(
+    'the PGB form does not open on "Barn" with the birth-year field and child slot shown, amount hidden',
+  );
 }
-if (!pgbGroupHeads.some((h) => /värnplikt/i.test(h))) {
-  problems.push(`the PGB grid's header row has no "Värnplikt" group over Dagar/PGB värnplikt, got: ${pgbGroupHeads.join(" | ")}`);
+await pgbType("sickness");
+if (
+  (await pgbSlotField.isVisible()) ||
+  !(await pgbAmountField.isVisible()) ||
+  (await pgbStartField.isVisible())
+) {
+  problems.push(
+    'switching the PGB type to "Sjuk-/aktivitetsersättning" did not show the amount field and hide the ' +
+      "child slot and conscription dates",
+  );
 }
 
-// Värnplikt: wsPGB!H4/H5, a single date range rather than a row-per-age
-// entry -- the days and the kronor it earns show per touched year in the
-// grid itself (columns 6 and 7, "Dagar" / "PGB värnplikt, kr"), the same
-// way the sheet shows them, and the standalone readout above the grid is
-// left for the one thing the grid cannot show: a period too short to earn
-// anything, with no touched-year row to hold a zero.
-const pensionBeforeVpl = await kpiValue(0);
-const vplRow1998 = pgbGrid.nth(1998 - 1959 - 16); // this typfall's born 1959
-await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').fill("1998-01-01");
-await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').dispatchEvent("change");
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-02-01"); // 31 days, under the 120 minimum
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
+// 2. A sickness entry: one new row, the pension rises, and a category only
+// gets a column once something is actually in it.
+const pensionBeforeSa = await kpiValue(0);
+await pgbYear(2005); // age 46 for this typfall's 1959 birth year
+const pgbAgeReadout = await pgbGroup.locator(".pgb-year-age").textContent();
+if (pgbAgeReadout !== "46") {
+  problems.push(`typing year 2005 shows age readout "${pgbAgeReadout}", expected "46" (born 1959)`);
+}
+await pgbAmountField.fill("200000");
+await pgbAmountField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterSa = await pgbSummaryRows.count();
+const pgbHeadsAfterSa = await pgbHeads();
+console.log(`pgb rows w/ sa  : ${pgbRowsAfterSa}, heads: ${pgbHeadsAfterSa.join(" | ")}`);
+if (pgbRowsAfterSa !== 1) {
+  problems.push(`adding a sickness entry left ${pgbRowsAfterSa} summary row(s), expected 1`);
+}
+if (!pgbHeadsAfterSa.some((h) => /sjuk/i.test(h))) {
+  problems.push(`the summary table has no "Sjuk-" column after a sickness entry: ${pgbHeadsAfterSa.join(" | ")}`);
+}
+if (pgbHeadsAfterSa.some((h) => /studier|värnplikt|barn/i.test(h))) {
+  problems.push(`the summary table shows an unused column with only a sickness entry present: ${pgbHeadsAfterSa.join(" | ")}`);
+}
+const pensionAfterSa = await kpiValue(0);
+console.log(`pension w/ sa   : ${pensionBeforeSa} -> ${pensionAfterSa} kr after a sickness entry`);
+if (!(pensionAfterSa > pensionBeforeSa)) {
+  problems.push(`entering a sickness-compensation amount did not raise the pension (${pensionBeforeSa} -> ${pensionAfterSa})`);
+}
+
+// 3. A study entry in a different year: its own column, a second row, a
+// further rise. 2005 and 2010 both postdate 1995, the year study-PGB
+// actually started.
+await pgbType("study");
+await pgbYear(2010); // age 51
+await pgbSemesterField.fill("1");
+await pgbSemesterField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterStudy = await pgbSummaryRows.count();
+const pgbHeadsAfterStudy = await pgbHeads();
+console.log(`pgb rows w/study: ${pgbRowsAfterStudy}, heads: ${pgbHeadsAfterStudy.join(" | ")}`);
+if (pgbRowsAfterStudy !== 2) {
+  problems.push(`adding a study entry in a new year left ${pgbRowsAfterStudy} summary row(s), expected 2`);
+}
+if (!pgbHeadsAfterStudy.some((h) => /studier/i.test(h))) {
+  problems.push(`the summary table has no "Studier" column after a study entry: ${pgbHeadsAfterStudy.join(" | ")}`);
+}
+const pensionAfterStudy = await kpiValue(0);
+console.log(`pension w/ study: ${pensionAfterSa} -> ${pensionAfterStudy} kr after a study entry`);
+if (!(pensionAfterStudy > pensionAfterSa)) {
+  problems.push(`entering a study semester did not raise the pension further (${pensionAfterSa} -> ${pensionAfterStudy})`);
+}
+
+// 4. A study entry in the SAME year as the sickness one: still one row for
+// 2005, now with two populated cells -- the mixed-category-row case.
+await pgbYear(2005);
+await pgbSemesterField.fill("1");
+await pgbSemesterField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterMixed = await pgbSummaryRows.count();
+console.log(`pgb rows mixed  : ${pgbRowsAfterMixed}, expected still 2 (2005 gained a second figure, not a new row)`);
+if (pgbRowsAfterMixed !== 2) {
+  problems.push(`adding a study entry for 2005 (already a sickness year) left ${pgbRowsAfterMixed} rows, expected 2`);
+}
+const row2005 = pgbGroup.locator('.pgb-summary-table tbody tr[data-year="2005"]');
+const row2005Cells = await row2005.locator("td").allTextContents();
+console.log(`2005 row        : ${row2005Cells.join(" | ")}`);
+const row2005NonEmpty = row2005Cells.slice(2, -1).filter((c) => c.trim() !== "").length;
+if (row2005NonEmpty !== 2) {
+  problems.push(`the 2005 row has ${row2005NonEmpty} populated category cell(s), expected 2 (sickness and study)`);
+}
+
+// A per-cell remove clears just that one category, not the whole row.
+await row2005.locator('[data-action="pgb-remove"][data-category="studier"]').click();
 await tab.waitForTimeout(80);
-const vplShortReadout = await pgbGroup.locator(".pgb-vpl-readout").textContent();
+const row2005AfterRemove = await row2005.locator("td").allTextContents();
+const pgbRowsAfterRemove = await pgbSummaryRows.count();
+console.log(`2005 after x    : ${row2005AfterRemove.join(" | ")}, rows: ${pgbRowsAfterRemove}`);
+if (pgbRowsAfterRemove !== 2) {
+  problems.push(`removing 2005's study figure changed the row count to ${pgbRowsAfterRemove}, expected 2 (2005's sickness figure keeps the row)`);
+}
+const row2005NonEmptyAfter = row2005AfterRemove.slice(2, -1).filter((c) => c.trim() !== "").length;
+if (row2005NonEmptyAfter !== 1) {
+  problems.push(`removing 2005's study figure left ${row2005NonEmptyAfter} populated cell(s), expected 1 (sickness only)`);
+}
+
+// 5. A conscription period under 120 days adds no row -- the one case the
+// table cannot show a zero in on its own, so a standalone readout covers it.
+const pensionBeforeVpl = await kpiValue(0);
+await pgbType("conscription");
+await pgbStartField.fill("1998-01-01");
+await pgbStartField.dispatchEvent("change");
+const pgbEndField = pgbGroup.locator('[data-setting="pgbEntryConscriptionEnd"]');
+await pgbEndField.fill("1998-02-01"); // 31 days, under the 120 minimum
+await pgbEndField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplShortReadout = await pgbGroup.locator(".pgb-conscription-readout").textContent();
 console.log(`vpl short period: "${vplShortReadout}"`);
 if (!vplShortReadout || !/120/.test(vplShortReadout)) {
   problems.push(`a conscription period under 120 days reads "${vplShortReadout}", expected the "under 120 days" warning`);
 }
-const vplDaysTooShort = await vplRow1998.locator("td").nth(5).textContent();
-if (vplDaysTooShort !== "") {
-  problems.push(`a conscription period under 120 days still shows "${vplDaysTooShort}" in the grid's days column, expected blank`);
-}
+await pgbAdd();
+const pgbRowsAfterShortVpl = await pgbSummaryRows.count();
 const pensionAfterShortVpl = await kpiValue(0);
-if (pensionAfterShortVpl !== pensionBeforeVpl) {
+if (pgbRowsAfterShortVpl !== 2 || pensionAfterShortVpl !== pensionBeforeVpl) {
   problems.push(
-    `a conscription period under 120 days moved the pension (${pensionBeforeVpl} -> ${pensionAfterShortVpl}), expected no change`,
+    `adding a conscription period under 120 days left ${pgbRowsAfterShortVpl} rows and pension ` +
+      `${pensionAfterShortVpl} (was ${pensionBeforeVpl}), expected no change`,
   );
 }
 
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31"); // now a full year, well over 120 days
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
+// 6. A valid conscription period: its own column, its own row, a rise.
+await pgbType("conscription");
+await pgbEndField.fill("1998-12-31"); // now a full year, well over 120 days
+await pgbEndField.dispatchEvent("change");
 await tab.waitForTimeout(80);
-const vplReadout = await pgbGroup.locator(".pgb-vpl-readout").textContent();
+const vplReadout = await pgbGroup.locator(".pgb-conscription-readout").textContent();
 if (vplReadout !== "") {
-  problems.push(
-    `the conscription readout reads "${vplReadout}" for a valid period, expected empty -- the grid's own ` +
-      "Dagar/PGB värnplikt columns show the detail instead of a line of text above it",
-  );
+  problems.push(`the conscription readout reads "${vplReadout}" for a valid period, expected empty`);
 }
-const vplDays = await vplRow1998.locator("td").nth(5).textContent();
-const vplKr = await vplRow1998.locator("td").nth(6).textContent();
-console.log(`vpl days/kr row : ${vplDays} dagar, ${vplKr} kr (1998)`);
-if (!vplDays || Number(vplDays.replace(/[^\d]/g, "")) !== 364) {
-  problems.push(`the 1998 row's own days cell reads "${vplDays}", expected 364`);
+await pgbAdd();
+const pgbRowsAfterVpl = await pgbSummaryRows.count();
+const pgbHeadsAfterVpl = await pgbHeads();
+console.log(`pgb rows w/ vpl : ${pgbRowsAfterVpl}, heads: ${pgbHeadsAfterVpl.join(" | ")}`);
+if (pgbRowsAfterVpl !== 3) {
+  problems.push(`adding a valid conscription period left ${pgbRowsAfterVpl} rows, expected 3`);
 }
-if (!vplKr || !(Number(vplKr.replace(/[^\d]/g, "")) > 0)) {
-  problems.push(`the 1998 row's own PGB värnplikt cell reads "${vplKr}", expected a positive kronor figure`);
+if (!pgbHeadsAfterVpl.some((h) => /värnplikt/i.test(h))) {
+  problems.push(`the summary table has no "Värnplikt" column after a conscription entry: ${pgbHeadsAfterVpl.join(" | ")}`);
 }
 const pensionAfterVpl = await kpiValue(0);
 console.log(`pension w/ vpl  : ${pensionBeforeVpl} -> ${pensionAfterVpl} kr after a conscription period`);
 if (!(pensionAfterVpl > pensionBeforeVpl)) {
-  problems.push(
-    `entering a conscription date range did not raise the pension (${pensionBeforeVpl} -> ${pensionAfterVpl})`,
-  );
+  problems.push(`entering a conscription date range did not raise the pension (${pensionBeforeVpl} -> ${pensionAfterVpl})`);
 }
 
-// "Rensa": a native date input's own clear affordance is easy to miss
-// packed into a header cell this small, and there was no way to clear just
-// the period without "Använd normala inställningar" clearing all of
-// advanced mode -- asked for by name after this shipped.
-const vplClear = pgbGroup.locator(".pgb-vpl-clear");
+// 7. Removing the conscription period: its row disappears (nothing else
+// populated 1998), the column disappears, the pension falls back.
+const vplClear = pgbGroup.locator('[data-action="pgb-clear-conscription"]');
 if (!(await vplClear.isVisible())) {
-  problems.push('the "Rensa" button is not visible with a conscription period entered');
+  problems.push('the conscription "Rensa" button is not visible with a period entered');
 }
 await vplClear.click();
 await tab.waitForTimeout(80);
-const vplStartAfterClear = await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').inputValue();
-const vplEndAfterClear = await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').inputValue();
-const vplDaysAfterClear = await vplRow1998.locator("td").nth(5).textContent();
+const pgbRowsAfterClear = await pgbSummaryRows.count();
+const pgbHeadsAfterClear = await pgbHeads();
 const pensionAfterClear = await kpiValue(0);
-console.log(
-  `pgb vpl cleared : start "${vplStartAfterClear}", end "${vplEndAfterClear}", ` +
-    `pension ${pensionAfterVpl} -> ${pensionAfterClear}`,
-);
-if (vplStartAfterClear !== "" || vplEndAfterClear !== "") {
-  problems.push(
-    `"Rensa" left the dates at "${vplStartAfterClear}"/"${vplEndAfterClear}", expected both empty`,
-  );
+console.log(`pgb after clear : rows=${pgbRowsAfterClear}, heads: ${pgbHeadsAfterClear.join(" | ")}, pension=${pensionAfterClear}`);
+if (pgbRowsAfterClear !== 2) {
+  problems.push(`clearing the conscription period left ${pgbRowsAfterClear} rows, expected 2 (1998 had nothing else)`);
 }
-if (vplDaysAfterClear !== "") {
-  problems.push(`"Rensa" left "${vplDaysAfterClear}" in the 1998 row's days cell, expected blank`);
+if (pgbHeadsAfterClear.some((h) => /värnplikt/i.test(h))) {
+  problems.push(`clearing the conscription period left a "Värnplikt" column: ${pgbHeadsAfterClear.join(" | ")}`);
 }
 if (pensionAfterClear !== pensionBeforeVpl) {
-  problems.push(
-    `"Rensa" left the pension at ${pensionAfterClear}, expected it back at ${pensionBeforeVpl} (before the period)`,
-  );
+  problems.push(`clearing the conscription period left the pension at ${pensionAfterClear}, expected it back at ${pensionBeforeVpl}`);
+}
+const vplStartAfterClear = await pgbStartField.inputValue();
+const vplEndAfterClear = await pgbEndField.inputValue();
+if (vplStartAfterClear !== "" || vplEndAfterClear !== "") {
+  problems.push(`clearing the conscription period left the dates at "${vplStartAfterClear}"/"${vplEndAfterClear}", expected both empty`);
 }
 if (await vplClear.isVisible()) {
-  problems.push('the "Rensa" button is still visible after clearing, expected hidden with nothing to clear');
-}
-
-// Re-enter the same period so the dialog/study checks below still have a
-// conscription entry to carry through the rest of this run.
-await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').fill("1998-01-01");
-await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').dispatchEvent("change");
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31");
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
-await tab.waitForTimeout(80);
-
-// Antal terminer: a per-age semester count, auto-computed into its own
-// kronor right there in the grid -- wsPGB!P shows the same figure beside
-// its own "Antal terminer" cell. 2005 (age 46 for this typfall's 1959 birth
-// year) is a year study-PGB actually existed (1995 on), distinct from the
-// conscription test's own 1998 so the two effects stay untangled.
-const pensionBeforeStudy = await kpiValue(0);
-const studyRow = pgbGrid.nth(2005 - 1959 - 16);
-const semesterInput = studyRow.locator("td").nth(3).locator("input");
-await semesterInput.fill("1");
-await semesterInput.dispatchEvent("change");
-await tab.waitForTimeout(80);
-const studyKr = await studyRow.locator("td").nth(4).textContent();
-console.log(`study kr readout: ${studyKr}`);
-if (!studyKr || !(Number(studyKr.replace(/[^\d]/g, "")) > 0)) {
-  problems.push(`entering 1 semester's own readout reads "${studyKr}", expected a positive kronor figure`);
-}
-const pensionAfterStudy = await kpiValue(0);
-console.log(`pension w/ study: ${pensionBeforeStudy} -> ${pensionAfterStudy} kr after 1 semester`);
-if (!(pensionAfterStudy > pensionBeforeStudy)) {
-  problems.push(`entering a semester count did not raise the pension (${pensionBeforeStudy} -> ${pensionAfterStudy})`);
-}
-
-const pensionBeforePgb = await kpiValue(0);
-const pgbSaInput = pgbGrid.first().locator("td").nth(2).locator("input");
-await pgbSaInput.fill("200000");
-await pgbSaInput.dispatchEvent("change");
-await tab.waitForTimeout(80);
-const pensionAfterPgb = await kpiValue(0);
-console.log(`pension w/ pgb  : ${pensionBeforePgb} -> ${pensionAfterPgb} kr after a sickness-comp entry`);
-if (!(pensionAfterPgb > pensionBeforePgb)) {
-  problems.push(
-    `entering a PGB sickness-compensation amount did not raise the pension (${pensionBeforePgb} -> ${pensionAfterPgb})`,
-  );
-}
-
-// "Visa alla kolumner" moves the same table into a <dialog> -- reported as
-// having to scroll sideways to see the rest of it in the sidebar's own
-// ~280px-wide scroller. The point of each check below is that it is the same
-// table (the 200 000 typed above is still there, and a further edit still
-// reaches the model), not a copy, and that the dialog itself never needs that
-// horizontal scrollbar.
-await pgbGroup.locator('[data-action="pgb-expand"]').click();
-await tab.waitForTimeout(100);
-const pgbDialog = tab.locator(".pgb-dialog");
-const pgbDialogOpen = await pgbDialog.evaluate((node) => node.open);
-console.log(`pgb dialog open : ${pgbDialogOpen}`);
-if (!pgbDialogOpen) problems.push("clicking \"Visa alla kolumner\" did not open the PGB dialog");
-
-const pgbDialogScroll = pgbDialog.locator(".adv-grid-scroll");
-const pgbDialogMetrics = await pgbDialogScroll.evaluate((el) => ({
-  scrollWidth: el.scrollWidth,
-  clientWidth: el.clientWidth,
-}));
-console.log(`pgb dialog fit  : scrollWidth ${pgbDialogMetrics.scrollWidth} <= clientWidth ${pgbDialogMetrics.clientWidth}?`);
-if (pgbDialogMetrics.scrollWidth > pgbDialogMetrics.clientWidth) {
-  problems.push(
-    `the PGB dialog still needs horizontal scroll (scrollWidth ${pgbDialogMetrics.scrollWidth} > ` +
-      `clientWidth ${pgbDialogMetrics.clientWidth}) -- the whole point of "Visa alla kolumner" is to avoid that`,
-  );
-}
-
-const pgbDialogFirstSa = await pgbDialog.locator(".pgb-grid tbody tr").first().locator("td").nth(2).locator("input").inputValue();
-if (pgbDialogFirstSa !== "200000") {
-  problems.push(
-    `the PGB dialog shows "${pgbDialogFirstSa}" for the value typed before it opened, expected "200000" -- ` +
-      "it should be the same table, not a copy",
-  );
-}
-// A second edit, made from inside the dialog this time, still has to reach
-// the model -- the dialog is not a read-only preview.
-const pgbDialogSecondSa = pgbDialog.locator(".pgb-grid tbody tr").nth(1).locator("td").nth(2).locator("input");
-await pgbDialogSecondSa.fill("100000");
-await pgbDialogSecondSa.dispatchEvent("change");
-await tab.waitForTimeout(80);
-const pensionAfterDialogEdit = await kpiValue(0);
-console.log(`pension w/ dialog edit: ${pensionAfterPgb} -> ${pensionAfterDialogEdit}`);
-if (!(pensionAfterDialogEdit > pensionAfterPgb)) {
-  problems.push(
-    `entering a PGB amount from inside the dialog did not raise the pension further ` +
-      `(${pensionAfterPgb} -> ${pensionAfterDialogEdit})`,
-  );
-}
-
-// A native modal <dialog> blocks pointer events on the rest of the page by
-// design (confirmed the hard way: a first draft of this check tried to click
-// "Använd normala inställningar" while the dialog was still open and Playwright
-// timed out with "dialog intercepts pointer events") -- so the only way out is
-// its own close button, same as a person has.
-await pgbDialog.locator(".dialog-close").click();
-await tab.waitForTimeout(80);
-const pgbDialogClosed = await pgbDialog.evaluate((node) => !node.open);
-const pgbBackInPanel = await pgbGrid.count();
-const pgbDialogSecondSaKept = await pgbGrid.nth(1).locator("td").nth(2).locator("input").inputValue();
-console.log(`pgb dialog closed: ${pgbDialogClosed}, rows back in panel: ${pgbBackInPanel}, edit kept: ${pgbDialogSecondSaKept}`);
-if (!pgbDialogClosed) problems.push("clicking the PGB dialog's own close button did not close it");
-if (pgbBackInPanel !== pgbRows) {
-  problems.push(
-    `after the dialog closed, the PGB grid shows ${pgbBackInPanel} rows back in its panel, expected ${pgbRows}`,
-  );
-}
-if (pgbDialogSecondSaKept !== "100000") {
-  problems.push(
-    `after the dialog closed, the panel shows "${pgbDialogSecondSaKept}" for the amount typed inside the ` +
-      'dialog, expected "100000" -- the grid moved back with the table it is, not a copy of it',
-  );
+  problems.push('the conscription "Rensa" button is still visible after clearing, expected hidden');
 }
 
 // "Privat pensionssparande": the same number means kronor/month or a share of
@@ -916,27 +909,96 @@ if (!(ipsAfter > ipsBefore)) {
   problems.push(`setting private saving to 5% of income did not raise it (${ipsBefore} -> ${ipsAfter})`);
 }
 
-// "Barnår": up to four children, each a birth year, living under "Pension-
-// qualifying amounts (PGB)" alongside the sheet's other three PGB sources --
-// already wired into PGB childcare-year credits (earnPgb) and child/housing
-// benefits (benefits), just unreachable from this panel before now. Checked
-// with a birth year old enough that earnPgb's own gate (the parent's age at
-// the birth, > 15) is satisfied for the default typfall (born 1959). Run
-// here, in the same "last, right before the full reset" spot every other
-// test that raises the model's own pension figures runs in.
-const totalBrutoBeforeChild = await shown("totBrutto", "monthly");
-const firstChildField = pgbGroup.locator('[data-setting="childBirthYear1"]');
-await firstChildField.fill("1990");
-await firstChildField.dispatchEvent("change");
+// 8. A child's birth year: the credit can land in up to four years, so this
+// can add up to four new rows, and needs a real engine change to show at all
+// -- `RunState.pgbBarn`/`PgbBreakdownYear.barn` are new for this panel; the
+// old grid folded the credit straight into `RunState.pgb` with no way to
+// tell it apart from the other three sources. Checked with a birth year old
+// enough that `pgbBarn`'s own gate (the parent's age at the birth, > 15) is
+// satisfied for the default typfall (born 1959). Run here, in the same
+// "last, right before the full reset" spot every other test that raises the
+// model's own pension figures runs in.
+const pensionBeforeChild = await kpiValue(0);
+const pgbRowsBeforeChild = await pgbSummaryRows.count();
+await pgbType("child");
+await pgbYear(1990);
+await pgbAdd();
+const pgbRowsAfterChild = await pgbSummaryRows.count();
+const pgbHeadsAfterChild = await pgbHeads();
+console.log(`pgb rows w/child: ${pgbRowsBeforeChild} -> ${pgbRowsAfterChild}, heads: ${pgbHeadsAfterChild.join(" | ")}`);
+if (!(pgbRowsAfterChild > pgbRowsBeforeChild)) {
+  problems.push(`adding a child's birth year added no summary row(s) (${pgbRowsBeforeChild} -> ${pgbRowsAfterChild})`);
+}
+if (!pgbHeadsAfterChild.some((h) => /barn/i.test(h))) {
+  problems.push(`the summary table has no "Barn" column after a child's birth year: ${pgbHeadsAfterChild.join(" | ")}`);
+}
+const pensionAfterChild = await kpiValue(0);
+console.log(`pension w/ child: ${pensionBeforeChild} -> ${pensionAfterChild} kr after a child's birth year`);
+if (!(pensionAfterChild > pensionBeforeChild)) {
+  problems.push(`adding a child's birth year did not raise the pension (${pensionBeforeChild} -> ${pensionAfterChild})`);
+}
+if (!(await pgbGroup.locator('.pgb-children-list > [data-child-slot="1"]').isVisible())) {
+  problems.push("adding a child's birth year did not show it in the children list");
+}
+
+// The slot select won't offer an already-filled slot, and Add gives up once
+// all four are taken.
+const pgbSlotOptions = await pgbSlotField
+  .locator("option")
+  .evaluateAll((opts) => opts.map((o) => ({ value: o.value, disabled: o.disabled })));
+if (pgbSlotOptions.find((o) => o.value === "1")?.disabled !== true) {
+  problems.push("the child-slot select still offers slot 1 after it was filled");
+}
+for (const year of [1993, 1996, 1999]) {
+  await pgbYear(year);
+  await pgbAdd();
+}
+const pgbAddButton = pgbGroup.locator('[data-action="pgb-add-entry"]');
+if (!(await pgbAddButton.isDisabled())) {
+  problems.push("the PGB Add button is not disabled with all four child slots filled");
+}
+
+// 9. Removing a child: back down to slot 1's own 1990, then remove that too
+// -- the rows it alone earned disappear, and the column with them.
+for (const slot of [4, 3, 2]) {
+  await pgbGroup.locator(`.pgb-children-list [data-action="pgb-remove-child"][data-child-slot="${slot}"]`).click();
+  await tab.waitForTimeout(50);
+}
+if (await pgbAddButton.isDisabled()) {
+  problems.push("the PGB Add button is still disabled after freeing three of the four child slots");
+}
+await pgbGroup.locator('.pgb-children-list [data-action="pgb-remove-child"][data-child-slot="1"]').click();
 await tab.waitForTimeout(80);
-const totalBrutoAfterChild = await shown("totBrutto", "monthly");
+const pgbRowsAfterRemoveChild = await pgbSummaryRows.count();
+const pgbHeadsAfterRemoveChild = await pgbHeads();
+const pensionAfterRemoveChild = await kpiValue(0);
 console.log(
-  `child year 1    : total pension ${totalBrutoBeforeChild} -> ${totalBrutoAfterChild} kr/month after a 1990 birth year`,
+  `pgb after remove child: rows=${pgbRowsAfterRemoveChild}, heads: ${pgbHeadsAfterRemoveChild.join(" | ")}, ` +
+    `pension=${pensionAfterRemoveChild}`,
 );
-if (!(totalBrutoAfterChild > totalBrutoBeforeChild)) {
-  problems.push(
-    `setting the first child's birth year to 1990 did not raise total pension (${totalBrutoBeforeChild} -> ${totalBrutoAfterChild})`,
-  );
+if (pgbRowsAfterRemoveChild !== pgbRowsBeforeChild) {
+  problems.push(`removing the last child left ${pgbRowsAfterRemoveChild} rows, expected back to ${pgbRowsBeforeChild}`);
+}
+if (pgbHeadsAfterRemoveChild.some((h) => /barn/i.test(h))) {
+  problems.push(`removing the last child left a "Barn" column: ${pgbHeadsAfterRemoveChild.join(" | ")}`);
+}
+if (pensionAfterRemoveChild !== pensionBeforeChild) {
+  problems.push(`removing the last child left the pension at ${pensionAfterRemoveChild}, expected back at ${pensionBeforeChild}`);
+}
+if (await pgbGroup.locator(".pgb-children").isVisible()) {
+  problems.push("the children list is still visible after every slot was emptied");
+}
+
+// 10. Column-hiding in general: only the categories with data show, in
+// whichever combination is currently present -- checked here against what
+// checks 2-9 above left behind (sickness and study, nothing else).
+const pgbHeadsFinal = await pgbHeads();
+console.log(`pgb heads final : ${pgbHeadsFinal.join(" | ")}`);
+if (!pgbHeadsFinal.some((h) => /sjuk/i.test(h)) || !pgbHeadsFinal.some((h) => /studier/i.test(h))) {
+  problems.push(`expected the sickness and study columns to remain: ${pgbHeadsFinal.join(" | ")}`);
+}
+if (pgbHeadsFinal.some((h) => /värnplikt|barn/i.test(h))) {
+  problems.push(`expected no conscription or child column with neither present: ${pgbHeadsFinal.join(" | ")}`);
 }
 
 // "Nollställ alla värden": every row's own income and wage cell has to read
@@ -957,22 +1019,29 @@ if (nonZeroCells !== 0) {
   problems.push(`"Nollställ alla värden" left ${nonZeroCells} salary-grid cell(s) not at 0`);
 }
 
-// Aterstall clears the grid, and the conscription dates, back to empty --
-// the same as every other advanced-mode field -- checked with the dialog
-// closed, since it is not reachable any other way (see above).
+// 11. Aterstall clears the summary table, the form and the children list
+// back to empty -- the same as every other advanced-mode field.
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
-const pgbAfterReset = await pgbSaInput.inputValue();
-if (pgbAfterReset !== "0") {
-  problems.push(`the reset button left the PGB field at "${pgbAfterReset}", expected "0"`);
+const pgbRowsAfterReset = await pgbSummaryRows.count();
+const pgbEmptyAfterReset = await pgbGroup.locator(".pgb-summary-empty").isVisible();
+if (pgbRowsAfterReset !== 0 || !pgbEmptyAfterReset) {
+  problems.push(
+    `the reset button left ${pgbRowsAfterReset} PGB summary row(s) (empty message visible=${pgbEmptyAfterReset}), ` +
+      "expected 0 and the empty message",
+  );
 }
-const vplStartAfterReset = await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').inputValue();
+const pgbYearAfterReset = await pgbYearField.inputValue();
+const pgbAmountAfterReset = await pgbAmountField.inputValue();
+if (pgbYearAfterReset !== "0" || pgbAmountAfterReset !== "0") {
+  problems.push(`the reset button left the PGB form at year "${pgbYearAfterReset}"/amount "${pgbAmountAfterReset}", expected both "0"`);
+}
+const vplStartAfterReset = await pgbStartField.inputValue();
 if (vplStartAfterReset !== "") {
   problems.push(`the reset button left the conscription start date at "${vplStartAfterReset}", expected empty`);
 }
-const childYear1AfterReset = await firstChildField.inputValue();
-if (childYear1AfterReset !== "0") {
-  problems.push(`the reset button left the first child's birth year at "${childYear1AfterReset}", expected "0"`);
+if (await pgbGroup.locator(".pgb-children").isVisible()) {
+  problems.push("the reset button left the children list visible, expected empty and hidden");
 }
 
 // Partiellt uttag: "Andel uttag, inkomstpension/premiepension" and
@@ -1481,14 +1550,15 @@ if (shots) {
   console.log(`screenshots     : ${shots}`);
 }
 
-// The PGB dialog's own fit was checked above at this suite's standard 1280px
-// desktop width, where its ~480px cap already clears the grid's old 380px
-// floor on its own -- not a meaningful check of `.pgb-dialog .pgb-grid {
-// min-width: 0; }` specifically, since that rule only matters once the
-// dialog itself is narrower than the floor it removes, which only happens on
-// a phone. Re-checked here at 375px (iPhone SE, the narrowest of the widths
-// this was hand-verified at before this check existed: 375, 390, 1280) in its
-// own short-lived context, rather than resizing `tab` and disturbing every
+// The old PGB grid needed a `<dialog>` to escape the sidebar's own width at
+// a phone size, where even its own `.adv-grid-scroll` box was not enough to
+// keep it from widening the page. The sparse summary table replacing it
+// wraps in the same `.scroll` box every other wide table here already uses
+// (Table 2, the comparison table): a long header can still make that one box
+// scroll sideways on its own, same as Table 2's does, but the page itself
+// must not follow it. Re-checked here at 375px (iPhone SE, the narrowest of
+// the widths this app is hand-verified at: 375, 390, 1280) in its own
+// short-lived context, rather than resizing `tab` and disturbing every
 // assertion above that assumes the 1280px layout.
 const narrowContext = await browser.newContext({ viewport: { width: 375, height: 700 } });
 const narrowTab = await narrowContext.newPage();
@@ -1496,19 +1566,26 @@ await narrowTab.goto(pathToFileURL(page).href);
 await narrowTab.waitForSelector("#app");
 await narrowTab.locator('.mode-toggle .panel-btn[data-mode="advanced"]').click();
 await narrowTab.locator('.adv-group[data-group="pgb"] summary').click();
-await narrowTab.locator('[data-action="pgb-expand"]').click();
+await narrowTab.locator('[data-setting="pgbEntryType"]').selectOption("2"); // Sickness
+const narrowYear = narrowTab.locator('[data-setting="pgbEntryYear"]');
+await narrowYear.fill("2005");
+await narrowYear.dispatchEvent("change");
+const narrowAmount = narrowTab.locator('[data-setting="pgbEntryAmount"]');
+await narrowAmount.fill("200000");
+await narrowAmount.dispatchEvent("change");
+await narrowTab.locator('[data-action="pgb-add-entry"]').click();
 await narrowTab.waitForTimeout(120);
-const narrowMetrics = await narrowTab.locator(".pgb-dialog .adv-grid-scroll").evaluate((el) => ({
-  scrollWidth: el.scrollWidth,
-  clientWidth: el.clientWidth,
+const narrowMetrics = await narrowTab.evaluate(() => ({
+  scrollWidth: document.documentElement.scrollWidth,
+  clientWidth: document.documentElement.clientWidth,
 }));
 console.log(
-  `pgb dialog @375px: scrollWidth ${narrowMetrics.scrollWidth} <= clientWidth ${narrowMetrics.clientWidth}?`,
+  `pgb page @375px : scrollWidth ${narrowMetrics.scrollWidth} <= clientWidth ${narrowMetrics.clientWidth}?`,
 );
 if (narrowMetrics.scrollWidth > narrowMetrics.clientWidth) {
   problems.push(
-    `at a 375px phone width, the PGB dialog still needs horizontal scroll (scrollWidth ` +
-      `${narrowMetrics.scrollWidth} > clientWidth ${narrowMetrics.clientWidth})`,
+    `at a 375px phone width, the PGB summary table widened the whole page (scrollWidth ` +
+      `${narrowMetrics.scrollWidth} > clientWidth ${narrowMetrics.clientWidth}) instead of scrolling in its own box`,
   );
 }
 await narrowContext.close();

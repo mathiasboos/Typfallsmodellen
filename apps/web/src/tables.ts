@@ -114,7 +114,7 @@ const TABLE1_COLUMNS: readonly {
   },
 ];
 
-function cell(text: string, className?: string): HTMLTableCellElement {
+export function cell(text: string, className?: string): HTMLTableCellElement {
   const td = document.createElement("td");
   td.textContent = text;
   if (className) td.className = className;
@@ -128,7 +128,7 @@ function cell(text: string, className?: string): HTMLTableCellElement {
  * column, not a value that changes with the pointer's position, so the
  * browser's own mechanism already does the job.
  */
-function headCell(text: string, info?: string): HTMLTableCellElement {
+export function headCell(text: string, info?: string): HTMLTableCellElement {
   const th = document.createElement("th");
   if (info === undefined) {
     th.textContent = text;

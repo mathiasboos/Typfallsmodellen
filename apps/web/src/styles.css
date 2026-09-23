@@ -396,96 +396,102 @@ body {
 .adv-grid td > input[type="number"] { -moz-appearance: textfield; }
 
 /*
- * pgb.ts's grid has seven columns, not salaryPath.ts's four, and a two-row
- * header (a group row above a sub-column row for Studier and Värnplikt) --
- * so `thead th:nth-child` can no longer double as the column selector the
- * way `.adv-grid`'s own rule works: a header cell's position among its own
- * row's cells no longer matches its column index once earlier cells span
- * two rows or two columns. `<colgroup>`'s `<col>` elements are never
- * spanned that way -- one per physical column, always -- and `col` width
- * takes precedence over any cell's own width in fixed layout regardless, so
- * `pgb.ts` renders one and every width lives here instead. The table still
- * gets a min-width, for the same reason `.adv-grid`'s own comment above
- * gives: splitting the sidebar's width seven ways clips digits fixed layout
- * would otherwise leave room for, and `.pgb-dialog` below gives the same
- * table somewhere wider to render without the floor at all.
+ * pgb.ts's add-entry form: one shared grid of `.field`/`.field-wide` rows,
+ * the same layout `.adv-body` uses elsewhere -- built with controls.ts's own
+ * `fieldSet`, unlike the fixed 55-row grid this replaced.
  */
-.pgb-grid { min-width: 500px; }
-.pgb-grid col:nth-child(1) { width: 12%; }  /* År */
-.pgb-grid col:nth-child(2) { width: 9%; }   /* Ålder */
-.pgb-grid col:nth-child(3) { width: 17%; }  /* Sjuk-/aktivitetsersättning */
-.pgb-grid col:nth-child(4) { width: 14%; }  /* Antal terminer */
-.pgb-grid col:nth-child(5) { width: 15%; }  /* PGB studier, kr */
-.pgb-grid col:nth-child(6) { width: 15%; }  /* Värnplikt, dagar */
-.pgb-grid col:nth-child(7) { width: 18%; }  /* PGB värnplikt, kr */
-.pgb-computed { color: var(--text-secondary); }
+.pgb-form { display: grid; gap: 10px; }
+.pgb-add { justify-self: start; }
 
-/*
- * Värnplikt's own group header cell, not a box above the grid -- reported as
- * unintuitive that typing a date range somewhere else changed a table
- * further down the page. `text-align: left` overrides `.table thead
- * th:not(:first-child) { text-align: right }`, wrong for a stacked label;
- * `vertical-align: top` keeps it from centring in a row now much taller
- * than "Studier"'s plain text beside it.
- */
-.pgb-vpl-head { text-align: left; vertical-align: top; }
-.pgb-vpl-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
-/* A native date input's own clear affordance (Backspace, or a hover-only
-   icon in Chromium) is easy to miss this small, and there was no way to
-   clear just the period without "Använd normala inställningar" clearing
-   the rest of advanced mode too. Hidden rather than disabled when both
-   dates are already empty -- nothing to undo yet. */
-.pgb-vpl-clear {
+/* Year (or a child's birth year) plus a read-only age readout beside it --
+   its own composite row, the same reason `.adv-ips` (advanced.ts's IPS
+   toggle) gets one: the standard field shape has no room for a second,
+   dependent readout. */
+.field-wide > .pgb-year { grid-column: 1; grid-row: 2; }
+.pgb-year { display: flex; align-items: center; gap: 8px; }
+.pgb-year input {
+  flex: 1;
+  min-width: 0;
   font: inherit;
-  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.pgb-year input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pgb-year-age { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-secondary); min-width: 2.5em; }
+
+/* Conscription's from/to pair, its own clear button and a "too short"
+   readout -- carried over from the old grid's header-cell widget, just no
+   longer glued to a Värnplikt table column. */
+.field-wide > .pgb-conscription { grid-column: 1; grid-row: 2; }
+.pgb-conscription { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.pgb-conscription-date { display: block; font-weight: 400; }
+.pgb-conscription-date span { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 1px; }
+.pgb-conscription-date input {
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.pgb-conscription-date input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* A native date input's own clear affordance (Backspace, or a hover-only
+   icon in Chromium) is easy to miss, and there is no way to clear just the
+   period without "Använd normala inställningar" clearing the rest of
+   advanced mode too. Hidden rather than disabled when nothing is set yet --
+   nothing to undo. */
+.pgb-conscription-clear {
+  font: inherit;
+  font-size: 0.72rem;
   font-weight: 400;
-  padding: 0;
+  padding: 0 0 6px;
   border: none;
   background: none;
   color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
 }
-.pgb-vpl-clear:hover { color: var(--text-primary); }
-/* Label above input, not beside it -- a native date input already needs
-   most of the column's own width on its own; beside a label it would
-   overflow the column in the sidebar's own narrower view. */
-.pgb-vpl-date { display: block; margin-bottom: 3px; font-weight: 400; }
-.pgb-vpl-date:last-of-type { margin-bottom: 0; }
-.pgb-vpl-date span { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 1px; }
-.pgb-vpl-date input {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  padding: 1px 2px;
-  font: inherit;
-  color: var(--text-primary);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-.pgb-vpl-date input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.pgb-vpl-readout {
-  margin: 4px 0 0;
+.pgb-conscription-clear:hover { color: var(--text-primary); }
+.pgb-conscription-readout {
+  flex-basis: 100%;
+  margin: 0;
   font-size: 0.68rem;
   font-weight: 400;
   color: var(--text-secondary);
-  white-space: normal;
 }
+.pgb-conscription-readout:empty { display: none; }
 
-/* "Barnår": four birth-year fields above the grid, not a grid row -- each
-   one a small labelled box, wrapping onto a second line at the sidebar's
-   own narrow width rather than clipping. */
-/* Not `.field-hint`: see pgb.ts's own comment on `intro` for why that class's
-   hardcoded `grid-row: 2` is wrong outside a `.field`'s own grid. */
+/* Not `.field-hint`: see pgb.ts's own comment on `intro` for why that
+   class's hardcoded `grid-row: 2` is wrong outside a `.field`'s own grid. */
 .pgb-intro { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 8px; }
-.pgb-barn { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 2px 0 10px; }
-.pgb-barn-field { display: block; flex: 1 1 80px; min-width: 72px; font-weight: 400; }
-.pgb-barn-field span { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 1px; }
-.pgb-barn-field input {
-  display: block;
-  width: 100%;
-  min-width: 0;
+
+/* The children mini-list: one always-editable birth-year field per filled
+   slot, starting empty -- see pgb.ts's own comment on why editing/removing
+   a child lives here rather than in the summary table. */
+.pgb-children {
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.pgb-children h4 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pgb-children-list { display: grid; gap: 6px; }
+.pgb-child-row { display: flex; align-items: center; gap: 8px; }
+.pgb-child-row span { flex: 1 1 auto; font-size: 0.8rem; }
+.pgb-child-row input {
+  flex: 0 0 90px;
   padding: 3px 4px;
   font: inherit;
   font-variant-numeric: tabular-nums;
@@ -495,55 +501,41 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
-.pgb-barn-field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.pgb-vpl-readout:empty { display: none; }
+.pgb-child-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Shared by the children list's own remove button and the summary table's
+   per-cell ones -- a small round "x", never its own row or column since a
+   row can hold more than one category's own figure. */
+.pgb-remove {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.pgb-remove:hover { background: rgb(0 0 0 / 10%); color: var(--text-primary); }
+
+/* The summary table itself: only ever the years/categories that actually
+   have data (pgb.ts's own `summaryRows`/`visibleColumns`), so unlike the old
+   fixed grid it needs no min-width floor, no <colgroup> and no dialog to
+   escape the sidebar's width -- a handful of rows and up to four category
+   columns fit `.table`'s own default layout without help. */
+.pgb-summary { margin-top: 4px; }
+.pgb-summary-table td .pgb-remove { margin-left: 6px; vertical-align: middle; }
+.pgb-summary-empty { font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0; }
+
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would
      pin half the screen and hide the results behind it. */
   .input-column { position: static; max-height: none; overflow-y: visible; }
   .adv-grid-scroll { max-height: 60vh; }
 }
-
-/*
- * pgb.ts's "Visa alla kolumner" button moves the grid -- the same table, same
- * inputs, same listeners, not a copy -- into this dialog instead of widening
- * it past the sidebar. Freed from the ~280px the sidebar leaves it, the
- * dialog alone is already wider than `.pgb-grid`'s 380px floor, so
- * `min-width: 0` here lets the table settle back to a plain 100%-wide fixed
- * layout and every column fits without `.adv-grid-scroll`'s horizontal
- * scrollbar -- reported as having to scroll sideways to see the rest of the
- * table.
- */
-.pgb-dialog {
-  /* 480px comfortably fit the grid's original five columns; seven need more
-     room, or the header text that gave each column its name wraps down to
-     single syllables instead of words -- the point of moving the table here
-     at all is to stop that, not just to stop the horizontal scrollbar. */
-  width: min(94vw, 760px);
-  max-width: 94vw;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-}
-.pgb-dialog::backdrop { background: rgb(0 0 0 / 45%); }
-.pgb-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.pgb-dialog-head h3 { margin: 0; font-size: 0.9rem; }
-.dialog-close {
-  font: inherit;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 2px 9px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.dialog-close:hover { background: rgb(0 0 0 / 10%); }
-.pgb-dialog .adv-grid-scroll { max-height: 70vh; }
-.pgb-dialog .pgb-grid { min-width: 0; }
 
 /*
  * compare.ts's scenario cards -- a horizontally scrolling row, the same way

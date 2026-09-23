@@ -369,29 +369,76 @@ tedious to type one row at a time. It reuses `rows.map` and the same `drawGrid`/
 
 ### Pensionsgrundande belopp (PGB)
 
-`apps/web/src/pgb.ts` exposes `TypfallInput.pgbManual`/`pgbConscription` — the PGB sheet's sickness/
-activity compensation, conscription and study entries, credited as pension rights the same way
-childcare years already are. Unlike every setting in `advanced.ts`, these are not `Adv_settings`/
-`ModelContext` fields at all: they live on the Start-sheet side of the split, so they could not be one
-more row in that file's descriptor table. They are also not new to the *engine* the way the
-municipality table above is — `earnPgb` (`packages/engine/src/model/mcalc.ts`) has read manual PGB
-since the port's earliest phases, cross-checked against the workbook's own `Brutto` sheet; only the web
-UI for it was ever missing, and only sickness/activity compensation stayed a typed kronor figure once
-that UI arrived — see below.
+`apps/web/src/pgb.ts` exposes the PGB sheet's four sources of pension rights beyond ordinary income:
+childcare years (Barnår, a `ModelContext` field, `context.childBirthYears`), sickness/activity
+compensation, conscription and study (all three `TypfallInput.pgbManual`/`pgbConscription`, the
+Start-sheet side of the split). None of the three `TypfallInput` fields are new to the *engine* —
+`earnPgb` (`packages/engine/src/model/mcalc.ts`) has read manual PGB since the port's earliest phases,
+cross-checked against the workbook's own `Brutto` sheet — only the web UI for them, and childcare
+years' own engine *exposure* (below), were ever missing.
 
-This same file also exposes Barnår, the fourth PGB source (childcare years) — a `ModelContext` field,
-unlike the two above, so `pgb.ts`'s own `onChange` patch carries both kinds now; see the "Barnår,
-section 3.7's other half" entry further down for the detail on why and how.
+**The panel was originally an always-visible 55-row grid (ages 16-70), mostly blank — replaced with a
+compact add-entry form plus a summary table that only ever shows years and categories that actually
+have data**, on request, after a hand-drawn mockup of exactly this shape. Pick a type (`pgbEntryType`
+— Barn/Värnplikt/Sjuk-/aktivitetsersättning/Studier, in that order) from a `select`, fill in that
+type's own fields, click "Lägg till". Child years, being a birth date, are logically identical to the
+other three (a source of pension-qualifying amounts) but structurally different (a `ModelContext`
+4-tuple, not a `TypfallInput` array), so they get their own type in the same form rather than a
+separate widget bolted on above it, and their own small always-visible "children" list beside the
+form (`.pgb-children`) instead of living in the summary table's own remove affordance — see below.
 
-The grid's shape follows `salaryPath.ts`'s, with one real difference: there is no computed path to
-open with, since a default run has none of this (`pgbManual`'s own comment: "the shipped workbook has
-none, so childcare years are the only PGB a default run earns"), so every cell starts at zero and only
-the nonzero rows are ever handed to the engine — an all-zero row and an absent one are the same thing
-to `earnPgb`. The row range is a fixed 16 through 70 rather than tied to a computed wage path: `earnPgb`
-only ever reads a manual entry for `age > 15 && age <= riktalder`, and `context.riktage` — the only
-riktålder this port has today — defaults to 66 for every cohort ("cohort table pending"), so a fixed
-range needs no per-cohort logic the workbook does not model yet, and never has to reconcile typed
-values against a row list that moved.
+**A real engine gap surfaced building this, not just a UI change.** `context.childBirthYears` already
+drove a real per-age PGB credit inside `earnPgb` (the `diverse` local, folded into `RunState.pgb`) —
+but nothing distinguished that credit from the other three sources once folded in, and
+`TypfallResult.pgbBreakdown` (built from `TypfallInput.pgbManual` alone, before the age loop runs) had
+no way to see a `ModelContext` field at all. Showing a "Barn-PGB, kr" column needed `RunState.pgbBarn`
+(a new `AgeArray`, `packages/engine/src/model/state.ts`, set alongside `RunState.pgb` in `earnPgb`) and
+`PgbBreakdownYear.barn` (`packages/engine/src/model/result.ts`) — `buildPgbBreakdown` now unions ages
+from *both* `run.pgbManual.keys()` and `run.s.pgbBarn`'s nonzero ages, since a year whose only PGB
+source is a childcare credit previously had no row at all. `packages/engine/test/result.test.ts`'s own
+`pgbBreakdown` tests pin exactly this case: a run with `childBirthYears` set and no other `pgbManual`
+entry for the credited years still gets rows with `barn > 0`.
+
+**A single child's credit can land in up to four consecutive calendar years** (the birth year and the
+three after — `pgbBarn`, `packages/engine/src/pension/incomePension.ts`), and if two children's
+four-year windows overlap the same year, only the higher-priority child's credit counts for that year
+— the other is silently dropped (`diverse` is a single scalar per age in `earnPgb`; child 1 is checked
+first, then 2, 3, 4). Original workbook behaviour, not something to fix, and invisible from the summary
+table alone (it shows a number either way) — so the "Barn-PGB, kr" column header carries a short info
+tooltip explaining it, the same `<abbr title>` mechanism `TABLE2_COLUMNS`'s own tooltips already use
+(`tables.ts`'s `headCell`, now exported for `pgb.ts` to reuse alongside `cell`). Because the four-year
+window and the priority order are real, visible behaviour, adding a child asks which of the four slots
+(1st-4th) explicitly, rather than picking one automatically — the same model the field always used.
+
+**Each category keeps its own identity for editing.** Sickness and study entries are keyed by (year,
+that type) in two local `Map<age, value>`s (`sicknessByAge`/`studyByAge`) — re-adding the same year
+replaces whatever was there, so "editing" is "type it again", and a small "×" per populated table cell
+(`data-action="pgb-remove"`, `data-category`/`data-year`) removes just that one figure, not the whole
+row: a row can hold both a sickness and a study figure for the same year (the mockup's own example),
+and removing one must leave the other. Conscription stays a single period (`wsPGB!H4`/`H5` is one date
+range, not a per-age entry), cleared by its own "Rensa" button; re-selecting the type pre-fills the
+date pair from whatever period already exists, so editing is retyping the dates directly, same as
+before. The summary table's own "Barn-PGB, kr" column stays read-only — attributing a given year's
+credit back to a specific child, for a per-cell remove, would mean duplicating `pgbBarn`'s own
+window/priority logic client-side just to target a click; removing or editing a child happens in the
+children list instead, each slot's own birth-year field always editable in place once it is filled.
+
+**The summary table's rows and columns are both a pure function of the latest run**, built from
+`TypfallResult.pgbBreakdown` on every `setBaseline` call, the same way conscription's own kronor
+already were before this — never from the local per-type stores directly, so a stale client-side
+guess can never disagree with what the engine actually credited. Year and Age always show; each of
+the four category columns (Barn, Studier, Värnplikt, Sjuk-/aktivitetsersättning) shows only if some
+row has a nonzero figure in it, and Total always shows last — the same "some row is nonzero" filter
+`tables.ts`'s own `visibleTable2Columns` already uses for Table 2. Because the table is sparse by
+construction, it needs none of the machinery the old fixed grid did to fit a sidebar: no `min-width`
+floor, no `<colgroup>`, and no `<dialog>` pop-out to escape the ~280px sidebar width — a handful of
+rows and up to four category columns fit `.table`'s own default layout inside the existing `.scroll`
+box Table 2 and the comparison table already use.
+
+`onChange → render() → pgbGrid.setBaseline()` is fully synchronous in the existing wiring (no `await`
+anywhere in that chain), so there is no staleness between clicking "Lägg till" and the table updating
+— confirmed the same way the rest of this app's "no debounce, rebuild everything" render loop already
+relies on `run()` being cheap.
 
 **Conscription and study compute their own kronor, on request** — in the real sheet only
 sickness/activity compensation is "Ange manuellt"; conscription is a single date range (`PGB!H4`/`H5`)
@@ -400,7 +447,8 @@ model/pgb.ts` is the port of that arithmetic, read cell by cell off the source w
 guessed — `pyxlsb` only ever returns a formula's *cached* result, so getting the formula text itself
 needed the same LibreOffice `.xlsb` → `.xlsx` conversion `formulas.py` already uses for `extract_series.
 py`, read here by hand rather than through that module (a one-off lookup, not a recurring extraction).
-Three findings shaped the port:
+None of this changed with the panel's own redesign above — only how the two date inputs and the
+semester count reach it did. Three findings shaped the port:
 
 - **The 50%-of-average-income reference conscription pays out of (`PGB!G`, "50% medel efter 1995") needs
   no new data at all** — it is half of `medelPgi`, already extracted as `economic-series.json`'s own
@@ -431,100 +479,24 @@ Three findings shaped the port:
   and 15 unit tests in `packages/engine/test/pgb.test.ts` pin the day counts by hand for periods within
   one year, crossing one boundary, and crossing two.
 
-Five amount-shaped columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
-narrow inputs, clipping digits that the salary grid's own wider inputs do not — so the table gets a
-`min-width` wider than the sidebar, scrolling horizontally the same way the grid already scrolls
-vertically, keeping every column's proportions and just rendering them bigger. Its longest header,
-"Sjuk-/aktivitetsersättning", is also one unbroken compound word with no space to wrap at, which
-measured as overflowing its fixed-width cell into the next one — `overflow-wrap: break-word` on
-`.adv-grid th` lets it wrap mid-word instead, harmlessly, since none of `salaryPath.ts`'s own shorter
-headers were ever close to their column's width.
+**Where the form's own fields live now.** The conscription date pair (`pgbEntryConscriptionStart`/
+`pgbEntryConscriptionEnd`, `<input type="date">`) and its "Rensa" button (`data-action=
+"pgb-clear-conscription"`) show only when the type select reads "Värnplikt" — selecting that type
+pre-fills the dates from whatever period already exists, so editing is retyping them directly, and
+"Rensa" clears the whole period in one step rather than requiring "Använd normala inställningar" to
+clear every other advanced setting along with it. Their own short "under 120 days" readout
+(`.pgb-conscription-readout`) is the one thing the sparse table cannot show on its own: a period too
+short to earn anything has no touched-year row to display a zero in. Study's own semester count
+(`pgbEntryStudySemesters`, capped at 1-2) and sickness's own kronor field (`pgbEntryAmount`) show only
+under their own types, the same way; conscription's kronor and study's are both read back from
+`TypfallResult.pgbBreakdown` once added, rather than either being computed twice.
 
-**Studier and Värnplikt are named column groups, not two unrelated pairs that happen to sit next to
-each other** — reported as unclear that a typed semester count and the kronor beside it were even
-related fields. The header is two rows (`<thead>` with two `<tr>`s, following `renderCompareTable`'s
-own precedent in `tables.ts`): År, Ålder and Sjuk-/aktivitetsersättning each `rowSpan="2"` so their own
-label is written once, while Studier and Värnplikt each `colSpan="2"` over their own pair in the row
-above it. `table-layout: fixed` ordinarily takes its column widths from `thead th:nth-child`/`tbody
-td:nth-child` pairs at the same position, which breaks the moment a header row's cells no longer line
-up with the body's own columns one-for-one — exactly what `rowSpan`/`colSpan` here does. `pgb.ts`
-renders an explicit `<colgroup>` of seven `<col>` elements instead, one per physical column and never
-spanned, and every width lives in `styles.css` against `.pgb-grid col:nth-child(N)` — `<col>` width
-takes precedence over any cell's own in the fixed-layout algorithm regardless of what row structure
-sits below it, which is what makes it the robust choice here rather than a coincidence.
-
-**Värnplikt's own days and kronor are a real column each, per touched year, the same shape the sheet
-itself shows** — until this round, the date range's own confirmation was a single line of text above
-the grid ("Registrerat: 1998: 364 dagar"), with no equivalent of Studier's own per-row kronor column.
-Two changes closed that gap: `mcalc.ts`'s internal `ResolvedPgbYear` (already computed by
-`buildPgbManual` for every touched age) gained a `vplDays` field alongside the kronor it already
-carried, and `result.ts` exposes the whole map back out as `TypfallResult.pgbBreakdown` — a new,
-small, read-only array the UI can show without ever recomputing conscription's own arithmetic itself.
-That last part matters: study's kronor are a pure function of a year and a semester count, cheap and
-side-effect-free to compute again client-side, but conscription's need `medelPgi`, an economic
-projection this file has no way to reach on its own without duplicating a slice of `setup.ts` — reading
-it back from the run that just used it is the only path that does not either duplicate that logic or
-drift from it. `main.ts`'s `render()` already computes a full run before touching advanced mode at all,
-so `pgbGrid.setBaseline(input.born, context.marginal, result.pgbBreakdown)` costs nothing extra; `pgb.ts`
-digest-compares the incoming breakdown (a handful of entries at most) against what it last drew, since
-`medelPgi` can move with the run's own economic assumptions without `born` or `marginal` moving at all,
-and a naive born/marginal-only check would leave the two new columns stale. The readout keeps exactly
-the one thing the grid itself cannot show — a period under 120 days has no touched-year row to display
-a zero in — and goes blank once a valid period's own detail has somewhere to live.
-
-**The two date inputs live in Värnplikt's own header cell, not in a box above the grid** — reported as
-unintuitive that typing a date range somewhere else on the page changed a table further down it, with
-nothing visually tying the two together. `wsPGB!H4`/`H5` are still a single period, not a per-age entry
-(the sheet's own instruction is "Lägg in datum", nothing about a grid), so the inputs stay singular
-rather than becoming two more per-row columns; what moved is only *where* that one pair sits — from a
-separate `<div>` above the table into `vplGroupHead`, the same `<th>` that already names the Dagar/PGB
-värnplikt columns the dates fill in. End to end, filling in a date now happens in the same table whose
-numbers it changes, which is the point: cause and effect share one visual container instead of a gap a
-reader has to bridge by trust. Each date field's own visible label ("Från"/"Till") stacks above its
-input rather than beside it — a native date input already claims most of the column group's own width
-on its own, and a label beside it measured as overflowing the column in the sidebar's own narrower view
-before this. The longer original wording ("Värnplikt, startdatum", "Muck (slutdatum)") survives as each
-input's own `aria-label`, and the eligibility window that used to sit under the start date as a hint now
-reads from the group's own intro paragraph instead, which also now says outright where to look: "fylls i
-uppe i tabellen, under Värnplikt."
-
-**"Rensa" clears just the period, next to the label it clears** — asked for by name once the fields
-moved into the table: a native date input's own clear affordance (Backspace, or a hover-only icon in
-Chromium) is easy to miss packed into a header cell this small, and the only other way to clear it was
-"Använd normala inställningar", which clears every other advanced setting along with it. `clearBtn` sits
-on the same line as the "Värnplikt" label (`vplTitleRow`, a small flex row so the two share space rather
-than each claiming their own), empties both date inputs, and re-runs the same `updateVplReadout`/`emit`
-pair the date fields themselves already call on `change` — no new code path, the same one two ways in.
-Hidden rather than shown-disabled when both dates are already empty: `updateVplReadout` toggles
-`clearBtn.hidden` on every call already made for other reasons (typing a date, resetting, switching
-language), so there is nothing to remember to keep in sync separately.
-
-**"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
-`min-width` above trades legible columns for a horizontal scrollbar confined to the sidebar's own
-~280px `.adv-grid-scroll` box — reported as having to scroll sideways just to see Värnplikt and
-Studier. `pgb.ts`'s `expandBtn` moves the same `scroll` div (the same `<table>`, same inputs, same
-`change` listeners — not a rebuilt copy that would need its own state to stay in sync) into a
-`<dialog>` opened with `showModal()`, and moves it back on the dialog's own `close` event, whichever
-of the three ways that fires: the dialog's close button, the browser's own Escape handling, or a click
-on the backdrop (`event.target === dialog`, the same test a click anywhere *inside* the dialog fails).
-The dialog's own width cap (`width: min(94vw, 760px)`) grew with the grid: 480px comfortably fit the
-original five columns, but adding Värnplikt's two left the same longest headers wrapping down to
-single syllables instead of words at that width — legible under `scrollWidth <= clientWidth` (fixed
-layout never grows past its container regardless of what its content needs) is not the same thing as
-legible to read, which only a screenshot actually caught. Freed from the sidebar, the dialog is wider
-than the grid's own `min-width` floor on any realistic screen, so `.pgb-dialog .pgb-grid { min-width:
-0; }` lets the table settle back to a plain 100%-wide fixed layout and needs no horizontal scrollbar of
-its own — measured at three widths (1280px desktop, 390px, and 375px — an iPhone SE, the narrowest
-realistic phone) with `scrollWidth <= clientWidth` on `.adv-grid-scroll` before this shipped. Only the
-375px case is checked on every push: at the suite's standard 1280px, the dialog's own cap already
-clears the floor whether or not `min-width: 0` is even there, so that width alone would never catch a
-regression in the one rule this feature actually adds — the desktop check instead covers what the
-dialog itself moves and restores. `reset()` — "Använd normala inställningar" — cannot also close the
-dialog if it happens to be open: a modal `<dialog>` makes the rest of the page inert by design,
-intercepting every pointer event outside itself, so that button is never reachable while the dialog is
-open in the first place (confirmed the hard way — an earlier draft of the offline check tried exactly
-that and Playwright timed out with "dialog intercepts pointer events" rather than the click ever
-landing).
+The type-conditional visibility (`onTypeChange`) follows `advanced.ts`'s own IPS amount/share toggle
+(`savingAmountOrShare`) rather than introducing a second pattern for it: a `type` variable plus an
+`onTypeChange` that toggles `.hidden` on each field's own wrapper, driven by the type `select`'s
+`change` event instead of two buttons. A read-only age readout (`.pgb-year-age`, `age = year − born`)
+sits beside the shared Year/birth-year field, the same defensive `born > 0 ? ... : ""` guard the old
+grid's own year column used.
 
 ### Partiellt uttag: a fourth field the extractor never saw
 
@@ -562,25 +534,26 @@ exposed in the "saving" group (occupational pension and private saving's own wit
 for later — not needed for the manual's own example to work end to end, and each wants its own look
 rather than riding in on this one.
 
-**Barnår, section 3.7's other half, is exposed too — under "Pension-qualifying amounts (PGB)" in
-`apps/web/src/pgb.ts`, not in this file's own `GROUPS` table.** Four independent birth-year fields
-write into `context.childBirthYears` (`rng_Född_Barn1..4`), a real, already-wired feature: `earnPgb`
-(packages/engine/src/model/mcalc.ts) credits PGB for childcare years off it, and `benefits` (packages/
-engine/src/model/taxAndBenefits.ts) reads it for child allowance and housing benefit, both well before
-either panel had a row for it. The real workbook cell is a date (`Date` in VBA_go.bas), but every VBA
-consumer takes `Year(...)` off it immediately and never touches month or day, so a plain year field is
-faithful. It first shipped here, in this file's "partialWithdrawal" group (renamed "Barnår och
-partiellt uttag" to match the manual's own combined section name) — moved to `pgb.ts` on request,
-since Barnår is a pension-qualifying-amount source like the grid's other three (sickness/activity
-compensation, conscription, study), not a partial-withdrawal setting, and the manual's section number
-grouping the two together was never evidence they were the same concern. It still cannot be a
-`Setting` the way this file's own fields are: all four children share one context field (a 4-tuple),
-and a `Setting.set` only ever owns the single field it is responsible for. `createPgbGrid` (`pgb.ts`)
-holds its own local copy of the tuple instead, that each field's own change updates one slot of, and
-its `onChange` patch now carries a `ModelContext` field (`childBirthYears`) alongside the two
-`TypfallInput` ones (`pgbManual`/`pgbConscription`) it already carried — `main.ts` is what splits the
-patch, routing `childBirthYears` into `advanced` and the other two into `advancedInput`, the same
-per-field routing `createAdvancedPanel`'s own `onChange` already does for every other setting.
+**Barnår, section 3.7's other half, is exposed too — as the "Barn" type in the PGB add-entry form
+(`apps/web/src/pgb.ts`), not in this file's own `GROUPS` table.** Writes into `context.childBirthYears`
+(`rng_Född_Barn1..4`), a real, already-wired feature: `earnPgb` (packages/engine/src/model/mcalc.ts)
+credits PGB for childcare years off it, and `benefits` (packages/engine/src/model/taxAndBenefits.ts)
+reads it for child allowance and housing benefit, both well before any panel had a row for it. The real
+workbook cell is a date (`Date` in VBA_go.bas), but every VBA consumer takes `Year(...)` off it
+immediately and never touches month or day, so a plain year field is faithful. It first shipped here,
+in this file's "partialWithdrawal" group, then moved to `pgb.ts` (as four always-visible birth-year
+fields) since Barnår is a pension-qualifying-amount source like the panel's other three, not a
+partial-withdrawal setting — and now lives inside `pgb.ts`'s own add-entry form as a fourth `type`, per
+the panel's own redesign further up. It still cannot be a `Setting` the way `advanced.ts`'s own fields
+are: all four children share one context field (a 4-tuple), and a `Setting.set` only ever owns the
+single field it is responsible for. `pgb.ts` holds its own local copy of the tuple instead, written one
+slot at a time — by the form's own "Barn" type (an explicit slot picker, since the child's own priority
+order is real behaviour, not cosmetic — see the "Pensionsgrundande belopp" section above) or by the
+children list's always-editable birth-year field once a slot is filled — and its `onChange` patch
+carries a `ModelContext` field (`childBirthYears`) alongside the two `TypfallInput` ones
+(`pgbManual`/`pgbConscription`); `main.ts` is what splits the patch, routing `childBirthYears` into
+`advanced` and the other two into `advancedInput`, the same per-field routing `createAdvancedPanel`'s
+own `onChange` already does for every other setting.
 
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 

@@ -242,6 +242,7 @@ export function earnPgb(run: Run, age: number, utgyear: number): void {
     }
   }
 
+  s.pgbBarn.set(age, diverse);
   s.pgb.set(age, s.pgb.get(age) + diverse);
 
   // Conscription -- `buildPgbManual` has already applied wsPGB!I's own
