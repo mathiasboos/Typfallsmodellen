@@ -47,7 +47,7 @@
  * duplicating `pgbBarn`'s own window/priority logic client-side just to
  * target a click.
  */
-import { conscriptionDaysByYear, defaultContext } from "@typfallsmodellen/engine";
+import { conscriptionDaysByYear, conscriptionEligible, defaultContext } from "@typfallsmodellen/engine";
 import type {
   PgbBreakdownYear,
   PgbConscriptionPeriod,
@@ -136,8 +136,6 @@ const SUMMARY_COLUMNS: readonly {
     get: (r) => r.sa,
   },
 ];
-
-const clampAge = (age: number): number => Math.min(Math.max(Math.round(age), FIRST_AGE), LAST_AGE);
 
 export function createPgbGrid(
   lang: Lang,
@@ -284,6 +282,13 @@ export function createPgbGrid(
   addButton.addEventListener("click", onAdd);
   formBox.append(addButton);
 
+  // Reports back whether the entry just added actually earned anything --
+  // read from the run's own `pgbBreakdown` after `emit()`, not re-derived
+  // eligibility rules, so it can never disagree with what the engine did.
+  const addFeedback = document.createElement("p");
+  addFeedback.className = "pgb-add-feedback";
+  formBox.append(addFeedback);
+
   // ------------------------------------------------------------ children --
   const childrenBox = document.createElement("div");
   childrenBox.className = "pgb-children";
@@ -295,6 +300,20 @@ export function createPgbGrid(
   // --------------------------------------------------------------- table --
   const summaryBox = document.createElement("div");
   summaryBox.className = "pgb-summary scroll";
+  const summaryHead = document.createElement("div");
+  summaryHead.className = "pgb-summary-head";
+  // Hidden in the sidebar, where the group's own <summary> already labels
+  // the panel -- shown only once the table floats away from it, so the
+  // floating panel still says what it is.
+  const summaryTitle = document.createElement("span");
+  summaryTitle.className = "pgb-summary-title";
+  summaryTitle.hidden = true;
+  const expandBtn = document.createElement("button");
+  expandBtn.type = "button";
+  expandBtn.className = "export-btn pgb-expand";
+  expandBtn.dataset.action = "pgb-expand";
+  expandBtn.addEventListener("click", () => setExpanded(!expanded));
+  summaryHead.append(summaryTitle, expandBtn);
   const summaryTable = document.createElement("table");
   summaryTable.className = "table pgb-summary-table";
   const summaryThead = summaryTable.createTHead();
@@ -302,12 +321,53 @@ export function createPgbGrid(
   const summaryTbody = summaryTable.createTBody();
   const summaryEmpty = document.createElement("p");
   summaryEmpty.className = "pgb-summary-empty";
-  summaryBox.append(summaryTable, summaryEmpty);
+  summaryBox.append(summaryHead, summaryTable, summaryEmpty);
 
   body.append(intro, formBox, childrenBox, summaryBox);
   element.append(summary, body);
 
+  // "Visa alla kolumner": unlike the old grid's own modal `<dialog>`, this
+  // moves the same live table (same node, same remove-button listeners, not
+  // a copy) into a plain floating panel instead -- no `showModal()`, so
+  // nothing about the rest of the page (in particular the add-entry form
+  // just above, still in its own place in the sidebar) is made inert. Asked
+  // for by name after the redesign shipped: the whole point of adding one
+  // entry at a time is to see the table update as you go, which a blocking
+  // dialog that hides everything else defeats.
+  let expanded = false;
+  const drawer = document.createElement("div");
+  drawer.className = "pgb-summary-drawer";
+  drawer.hidden = true;
+  document.body.append(drawer);
+
+  function setExpanded(next: boolean): void {
+    expanded = next;
+    if (expanded) {
+      drawer.append(summaryBox);
+      drawer.hidden = false;
+    } else {
+      childrenBox.after(summaryBox);
+      drawer.hidden = true;
+    }
+    applyExpandText(currentLang);
+  }
+
+  function applyExpandText(l: Lang): void {
+    expandBtn.textContent = expanded
+      ? say(l, "Dölj tabellen", "Hide the table")
+      : say(l, "Visa alla kolumner", "Show all columns");
+    expandBtn.setAttribute(
+      "aria-label",
+      expanded
+        ? say(l, "Dölj den utökade PGB-tabellen", "Hide the expanded PGB table")
+        : say(l, "Visa PGB-tabellen större, utan att stänga formuläret", "Show the PGB table larger, without closing the form"),
+    );
+    summaryTitle.hidden = !expanded;
+    summaryTitle.textContent = say(l, "Pensionsgrundande belopp (PGB)", "Pension-qualifying amounts (PGB)");
+  }
+
   function onTypeChange(): void {
+    addFeedback.textContent = "";
     yearWrap.hidden = typeValue === TYPE_CONSCRIPTION;
     slotWrap.hidden = typeValue !== TYPE_CHILD;
     amountWrap.hidden = typeValue !== TYPE_SICKNESS;
@@ -337,14 +397,24 @@ export function createPgbGrid(
       return;
     }
     const days = conscriptionDaysByYear({ start: startInput.value, end: endInput.value });
-    conscriptionReadout.textContent =
-      days.size === 0
-        ? say(
-            currentLang,
-            "Perioden är kortare än 120 dagar och ger ingen pensionsrätt.",
-            "The period is under 120 days and earns no pension rights.",
-          )
-        : "";
+    if (days.size === 0) {
+      conscriptionReadout.textContent = say(
+        currentLang,
+        "Perioden är kortare än 120 dagar och ger ingen pensionsrätt.",
+        "The period is under 120 days and earns no pension rights.",
+      );
+      return;
+    }
+    // Long enough is not the same as eligible: `wsPGB!F`'s own window is
+    // 1995-2010 and from 2018 on, regardless of the day count.
+    const eligible = [...days.keys()].some(conscriptionEligible);
+    conscriptionReadout.textContent = eligible
+      ? ""
+      : say(
+          currentLang,
+          "Perioden ger ingen pensionsrätt -- värnplikt ger bara pensionsrätt 1995–2010 och från 2018.",
+          "The period earns no pension rights -- conscription only earns pension rights 1995-2010 and from 2018 on.",
+        );
   }
 
   function refreshChildSlotOptions(): void {
@@ -363,7 +433,22 @@ export function createPgbGrid(
     addButton.disabled = typeValue === TYPE_CHILD && childBirthYears.every((y) => y !== 0);
   }
 
+  /** `age > 15 && age <= riktalder` -- `earnPgb`'s own gate on any manual
+   * entry, riktålder defaulting to 66 (`LAST_AGE` leaves a small margin). A
+   * year outside this is rejected outright rather than silently moved to
+   * the nearest valid one, which would credit a different year than the one
+   * actually typed with no sign anything had changed. */
+  function ageInRange(year: number): number | undefined {
+    if (born <= 0) return undefined;
+    const age = year - Math.trunc(born);
+    return age >= FIRST_AGE && age <= LAST_AGE ? age : undefined;
+  }
+
   function onAdd(): void {
+    addFeedback.textContent = "";
+    let childYears: readonly number[] = [];
+    let committedAge: number | undefined;
+
     switch (typeValue) {
       case TYPE_CHILD: {
         if (!Number.isFinite(yearValue) || yearValue <= 0) return;
@@ -371,6 +456,7 @@ export function createPgbGrid(
         if ((childBirthYears[slot] ?? 0) !== 0) return;
         childBirthYears = [...childBirthYears] as [number, number, number, number];
         childBirthYears[slot] = yearValue;
+        childYears = [0, 1, 2, 3].map((n) => yearValue + n);
         break;
       }
       case TYPE_CONSCRIPTION: {
@@ -380,12 +466,32 @@ export function createPgbGrid(
       }
       case TYPE_SICKNESS: {
         if (!Number.isFinite(yearValue) || yearValue <= 0 || amountValue <= 0) return;
-        sicknessByAge.set(clampAge(yearValue - Math.trunc(born)), amountValue);
+        const age = ageInRange(yearValue);
+        if (age === undefined) {
+          addFeedback.textContent = say(
+            currentLang,
+            `Året motsvarar en ålder utanför ${FIRST_AGE}–${LAST_AGE} år, och ger ingen pensionsrätt.`,
+            `That year is an age outside ${FIRST_AGE}-${LAST_AGE}, and earns no pension rights.`,
+          );
+          return;
+        }
+        committedAge = age;
+        sicknessByAge.set(age, amountValue);
         break;
       }
       case TYPE_STUDY: {
         if (!Number.isFinite(yearValue) || yearValue <= 0 || semesterValue <= 0) return;
-        studyByAge.set(clampAge(yearValue - Math.trunc(born)), semesterValue);
+        const age = ageInRange(yearValue);
+        if (age === undefined) {
+          addFeedback.textContent = say(
+            currentLang,
+            `Året motsvarar en ålder utanför ${FIRST_AGE}–${LAST_AGE} år, och ger ingen pensionsrätt.`,
+            `That year is an age outside ${FIRST_AGE}-${LAST_AGE}, and earns no pension rights.`,
+          );
+          return;
+        }
+        committedAge = age;
+        studyByAge.set(age, semesterValue);
         break;
       }
     }
@@ -406,6 +512,39 @@ export function createPgbGrid(
     refreshAddButtonState();
     drawChildrenList();
     emit();
+    // `emit` -> `onChange` -> `render()` -> `setBaseline` is synchronous (no
+    // `await` anywhere in that chain), so `breakdown` already reflects this
+    // entry -- reading it back, rather than re-deriving eligibility here,
+    // is the only check that can't disagree with what the engine actually
+    // credited. The age range above already rules out sickness/study's one
+    // real failure mode, so a still-zero figure here means the 7.5
+    // inkomstbasbelopp income+PGB cap absorbed it, not a bad year.
+    if (typeValue === TYPE_SICKNESS || typeValue === TYPE_STUDY) {
+      if (committedAge === undefined) return;
+      const row = breakdown.find((r) => r.age === committedAge);
+      const earned = typeValue === TYPE_SICKNESS ? (row?.sa ?? 0) > 0 : (row?.studier ?? 0) > 0;
+      if (!earned) {
+        addFeedback.textContent = say(
+          currentLang,
+          "Beloppet gav ingen pensionsrätt det här året -- inkomsten är redan vid taket (7,5 inkomstbasbelopp).",
+          "The amount earned no pension rights this year -- income is already at the cap (7.5 income base amounts).",
+        );
+      }
+      return;
+    }
+    if (typeValue === TYPE_CHILD) {
+      const earned = childYears.some((year) => {
+        const age = born > 0 ? year - Math.trunc(born) : undefined;
+        return age !== undefined && (breakdown.find((r) => r.age === age)?.barn ?? 0) > 0;
+      });
+      if (!earned) {
+        addFeedback.textContent = say(
+          currentLang,
+          "Födelseåret gav ingen pensionsrätt -- du måste ha varit minst 16 år vid barnets födelse.",
+          "The birth year earned no pension rights -- you must have been at least 16 at the child's birth.",
+        );
+      }
+    }
   }
 
   function removeEntry(category: "sa" | "studier", age: number): void {
@@ -489,6 +628,8 @@ export function createPgbGrid(
     const rows = summaryRows();
     summaryEmpty.hidden = rows.length > 0;
     summaryTable.hidden = rows.length === 0;
+    expandBtn.hidden = rows.length === 0;
+    if (rows.length === 0 && expanded) setExpanded(false);
     theadRow.replaceChildren();
     summaryTbody.replaceChildren();
     if (rows.length === 0) return;
@@ -565,6 +706,7 @@ export function createPgbGrid(
     addButton.textContent = say(l, "Lägg till", "Add");
     childrenHeading.textContent = say(l, "Barn", "Children");
     summaryEmpty.textContent = say(l, "Inga poster ännu.", "No entries yet.");
+    applyExpandText(l);
     updateConscriptionReadout();
     drawChildrenList();
     drawSummary();

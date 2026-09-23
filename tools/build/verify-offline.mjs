@@ -664,13 +664,18 @@ async function pgbAdd() {
   await pgbGroup.locator('[data-action="pgb-add-entry"]').click();
   await tab.waitForTimeout(80);
 }
-const pgbSummaryRows = pgbGroup.locator(".pgb-summary-table tbody tr");
+// Scoped to the whole tab, not `pgbGroup`: "Visa alla kolumner" (below)
+// moves the table -- and the paragraph beside it -- out into a floating
+// panel appended to `document.body`, so a `pgbGroup`-scoped locator would
+// stop finding either while it's expanded.
+const pgbSummaryRows = tab.locator(".pgb-summary-table tbody tr");
 async function pgbHeads() {
-  return pgbGroup.locator(".pgb-summary-table thead th").allTextContents();
+  return tab.locator(".pgb-summary-table thead th").allTextContents();
 }
+const pgbSummaryEmptyMsg = tab.locator(".pgb-summary-empty");
 
 // 1. Empty state: nothing typed yet.
-const pgbEmptyBefore = await pgbGroup.locator(".pgb-summary-empty").isVisible();
+const pgbEmptyBefore = await pgbSummaryEmptyMsg.isVisible();
 const pgbRowsBefore = await pgbSummaryRows.count();
 console.log(`pgb empty state : empty message visible=${pgbEmptyBefore}, rows=${pgbRowsBefore}`);
 if (!pgbEmptyBefore || pgbRowsBefore !== 0) {
@@ -709,6 +714,26 @@ if (
   );
 }
 
+// A year whose age falls outside 16-70 is rejected outright, not silently
+// moved to the nearest valid one -- 2030 is age 71 for this typfall's 1959
+// birth year, one past `earnPgb`'s own riktålder-based ceiling, so there is
+// visible feedback and no row rather than a different year quietly earning
+// the credit instead.
+const pgbAddFeedback = pgbGroup.locator(".pgb-add-feedback");
+await pgbYear(2030);
+await pgbAmountField.fill("50000");
+await pgbAmountField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterBadYear = await pgbSummaryRows.count();
+const pgbFeedbackBadYear = await pgbAddFeedback.textContent();
+console.log(`pgb bad sa year : rows=${pgbRowsAfterBadYear}, feedback="${pgbFeedbackBadYear}"`);
+if (pgbRowsAfterBadYear !== 0) {
+  problems.push(`adding a sickness entry for an out-of-range year created ${pgbRowsAfterBadYear} row(s), expected 0 (rejected)`);
+}
+if (!pgbFeedbackBadYear || !/16.*70|16-70/.test(pgbFeedbackBadYear)) {
+  problems.push(`adding a sickness entry for an out-of-range year shows feedback "${pgbFeedbackBadYear}", expected a message naming the 16-70 range`);
+}
+
 // 2. A sickness entry: one new row, the pension rises, and a category only
 // gets a column once something is actually in it.
 const pensionBeforeSa = await kpiValue(0);
@@ -738,10 +763,32 @@ if (!(pensionAfterSa > pensionBeforeSa)) {
   problems.push(`entering a sickness-compensation amount did not raise the pension (${pensionBeforeSa} -> ${pensionAfterSa})`);
 }
 
+// "Visa alla kolumner" moves the same live table (not a copy) into a
+// floating panel rather than a modal `<dialog>` -- nothing about the rest
+// of the page is made inert, so the add-entry form just above has to keep
+// working while it's open. Proven by doing check 3, below, with the panel
+// expanded the whole time, rather than as a separate step of its own.
+// Scoped to the whole tab: the button lives inside the same node that
+// moves into the floating panel, so it travels there with the table too --
+// still the way to collapse it again, just no longer under `pgbGroup`.
+const pgbExpandBtn = tab.locator('[data-action="pgb-expand"]');
+const pgbDrawer = tab.locator(".pgb-summary-drawer");
+await pgbExpandBtn.click();
+await tab.waitForTimeout(80);
+if (!(await pgbDrawer.isVisible())) {
+  problems.push('"Visa alla kolumner" did not show the floating PGB summary panel');
+}
+if ((await pgbDrawer.locator(".pgb-summary-table").count()) !== 1) {
+  problems.push("the floating panel does not hold the PGB summary table -- expected the same live table, moved");
+}
+
 // 3. A study entry in a different year: its own column, a second row, a
 // further rise. 2005 and 2010 both postdate 1995, the year study-PGB
-// actually started.
+// actually started. Added here with the table still expanded (see above).
 await pgbType("study");
+if (!(await pgbYearField.isVisible())) {
+  problems.push("the add-entry form's own Year field is not usable while the PGB table is expanded");
+}
 await pgbYear(2010); // age 51
 await pgbSemesterField.fill("1");
 await pgbSemesterField.dispatchEvent("change");
@@ -761,6 +808,20 @@ if (!(pensionAfterStudy > pensionAfterSa)) {
   problems.push(`entering a study semester did not raise the pension further (${pensionAfterSa} -> ${pensionAfterStudy})`);
 }
 
+// Collapsing puts the very same table (the row just added included) back
+// in its normal place in the sidebar, not a stale copy.
+await pgbExpandBtn.click();
+await tab.waitForTimeout(80);
+if (await pgbDrawer.isVisible()) {
+  problems.push('"Dölj tabellen" did not hide the floating PGB summary panel');
+}
+if ((await pgbGroup.locator(".pgb-summary-table").count()) !== 1) {
+  problems.push("collapsing the PGB summary panel did not put the table back under its own group");
+}
+if ((await pgbSummaryRows.count()) !== pgbRowsAfterStudy) {
+  problems.push("collapsing the PGB summary panel lost the row added while it was expanded");
+}
+
 // 4. A study entry in the SAME year as the sickness one: still one row for
 // 2005, now with two populated cells -- the mixed-category-row case.
 await pgbYear(2005);
@@ -772,7 +833,7 @@ console.log(`pgb rows mixed  : ${pgbRowsAfterMixed}, expected still 2 (2005 gain
 if (pgbRowsAfterMixed !== 2) {
   problems.push(`adding a study entry for 2005 (already a sickness year) left ${pgbRowsAfterMixed} rows, expected 2`);
 }
-const row2005 = pgbGroup.locator('.pgb-summary-table tbody tr[data-year="2005"]');
+const row2005 = tab.locator('.pgb-summary-table tbody tr[data-year="2005"]');
 const row2005Cells = await row2005.locator("td").allTextContents();
 console.log(`2005 row        : ${row2005Cells.join(" | ")}`);
 const row2005NonEmpty = row2005Cells.slice(2, -1).filter((c) => c.trim() !== "").length;
@@ -819,8 +880,34 @@ if (pgbRowsAfterShortVpl !== 2 || pensionAfterShortVpl !== pensionBeforeVpl) {
   );
 }
 
+// A period long enough to matter is not the same as an eligible one --
+// `wsPGB!F`'s own window is 1995-2010 and from 2018 on, and 2012 falls in
+// neither. The readout catches this while typing, before "Lägg till" is
+// even clicked, the same way it already catches a too-short period.
+await pgbStartField.fill("2012-01-01");
+await pgbStartField.dispatchEvent("change");
+await pgbEndField.fill("2012-12-31"); // 366 days, well over 120 -- long enough, just not eligible
+await pgbEndField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplIneligibleReadout = await pgbGroup.locator(".pgb-conscription-readout").textContent();
+console.log(`vpl 2012 window : "${vplIneligibleReadout}"`);
+if (!vplIneligibleReadout || !/1995|2018/.test(vplIneligibleReadout)) {
+  problems.push(`a conscription period outside 1995-2010/2018+ reads "${vplIneligibleReadout}", expected a message naming the eligible window`);
+}
+await pgbAdd();
+const pgbRowsAfterIneligibleVpl = await pgbSummaryRows.count();
+const pensionAfterIneligibleVpl = await kpiValue(0);
+if (pgbRowsAfterIneligibleVpl !== 2 || pensionAfterIneligibleVpl !== pensionBeforeVpl) {
+  problems.push(
+    `adding a conscription period outside the eligible window left ${pgbRowsAfterIneligibleVpl} rows and pension ` +
+      `${pensionAfterIneligibleVpl} (was ${pensionBeforeVpl}), expected no change`,
+  );
+}
+
 // 6. A valid conscription period: its own column, its own row, a rise.
 await pgbType("conscription");
+await pgbStartField.fill("1998-01-01"); // back to the eligible period this suite carries forward
+await pgbStartField.dispatchEvent("change");
 await pgbEndField.fill("1998-12-31"); // now a full year, well over 120 days
 await pgbEndField.dispatchEvent("change");
 await tab.waitForTimeout(80);
@@ -908,6 +995,32 @@ console.log(`private saving  : ${ipsBefore} -> ${ipsAfter} kr/month at 5% of inc
 if (!(ipsAfter > ipsBefore)) {
   problems.push(`setting private saving to 5% of income did not raise it (${ipsBefore} -> ${ipsAfter})`);
 }
+
+// A birth year too early for the parent to have been at least 16 earns
+// nothing (`pgbBarn`'s own gate) -- committed to the slot regardless (it is
+// still that child's own birth year, just an ineligible one), but with
+// visible feedback and no summary row, rather than the slot silently doing
+// nothing with no sign why. Removed again once checked, freeing slot 1 for
+// the real child below.
+const pgbRowsBeforeBadChild = await pgbSummaryRows.count();
+await pgbType("child");
+await pgbYear(1965); // age 6 for this typfall's 1959 birth year -- too young to be a parent
+await pgbAdd();
+const pgbRowsAfterBadChild = await pgbSummaryRows.count();
+const pgbFeedbackBadChild = await pgbAddFeedback.textContent();
+console.log(`pgb bad child yr: rows=${pgbRowsAfterBadChild}, feedback="${pgbFeedbackBadChild}"`);
+if (pgbRowsAfterBadChild !== pgbRowsBeforeBadChild) {
+  problems.push(`adding an ineligible child birth year changed the row count (${pgbRowsBeforeBadChild} -> ${pgbRowsAfterBadChild}), expected no change`);
+}
+if (!pgbFeedbackBadChild || !/16/.test(pgbFeedbackBadChild)) {
+  problems.push(`adding an ineligible child birth year shows feedback "${pgbFeedbackBadChild}", expected a message naming the age-16 rule`);
+}
+await pgbGroup.locator('.pgb-children-list [data-action="pgb-remove-child"][data-child-slot="1"]').click();
+await tab.waitForTimeout(50);
+// Freeing slot 1 does not by itself move the select back to it (only
+// filling the *selected* slot advances it) -- picked explicitly so the
+// real child below lands in slot 1, matching this check's own assertions.
+await pgbSlotField.selectOption("1");
 
 // 8. A child's birth year: the credit can land in up to four years, so this
 // can add up to four new rows, and needs a real engine change to show at all
@@ -1024,7 +1137,7 @@ if (nonZeroCells !== 0) {
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
 const pgbRowsAfterReset = await pgbSummaryRows.count();
-const pgbEmptyAfterReset = await pgbGroup.locator(".pgb-summary-empty").isVisible();
+const pgbEmptyAfterReset = await pgbSummaryEmptyMsg.isVisible();
 if (pgbRowsAfterReset !== 0 || !pgbEmptyAfterReset) {
   problems.push(
     `the reset button left ${pgbRowsAfterReset} PGB summary row(s) (empty message visible=${pgbEmptyAfterReset}), ` +
@@ -1589,6 +1702,50 @@ if (narrowMetrics.scrollWidth > narrowMetrics.clientWidth) {
   );
 }
 await narrowContext.close();
+
+// A first draft of the expanded PGB panel floated full-width at every size
+// above 375px too, and a short viewport (or a sidebar scrolled far enough)
+// could put the add-entry form's own fields directly under it -- caught by
+// hand at 900px wide, not by the 375px or 1280px checks around it, since
+// neither happens to put the form there. `.layout`'s own two-column
+// breakpoint is 861px; checked here just above it, in its own short-lived
+// context, by adding a second entry *while the panel is expanded* and
+// confirming the click actually lands instead of hitting the floating
+// panel on top of it.
+const midContext = await browser.newContext({ viewport: { width: 900, height: 700 } });
+const midTab = await midContext.newPage();
+await midTab.goto(pathToFileURL(page).href);
+await midTab.waitForSelector("#app");
+await midTab.locator('.mode-toggle .panel-btn[data-mode="advanced"]').click();
+await midTab.locator('.adv-group[data-group="pgb"] summary').click();
+await midTab.locator('[data-setting="pgbEntryType"]').selectOption("2"); // Sickness
+const midYear = midTab.locator('[data-setting="pgbEntryYear"]');
+await midYear.fill("2005");
+await midYear.dispatchEvent("change");
+const midAmount = midTab.locator('[data-setting="pgbEntryAmount"]');
+await midAmount.fill("200000");
+await midAmount.dispatchEvent("change");
+await midTab.locator('[data-action="pgb-add-entry"]').click();
+await midTab.waitForTimeout(80);
+await midTab.locator('[data-action="pgb-expand"]').click();
+await midTab.waitForTimeout(80);
+await midTab.locator('[data-setting="pgbEntryType"]').selectOption("3"); // Study
+await midYear.fill("2010");
+await midYear.dispatchEvent("change");
+const midSemesters = midTab.locator('[data-setting="pgbEntryStudySemesters"]');
+await midSemesters.fill("1");
+await midSemesters.dispatchEvent("change");
+// A plain `.click()` throws (rather than silently mis-clicking) if the
+// floating panel intercepts the pointer here -- exactly the failure mode
+// the right-hand docking above 860px exists to prevent.
+await midTab.locator('[data-action="pgb-add-entry"]').click({ timeout: 5000 });
+await midTab.waitForTimeout(80);
+const midRows = await midTab.locator(".pgb-summary-table tbody tr").count();
+console.log(`pgb expand @900px: rows=${midRows}, add-entry form reachable while expanded`);
+if (midRows !== 2) {
+  problems.push(`adding a second PGB entry while expanded at 900px left ${midRows} rows, expected 2`);
+}
+await midContext.close();
 
 await browser.close();
 

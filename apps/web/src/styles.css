@@ -402,6 +402,11 @@ body {
  */
 .pgb-form { display: grid; gap: 10px; }
 .pgb-add { justify-self: start; }
+/* Reports back when the entry just added earned no pension rights (an age
+   outside 16-70, the income+PGB cap, an ineligible conscription window or
+   birth year) -- read from the run's own result, not a client-side guess. */
+.pgb-add-feedback { margin: -2px 0 0; font-size: 0.78rem; color: var(--danger); }
+.pgb-add-feedback:empty { display: none; }
 
 /* Year (or a child's birth year) plus a read-only age readout beside it --
    its own composite row, the same reason `.adv-ips` (advanced.ts's IPS
@@ -523,12 +528,62 @@ body {
 
 /* The summary table itself: only ever the years/categories that actually
    have data (pgb.ts's own `summaryRows`/`visibleColumns`), so unlike the old
-   fixed grid it needs no min-width floor, no <colgroup> and no dialog to
-   escape the sidebar's width -- a handful of rows and up to four category
-   columns fit `.table`'s own default layout without help. */
+   fixed grid it needs no min-width floor and no <colgroup> -- a handful of
+   rows and up to four category columns fit `.table`'s own default layout
+   inside the sidebar most of the time. "Visa alla kolumner" (below) is there
+   for when they don't. */
 .pgb-summary { margin-top: 4px; }
+.pgb-summary-head { display: flex; justify-content: flex-end; margin-bottom: 4px; }
 .pgb-summary-table td .pgb-remove { margin-left: 6px; vertical-align: middle; }
 .pgb-summary-empty { font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0; }
+
+/*
+ * "Visa alla kolumner" moves the same table (not a copy) into this floating
+ * panel instead of widening it past the sidebar -- asked for again after the
+ * panel's redesign dropped the old grid's own modal `<dialog>`, since adding
+ * one PGB entry at a time is only useful if the table is still visible (and
+ * the form still usable) while it grows. Plain `position: fixed`, not a
+ * `<dialog>` with `showModal()`: nothing here makes the rest of the page
+ * inert, so the add-entry form just above keeps working exactly as before
+ * while the table floats.
+ *
+ * Full-width and bottom-anchored below `.layout`'s own 860px breakpoint,
+ * where the sidebar and the results column already stack into one --
+ * confirmed by hand that a first draft of this, full-width at every size,
+ * could float right over the sidebar's own add-entry form once the sidebar
+ * scrolled far enough for the two to overlap, defeating the whole point.
+ * Above 860px, docked to the right instead, narrow enough (`min(48vw,
+ * 640px)`) to stay clear of `.layout`'s own `minmax(0, 300px)` sidebar
+ * column plus its 20px gap regardless of scroll position, so the two can
+ * never overlap there at all rather than merely being unlikely to.
+ */
+.pgb-summary-drawer {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+  max-height: 55vh;
+  overflow: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 30%);
+  z-index: 40;
+}
+@media (min-width: 861px) {
+  .pgb-summary-drawer {
+    left: auto;
+    right: 24px;
+    width: min(48vw, 640px);
+    max-width: none;
+    margin: 0;
+  }
+}
+.pgb-summary-drawer .pgb-summary-head { justify-content: space-between; align-items: center; }
+.pgb-summary-title { font-weight: 700; font-size: 0.85rem; color: var(--text-secondary); }
 
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would

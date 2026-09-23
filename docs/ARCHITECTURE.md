@@ -440,6 +440,33 @@ anywhere in that chain), so there is no staleness between clicking "Lägg till" 
 — confirmed the same way the rest of this app's "no debounce, rebuild everything" render loop already
 relies on `run()` being cheap.
 
+**"Visa alla kolumner" moves the same table (not a copy) into a floating panel, on request again once
+the panel stopped having one** — the old grid's modal `<dialog>` made the rest of the page inert by
+design, which is fine for a static table but defeats a form meant to be filled in while looking at the
+result. `.pgb-summary-drawer` is a plain `position: fixed` element instead: no `showModal()`, so the
+add-entry form just above keeps working exactly as before. A first draft floated full-width at every
+size, and was caught by hand (not by the 1280px or 375px checks flanking it, since neither happens to
+put the form under it) putting the panel directly over the sidebar's own add-entry form at a moderate
+900px width — the whole point defeated by the very thing meant to preserve it. Above `.layout`'s own
+860px breakpoint the panel docks to the right instead, narrow enough (`min(48vw, 640px)`) to stay clear
+of the sidebar's `minmax(0, 300px)` column plus its 20px gap regardless of scroll position, so the two
+cannot overlap there at all rather than merely being unlikely to; below it, sidebar and results already
+stack into one column, so it stays a full-width bottom sheet, the same tradeoff the 375px check already
+accepts for `.scroll`'s own sideways scroll. Checked at 900px (just above the breakpoint) by adding a
+second entry with the panel open and confirming the click reaches the button rather than the panel.
+
+**An entry that earns no pension rights says so, read back from the run itself rather than re-derived
+eligibility rules** — a year outside `earnPgb`'s own 16-70 gate is rejected outright for sickness and
+study (not silently moved to the nearest valid year, which would credit a different one than the one
+typed with no sign anything had changed); conscription's own eligible window (1995-2010, from 2018 on)
+and a child's own age-16 gate are checked from the live `pgbBreakdown` after the entry is added instead,
+since duplicating either rule's exact arithmetic client-side (the child gate especially: the first
+child's own asymmetric offset and CPI uprating, see the four-year-window paragraph above) would only
+ever be as trustworthy as the copy, where reading the real result back cannot disagree with it by
+construction. Conscription's own case doubles up deliberately: the eligible-window check also runs
+live in `.pgb-conscription-readout` (next to the existing "under 120 days" one), since a date range's
+own validity is knowable before "Lägg till" is even clicked, the same way the day-count one already is.
+
 **Conscription and study compute their own kronor, on request** — in the real sheet only
 sickness/activity compensation is "Ange manuellt"; conscription is a single date range (`PGB!H4`/`H5`)
 and study a semester count (`PGB!M`), both turned into kronor by the sheet itself. `packages/engine/src/
