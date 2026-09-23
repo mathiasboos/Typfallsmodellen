@@ -319,6 +319,19 @@ did not have a row in `advanced.ts`'s own descriptor table yet. It sits in the "
 for `finalSalaryYears`/`pensionSameYearAsFinalSalary` is coincidence, not evidence the group was
 mislabelled.
 
+**"Pensionering sker efter slutlönen" (row 43) was exposed as a checkbox, which was a real bug, not
+just an unexposed setting.** The sheet's own row comment, "(1)-> Pensioneringen sker samma år som
+slutlönen", reads like a flag, and the field was wired as one (`check`, writing only 0 or 1) — but the
+manual's own 3.6 prose is explicit that it isn't: "Om 0 anges sker pensionering samma år som slutlön.
+Om större siffra än 0 anges sker pensionering så många år efter slutlönen" (0 = pension starts the
+same year as the final salary; any larger number = that many years after it). `adjustmentFactors`
+(`packages/engine/src/model/result.ts`) reads it as `timeLag`, added directly into the retirement-age
+index math (`par - 1 + timeLag + korr`) that feeds the "Slutlön" row's own price-adjusted column — a
+year count, never a boolean. A checkbox here could only ever write 0 or 1, so "stop working in 2025,
+first pension payment in 2030" (a five-year gap) was unreachable no matter how the box was clicked.
+Fixed by giving it a plain `years(0, 40)` control instead, the same kind `tempTjpUttag`/`tempIpsUttag`
+already use for an analogous "count of years" input.
+
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for

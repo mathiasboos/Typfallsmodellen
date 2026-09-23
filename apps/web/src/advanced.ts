@@ -487,11 +487,22 @@ export const GROUPS: readonly Group[] = [
         set: (finalSalaryYears) => ({ finalSalaryYears }),
       },
       {
-        // row 43 "(1)-> Pensioneringen sker samma år som slutlönen"
+        // row 43 "(1)-> Pensioneringen sker samma år som slutlönen" -- the
+        // row's own "(1)->" shorthand reads like a flag, but manual 3.6 is
+        // explicit that it is not one: "Om 0 anges sker pensionering samma år
+        // som slutlön. Om större siffra än 0 anges sker pensionering så många
+        // år efter slutlönen." (0 = same year as the final salary, any larger
+        // number = that many years after it). `adjustmentFactors` (packages/
+        // engine/src/model/result.ts) reads it as `timeLag`, added straight
+        // into the retirement-age index math, not compared to 1 -- so a
+        // checkbox here (writing only 0 or 1) could never reach "stop working
+        // in 2025, first pension payment in 2030" (timeLag = 5), only a
+        // one-year shift at most.
         key: "pensionSameYearAsFinalSalary",
         row: 43,
-        control: flag,
-        label: text("Pensionering samma år som slutlönen", "Retire in the same year as the final salary"),
+        control: years(0, 40),
+        label: text("Pensionering sker efter slutlönen", "Pension starts after the final salary"),
+        hint: text("antal år efter slutlönen, 0 = samma år", "number of years after the final salary, 0 = the same year"),
         get: (c) => c.pensionSameYearAsFinalSalary,
         set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
       },
