@@ -8,10 +8,12 @@
  * first alone, which is why `main.ts` could get this far passing an empty
  * settings map. This panel is the second.
  *
- * Thirty of the sheet's seventy-six rows are here, grouped as sections 3.2
- * to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag" half --
- * its "Barnår" half, `rng_Född_Barn1..4`, stays unexposed backlog). The rest are
- * left out on purpose: some
+ * Thirty-four of the sheet's seventy-six rows are here, grouped as sections 3.2
+ * to 3.8 of the user manual group them (3.7 covers both halves the manual's own
+ * "Barnår och partiellt uttag" does -- the four Barnår fields are built directly
+ * in `createAdvancedPanel` rather than through the table below, since all four
+ * write into one context field; see the comment where they're built). The rest
+ * are left out on purpose: some
  * are Excel's own business (`Visa_process`, `rngTurboMode`, `Verbose`), some
  * feed a sheet this port does not have (`Rng_belopp12`, `Alt_p_age`,
  * `Rng_compareTo` are Mikrosim's), some are not ported (`Wealth` and the
@@ -338,18 +340,25 @@ export const GROUPS: readonly Group[] = [
     ],
   },
   {
-    // Manual 3.7's own example: "Partiellt uttag av inkomstpensionen och
-    // premiepensionen kan läggas in här, för att till exempel simulera ett
-    // typfall som är jobbonär under en viss period" -- take out a reduced
-    // share of the public pension for a few years while still working
-    // part-time, then retire in full. `withdrawalShare` (packages/engine/
-    // src/income/wages.ts) ties Lön to whichever share is drawn by default,
-    // so these three fields are the whole feature -- nothing else has to
-    // move for "jobbonär" to show up in Table 2 as a reduced salary
-    // alongside a reduced pension.
+    // Manual 3.7, "Barnår och partiellt uttag", covers two unrelated things
+    // under one section number -- the group below does too, with Barnår's
+    // four birth-year fields built directly into `createAdvancedPanel`
+    // rather than as ordinary `Setting`s (see the comment where they're
+    // built: all four write into the one `childBirthYears` tuple, which the
+    // one-field-per-Setting shape below can't express).
+    //
+    // Manual 3.7's own example for the withdrawal fields: "Partiellt uttag
+    // av inkomstpensionen och premiepensionen kan läggas in här, för att
+    // till exempel simulera ett typfall som är jobbonär under en viss
+    // period" -- take out a reduced share of the public pension for a few
+    // years while still working part-time, then retire in full.
+    // `withdrawalShare` (packages/engine/src/income/wages.ts) ties Lön to
+    // whichever share is drawn by default, so these three fields are the
+    // whole feature -- nothing else has to move for "jobbonär" to show up
+    // in Table 2 as a reduced salary alongside a reduced pension.
     key: "partialWithdrawal",
     section: "3.7",
-    title: text("Partiellt uttag", "Partial withdrawal"),
+    title: text("Barnår och partiellt uttag", "Child years and partial withdrawal"),
     settings: [
       {
         // row 82 "Partiellt uttag IP" / "... vid 66 med 100 % uttag"
@@ -859,6 +868,43 @@ export function createAdvancedPanel(
     relabels.push(applyTitle);
 
     const { field, number, percent: percentControl, check, select } = fieldSet(body, relabels, lang);
+
+    // "Barnår" (manual 3.7): up to four children, one birth year each --
+    // `rng_Född_Barn1..4`, already read by `earnPgb` (packages/engine/src/
+    // model/mcalc.ts) for childcare-year PGB credits and by `benefits`
+    // (packages/engine/src/model/taxAndBenefits.ts) for child allowance and
+    // housing benefit, just with no row here before now. The real workbook
+    // cell is a date, but every VBA consumer (VBA_go.bas) immediately takes
+    // `Year(...)` off it and never touches month or day, so a plain year
+    // field loses nothing. Four independent inputs share one context field
+    // (`childBirthYears`, a 4-tuple), which is why this isn't a `Setting`
+    // like the others below: a `Setting.set` only ever owns the one field
+    // it's responsible for, with no way to carry the other three children's
+    // years along unchanged. Built here instead, with its own local copy of
+    // the tuple that each field's own change updates one slot of.
+    if (group.key === "partialWithdrawal") {
+      let childYears = [...normal.childBirthYears] as [number, number, number, number];
+      const childLabel = [
+        text("1:a barnet", "1st child"),
+        text("2:a barnet", "2nd child"),
+        text("3:e barnet", "3rd child"),
+        text("4:e barnet", "4th child"),
+      ];
+      for (let i = 0; i < 4; i += 1) {
+        const slot = i;
+        const control = number(childYears[slot] ?? 0, { min: 0, max: 2100, step: 1 }, (v) => {
+          childYears = [...childYears] as [number, number, number, number];
+          childYears[slot] = v;
+          onChange({ childBirthYears: childYears });
+        });
+        control.element.dataset.setting = `childBirthYear${slot + 1}`;
+        field(control.element, (l) => ({
+          label: childLabel[slot]!(l),
+          hint: text("Födelseår, 0 = inget barn", "Year of birth, 0 = no child")(l),
+        }));
+        restores.push(() => control.setValue(normal.childBirthYears[slot] ?? 0));
+      }
+    }
 
     // Filled in when the "tax" group reaches `begravningsavgift`, below --
     // `kommunalskatt` comes first in that group's own settings array and

@@ -558,9 +558,20 @@ exposed in the "saving" group (occupational pension and private saving's own wit
 for later — not needed for the manual's own example to work end to end, and each wants its own look
 rather than riding in on this one.
 
-Barnår, section 3.7's other half (`childBirthYears`, `rng_Född_Barn1..4`), stays unexposed: a real but
-separate concern this round did not touch, the same "left out, and why" honesty every other group here
-already practices.
+**Barnår, section 3.7's other half, is exposed too** — four independent birth-year fields writing into
+`context.childBirthYears` (`rng_Född_Barn1..4`), a real, already-wired feature: `earnPgb` (packages/
+engine/src/model/mcalc.ts) credits PGB for childcare years off it, and `benefits` (packages/engine/
+src/model/taxAndBenefits.ts) reads it for child allowance and housing benefit, both well before this
+panel had a row for it. The real workbook cell is a date (`Date` in VBA_go.bas), but every VBA
+consumer takes `Year(...)` off it immediately and never touches month or day, so a plain year field is
+faithful. It cannot be a `Setting` like everything else in this table: all four children share one
+context field (a 4-tuple), and a `Setting.set` only ever owns the single field it is responsible for,
+with no way to carry the other three years along unchanged. `createAdvancedPanel` builds it directly
+instead, right where the "partialWithdrawal" group is assembled, with its own local copy of the tuple
+that each field's own change updates one slot of — the same "group built by hand around the loop"
+pattern `municipalitySelect`/`churchBurialSelect` already use for the "tax" group. The group's own
+title changed to "Barnår och partiellt uttag", matching the manual's own combined section name, since
+the two topics were never really under separate headings there.
 
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 
