@@ -686,6 +686,15 @@ input-only:
   scenario's own working life and lowers its accrued pension, independent of everything else on that
   card — `verify-offline.mjs` moves it on its own, holding salary and retirement age fixed, to prove
   that rather than only the salary control's already-covered path.
+- **Birth year** joined as a fifth override, on request, placed first among the card's own controls
+  (matching `form.ts`'s own field order, where Födelseår leads too) — `t("birthYear", l)` and `BORN`
+  (`span(BIRTH_YEARS)`, the same shared list `form.ts` and `mikrosim.ts` each already derive their own
+  copy of this bound from). Before this, birth year was one of the fields every scenario was documented
+  as sharing live with the baseline; it moves to the "frozen per card" side instead, since a different
+  cohort is exactly the kind of comparison this tab exists for (a different retirement-year cohort
+  changes ATP eligibility, riktålder, and several other cohort-keyed rules at once) —
+  `verify-offline.mjs` moves a scenario's own birth year on its own, holding the other three fixed, the
+  same pattern start-of-work age's own check above already established.
 
 Two CSS fixes came out of measuring the built page rather than assuming, both from the same cause: a
 flex item's or grid item's default `min-width: auto` lets its content's own width win over an intended
@@ -900,6 +909,27 @@ own top by construction, not by a separate lookup that could disagree with the b
 clutter more than they inform; `vertical()`'s own multiplier is bumped an extra 15% only when labels
 will actually be drawn, reserving headroom for the tallest bar's own label without changing every
 other chart's shared vertical-scale headroom.
+
+**"Hämta från Prognos"/"Hämta från Jämför scenarier", on request — a one-time pull, not a live
+link.** Two more `actions` buttons alongside "+ Lägg till rad": the first appends one row read from
+Prognos's own current baseline (whichever mode is actually driving it — `main.ts`'s `runInput()`, not
+the raw Normal-mode `input`, so an Avancerat-mode override is reflected too); the second appends one
+row per Jämför scenarier scenario (baseline first, then each variant via `applyScenario`). Both are a
+plain snapshot at the moment of the click — editing the form or a scenario afterwards does not change
+a row already imported from it, the same "frozen once added" relationship `compare.ts`'s own variants
+already have with their baseline. `mikrosimRowFromInput(id, input, ipsMonthly)` is the mirror image of
+the existing `mikrosimRowToInput`, mapping the same nine fields back from any full `TypfallInput` (plus
+the shared context's own current `ipsMonthly`, since IPS lives on `ModelContext` rather than
+`TypfallInput` — see the column-mapping notes above) and clamping each continuous field to Mikrosim's
+own bounds, the same way a typed or CSV-imported value already is.
+
+Wiring is a pull, not a push, unlike `compare.ts`'s own `onChange`: `main.ts` hands `createMikrosimPanel`
+two getters, `getForecastInput`/`getCompareInputs` (the latter `() => comparePanel.scenarioInputs(runInput())`,
+a new `CompareHandle` method that returns `[baseline, ...variants.map(applyScenario)]` against whichever
+baseline it is given), and Mikrosim calls them only when its own two buttons are clicked — it does not
+subscribe to either view's state the rest of the time. Importing from Jämför scenarier adds as many
+rows as fit under `MAX_ROWS` rather than refusing the whole import over the cap, matching CSV import's
+own best-effort stance on a partial problem.
 
 ### Table 2's own column tooltips, and Ordlista
 

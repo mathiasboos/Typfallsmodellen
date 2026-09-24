@@ -1362,16 +1362,38 @@ if (scenario1PensionBefore !== baselinePension) {
   );
 }
 
+// Birth year is the fifth override, added on request -- a much younger
+// cohort has to move that scenario's own pension, with salary, retirement
+// age and start-of-work age held fixed, without touching the baseline's.
+const scenario1Born = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").first();
+await scenario1Born.fill("1990");
+await scenario1Born.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const scenario1PensionAfterBorn = await compareCell("Scenario 1", "kpi-pension", "monthly");
+const baselinePensionAfterBorn = await compareCell("Utgångsläge", "kpi-pension", "monthly");
+console.log(`scenario birth year lowered: pension ${scenario1PensionBefore} -> ${scenario1PensionAfterBorn}`);
+if (scenario1PensionAfterBorn === scenario1PensionBefore) {
+  problems.push(
+    `changing a scenario's own birth year did not move its pension in the table (still "${scenario1PensionAfterBorn}")`,
+  );
+}
+if (baselinePensionAfterBorn !== baselinePension) {
+  problems.push(
+    `changing a scenario's birth year changed the baseline's own pension in the table ("${baselinePension}" -> ` +
+      `"${baselinePensionAfterBorn}")`,
+  );
+}
+
 // Raising the scenario's own salary well above the baseline's must move only
 // that scenario's own columns in the table, not the baseline's.
-const scenario1Salary = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").first();
+const scenario1Salary = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(1);
 await scenario1Salary.fill("80000");
 await scenario1Salary.dispatchEvent("change");
 await tab.waitForTimeout(50);
 const scenario1PensionAfter = await compareCell("Scenario 1", "kpi-pension", "monthly");
 const baselinePensionAfter = await compareCell("Utgångsläge", "kpi-pension", "monthly");
-console.log(`scenario salary raised: pension ${scenario1PensionBefore} -> ${scenario1PensionAfter}`);
-if (scenario1PensionAfter === scenario1PensionBefore) {
+console.log(`scenario salary raised: pension ${scenario1PensionAfterBorn} -> ${scenario1PensionAfter}`);
+if (scenario1PensionAfter === scenario1PensionAfterBorn) {
   problems.push(
     `raising a scenario's own salary did not raise its pension in the table (still "${scenario1PensionAfter}")`,
   );
@@ -1388,7 +1410,7 @@ if (baselinePensionAfter !== baselinePension) {
 // startWorkAge)), so it has to move that scenario's pension on its own, with
 // salary and retirement age held fixed, not just ride along with the salary
 // control already proven above.
-const scenario1StartWork = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(2);
+const scenario1StartWork = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(3);
 await scenario1StartWork.fill("35");
 await scenario1StartWork.dispatchEvent("change");
 await tab.waitForTimeout(50);
@@ -1931,6 +1953,71 @@ if (roundtripSalary !== "650000") {
 }
 if ((roundtripOutput ?? "").trim() === "") {
   problems.push("re-importing this app's own CSV export left row 1 uncalculated");
+}
+
+// "Hämta från Prognos" appends one row read from Prognos's own current
+// baseline -- unchanged throughout this script (born 1959, salary 462000) --
+// computed immediately, no click needed beyond the import itself.
+await tab.locator('[data-action="mikrosim-import-forecast"]').click();
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterForecastImport = await mikrosimRowCount("inputs");
+const forecastRowIndex = mikrosimRowsAfterForecastImport - 1;
+const forecastRowBorn = await mikrosimInputCell(forecastRowIndex, 2).locator("input").inputValue();
+const forecastRowSalary = await mikrosimInputCell(forecastRowIndex, MI_SALARY_TD).locator("input").inputValue();
+const forecastRowOutput = await mikrosimResultCell(forecastRowIndex, MI_FIRST_OUTPUT_TD).textContent();
+console.log(
+  `mikrosim from Prognos: ${mikrosimRowsAfterForecastImport} rows, born ${forecastRowBorn}, salary ${forecastRowSalary}, output "${forecastRowOutput}"`,
+);
+if (mikrosimRowsAfterForecastImport !== 4) {
+  problems.push(`"Hämta från Prognos" left ${mikrosimRowsAfterForecastImport} rows, expected 4 (3 + 1)`);
+}
+if (forecastRowBorn !== "1959" || forecastRowSalary !== "462000") {
+  problems.push(
+    `the row imported from Prognos reads born ${forecastRowBorn}/salary ${forecastRowSalary}, expected 1959/462000`,
+  );
+}
+if ((forecastRowOutput ?? "").trim() === "") {
+  problems.push("the row imported from Prognos shows no output -- expected it computed immediately");
+}
+
+// "Hämta från Jämför scenarier" appends one row per current scenario --
+// baseline plus whichever scenario the earlier cap/floor cycle left behind
+// (not necessarily the one whose birth year was edited above, since removal
+// there goes in DOM order) -- given a fresh, distinct birth year here so the
+// check proves each row reflects that scenario's own resolved fields, not
+// just the shared baseline repeated.
+await tab.locator('.screen-toggle .panel-btn[data-screen="compare"]').click();
+await tab.waitForTimeout(50);
+const compareSurvivorBorn = tab
+  .locator(".compare-card:not([data-scenario='baseline']) .compare-card-controls input")
+  .first();
+await compareSurvivorBorn.fill("1975");
+await compareSurvivorBorn.dispatchEvent("change");
+await tab.waitForTimeout(50);
+await tab.locator('.screen-toggle .panel-btn[data-screen="mikrosim"]').click();
+await tab.waitForTimeout(50);
+await tab.locator('[data-action="mikrosim-import-compare"]').click();
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterCompareImport = await mikrosimRowCount("inputs");
+const compareBaselineRowBorn = await mikrosimInputCell(4, 2).locator("input").inputValue();
+const compareScenarioRowBorn = await mikrosimInputCell(5, 2).locator("input").inputValue();
+console.log(
+  `mikrosim from Jämför scenarier: ${mikrosimRowsAfterCompareImport} rows, borns ${compareBaselineRowBorn}/${compareScenarioRowBorn}`,
+);
+if (mikrosimRowsAfterCompareImport !== 6) {
+  problems.push(
+    `"Hämta från Jämför scenarier" left ${mikrosimRowsAfterCompareImport} rows, expected 6 (4 + 2, baseline and one scenario)`,
+  );
+}
+if (compareBaselineRowBorn !== "1959") {
+  problems.push(
+    `the baseline row imported from Jämför scenarier reads born ${compareBaselineRowBorn}, expected 1959`,
+  );
+}
+if (compareScenarioRowBorn !== "1975") {
+  problems.push(
+    `the scenario row imported from Jämför scenarier reads born ${compareScenarioRowBorn}, expected 1975 (its own edited birth year)`,
+  );
 }
 
 // Past 10 rows, no Bruttopension labels are drawn at all -- not some of

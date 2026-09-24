@@ -136,7 +136,11 @@ const pgbGrid = createPgbGrid(view.lang, (patch) => {
 });
 
 const comparePanel = createComparePanel(view.lang, input, () => render());
-const mikrosimPanel = createMikrosimPanel(view.lang);
+const mikrosimPanel = createMikrosimPanel(
+  view.lang,
+  () => runInput(),
+  () => comparePanel.scenarioInputs(runInput()),
+);
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultContext } from "@typfallsmodellen/engine";
+import { defaultContext, defaultInput } from "@typfallsmodellen/engine";
 
 import {
+  mikrosimRowFromInput,
   mikrosimRowToContext,
   mikrosimRowToInput,
   newMikrosimRow,
@@ -72,6 +73,44 @@ describe("mapping a Mikrosim row onto the engine's own types", () => {
     const contextB = defaultContext({ finalSalaryYears: 8 });
     expect(mikrosimRowToContext(row, contextA).finalSalaryYears).toBe(3);
     expect(mikrosimRowToContext(row, contextB).finalSalaryYears).toBe(8);
+  });
+});
+
+describe("mikrosimRowFromInput", () => {
+  it("is the reverse of mikrosimRowToInput -- round-trips a TypfallInput's own nine fields", () => {
+    const input = defaultInput({
+      born: 1975,
+      startWorkAge: 21,
+      retirementAge: 67,
+      monthlySalary: 42_000,
+      yearlyInflation: 0.015,
+      realGrowth: 0.008,
+      realReturn: 0.02,
+      scheme: 5,
+    });
+    const row = mikrosimRowFromInput("1", input, 350);
+    expect(row.born).toBe(input.born);
+    expect(row.startWorkAge).toBe(input.startWorkAge);
+    expect(row.retirementAge).toBe(input.retirementAge);
+    expect(row.annualSalary).toBe(input.monthlySalary * 12);
+    expect(row.yearlyInflation).toBe(input.yearlyInflation);
+    expect(row.realGrowth).toBe(input.realGrowth);
+    expect(row.realReturn).toBe(input.realReturn);
+    expect(row.scheme).toBe(input.scheme);
+    expect(row.ipsMonthly).toBe(350);
+    expect(mikrosimRowToInput(row).monthlySalary).toBeCloseTo(input.monthlySalary);
+  });
+
+  it("takes ipsMonthly from its own argument, not from the TypfallInput", () => {
+    const input = defaultInput();
+    const row = mikrosimRowFromInput("1", input, 1200);
+    expect(row.ipsMonthly).toBe(1200);
+  });
+
+  it("clamps a continuous field outside Mikrosim's own bounds rather than carrying it through", () => {
+    const input = defaultInput({ startWorkAge: 5 });
+    const row = mikrosimRowFromInput("1", input, 0);
+    expect(row.startWorkAge).toBeGreaterThanOrEqual(15);
   });
 });
 

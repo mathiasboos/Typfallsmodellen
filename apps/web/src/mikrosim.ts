@@ -11,6 +11,12 @@
  *   a diff against the form on the left the way "Jämför scenarier"'s variants
  *   are -- a row doesn't need to know what the current form contains, which is
  *   what makes CSV import make sense here (a file doesn't carry a baseline).
+ *   "Hämta från Prognos"/"Hämta från Jämför scenarier" read that data too, but
+ *   only once, at the moment of the click: the row they add is an ordinary,
+ *   fully independent row from then on, not a live link back to its source --
+ *   editing the form afterwards does not change a row already imported from
+ *   it, the same way editing the baseline does not change an already-added
+ *   "Jämför scenarier" variant's own frozen fields.
  * - "Egen Lönelista" (a whole per-age income table, the same shape as the
  *   Advanced-mode salary path) is out of scope: it doesn't fit one flat batch
  *   row or one CSV cell. Every row uses the standard wage-growth model.
@@ -38,7 +44,12 @@
  *
  * No `onChange` callback up to `main.ts`, unlike `compare.ts` -- nothing
  * outside this panel depends on a Mikrosim row's contents, so there is
- * nothing to notify. `setContext` both stashes the shared `ModelContext`/
+ * nothing to notify. The two import buttons go the other way, `main.ts`
+ * handing this panel `getForecastInput`/`getCompareInputs` for it to *pull*
+ * from on its own click, rather than `main.ts` pushing every keystroke down
+ * -- Mikrosim only ever reads the other views' current state at the moment
+ * of an explicit import, never subscribes to it. `setContext` both stashes
+ * the shared `ModelContext`/
  * `DeathProbabilities` and triggers `recomputeAll()`, with no check for
  * whether the context actually changed: `main.ts`'s own `viewContext` builds
  * a fresh `ModelContext` object on every render regardless, so there is no
@@ -178,6 +189,32 @@ export function mikrosimRowToInput(row: MikrosimRow): TypfallInput {
  * hold for those two. */
 export function mikrosimRowToContext(row: MikrosimRow, shared: ModelContext): ModelContext {
   return { ...shared, ipsMonthly: row.ipsMonthly };
+}
+
+/** The reverse of `mikrosimRowToInput` -- a new row from any full
+ * `TypfallInput` (Prognos's own current baseline, or one of Jämför
+ * scenarier's own resolved scenarios) plus the shared context's current IPS
+ * figure, for the "Importera från Prognos"/"Importera från Jämför
+ * scenarier" buttons. A one-time snapshot, like every other freshly added
+ * row -- importing again after the source view changes does not update the
+ * row it already created. Continuous fields are clamped to Mikrosim's own
+ * bounds, the same way a typed or CSV-imported value already is; in
+ * practice a no-op here, since every bound traces back to the same shared
+ * option list (`BIRTH_YEARS`, `RETIREMENT_AGES`) the source view's own field
+ * already enforces. */
+export function mikrosimRowFromInput(id: string, input: TypfallInput, ipsMonthly: number): MikrosimRow {
+  return {
+    id,
+    born: clampTo(input.born, BORN),
+    startWorkAge: clampTo(input.startWorkAge, START_WORK),
+    retirementAge: clampTo(input.retirementAge, RETIREMENT),
+    annualSalary: clampTo(Math.round(input.monthlySalary * 12), SALARY),
+    yearlyInflation: input.yearlyInflation,
+    realGrowth: input.realGrowth,
+    realReturn: input.realReturn,
+    ipsMonthly: clampTo(ipsMonthly, IPS),
+    scheme: input.scheme,
+  };
 }
 
 export function validateMikrosimRow(row: MikrosimRow, lang: Lang): string | undefined {
@@ -375,7 +412,11 @@ export interface MikrosimHandle {
   setContext(context: ModelContext, deaths: DeathProbabilities): void;
 }
 
-export function createMikrosimPanel(lang: Lang): MikrosimHandle {
+export function createMikrosimPanel(
+  lang: Lang,
+  getForecastInput: () => TypfallInput,
+  getCompareInputs: () => readonly TypfallInput[],
+): MikrosimHandle {
   let currentLang = lang;
   let context: ModelContext = defaultContext();
   let deaths: DeathProbabilities | undefined;
@@ -409,6 +450,40 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     const newRow = newMikrosimRow(freshId());
     rows.push(newRow);
     computeOneRow(newRow);
+    redraw();
+  });
+
+  /** Appends one row read from Prognos's own current baseline (whichever
+   * mode -- Normal or Avancerat -- is actually driving it right now). A
+   * one-time snapshot, like "Lägg till rad": importing again after the
+   * baseline changes does not update the row this click already created. */
+  const importForecastButton = document.createElement("button");
+  importForecastButton.type = "button";
+  importForecastButton.className = "export-btn";
+  importForecastButton.dataset.action = "mikrosim-import-forecast";
+  importForecastButton.addEventListener("click", () => {
+    if (rows.length >= MAX_ROWS) return;
+    const newRow = mikrosimRowFromInput(freshId(), getForecastInput(), context.ipsMonthly);
+    rows.push(newRow);
+    computeOneRow(newRow);
+    redraw();
+  });
+
+  /** Appends one row per Jämför scenarier scenario (baseline plus every
+   * variant, 2-4 rows) -- also a one-time snapshot. Adds as many as fit
+   * under `MAX_ROWS` rather than refusing the whole import over the cap. */
+  const importCompareButton = document.createElement("button");
+  importCompareButton.type = "button";
+  importCompareButton.className = "export-btn";
+  importCompareButton.dataset.action = "mikrosim-import-compare";
+  importCompareButton.addEventListener("click", () => {
+    const room = MAX_ROWS - rows.length;
+    if (room <= 0) return;
+    const newRows = getCompareInputs()
+      .slice(0, room)
+      .map((scenarioInput) => mikrosimRowFromInput(freshId(), scenarioInput, context.ipsMonthly));
+    rows.push(...newRows);
+    newRows.forEach(computeOneRow);
     redraw();
   });
 
@@ -478,7 +553,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
 
   let exportBtn = csvExportButton(lang, "mikrosim.csv", () => mikrosimRowsToCsv(rows, currentLang));
 
-  actions.append(addButton, importLabel, exportBtn);
+  actions.append(addButton, importForecastButton, importCompareButton, importLabel, exportBtn);
 
   const inputsLabel = document.createElement("p");
   inputsLabel.className = "mikrosim-table-label";
@@ -718,12 +793,15 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     intro.textContent = say(
       l,
       "Mikrosim körs som ett eget läge: varje rad är ett fristående typfall, inte en avvikelse mot " +
-        "formuläret till vänster. Lägg till rader för hand eller importera en CSV-fil -- " +
-        "resultatkolumnerna fylls i direkt.",
+        "formuläret till vänster. Lägg till rader för hand, hämta en rad från Prognos eller " +
+        "Jämför scenarier, eller importera en CSV-fil -- resultatkolumnerna fylls i direkt.",
       "Mikrosim runs as its own mode: each row is a standalone case, not a variation on the form to " +
-        "the left. Add rows by hand or import a CSV file -- the result columns fill in immediately.",
+        "the left. Add rows by hand, pull one in from Forecast or Compare scenarios, or import a " +
+        "CSV file -- the result columns fill in immediately.",
     );
     addButton.textContent = say(l, "+ Lägg till rad", "+ Add row");
+    importForecastButton.textContent = say(l, "Hämta från Prognos", "Import from Forecast");
+    importCompareButton.textContent = say(l, "Hämta från Jämför scenarier", "Import from Compare scenarios");
     importText.textContent = say(l, "Importera CSV", "Import CSV");
     importNote.textContent = say(
       l,
