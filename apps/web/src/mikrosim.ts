@@ -303,8 +303,10 @@ export const INPUT_COLUMNS: readonly InputColumnDef[] = [
     info: (l) =>
       say(
         l,
-        "Över 1 tolkas som kronor/månad; 1 eller mindre tolkas som andel av inkomsten (samma regel som i Avancerat läge).",
-        "Above 1 is read as kronor/month; 1 or less is read as a share of income (the same rule as in Advanced mode).",
+        "Över 1 tolkas som kronor/månad; 1 eller mindre tolkas som andel av inkomsten (samma regel som i " +
+          "Avancerat läge). Har ingen effekt för år före inställningen \"Sparandet börjar år\" i Avancerat läge.",
+        "Above 1 is read as kronor/month; 1 or less is read as a share of income (the same rule as in " +
+          "Advanced mode). Has no effect for years before the \"Saving starts in\" setting in Advanced mode.",
       ),
     get: (r) => r.ipsMonthly,
     set: (r, v) => (r.ipsMonthly = v),
@@ -473,51 +475,95 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
 
   actions.append(addButton, importLabel, exportBtn);
 
-  const tableScroll = document.createElement("div");
-  tableScroll.className = "scroll mikrosim-table-scroll";
-  const table = document.createElement("table");
-  table.className = "table mikrosim-table";
-  const thead = table.createTHead();
-  const tbody = table.createTBody();
-  tableScroll.append(table);
+  const inputsLabel = document.createElement("p");
+  inputsLabel.className = "mikrosim-table-label";
+  const inputsScroll = document.createElement("div");
+  inputsScroll.className = "scroll mikrosim-table-scroll";
+  const inputsTable = document.createElement("table");
+  inputsTable.className = "table mikrosim-table";
+  inputsTable.dataset.role = "mikrosim-inputs-table";
+  const inputThead = inputsTable.createTHead();
+  const inputTbody = inputsTable.createTBody();
+  inputsScroll.append(inputsTable);
+
+  const resultsLabel = document.createElement("p");
+  resultsLabel.className = "mikrosim-table-label";
+  const resultsScroll = document.createElement("div");
+  resultsScroll.className = "scroll mikrosim-table-scroll";
+  const resultsTable = document.createElement("table");
+  resultsTable.className = "table mikrosim-table";
+  resultsTable.dataset.role = "mikrosim-results-table";
+  const outputThead = resultsTable.createTHead();
+  const outputTbody = resultsTable.createTBody();
+  resultsScroll.append(resultsTable);
 
   const chartBox = document.createElement("div");
   chartBox.className = "mikrosim-chart";
 
-  element.append(intro, actions, importNote, fileError, tableScroll, chartBox);
-
-  function buildHead(): void {
-    thead.replaceChildren();
-    const groupRow = thead.insertRow();
-    const corner = document.createElement("th");
-    corner.colSpan = 2;
-    const inputsHead = document.createElement("th");
-    inputsHead.colSpan = INPUT_COLUMNS.length;
-    inputsHead.textContent = say(currentLang, "Indata", "Inputs");
-    const outputsHead = document.createElement("th");
-    outputsHead.colSpan = OUTPUT_COLUMNS.length;
-    outputsHead.textContent = say(currentLang, "Resultat", "Results");
-    const removeHead = document.createElement("th");
-    groupRow.append(corner, inputsHead, outputsHead, removeHead);
-
-    const nameRow = thead.insertRow();
-    nameRow.append(document.createElement("th"), document.createElement("th"));
-    for (const col of INPUT_COLUMNS) {
-      nameRow.append(headCell(headerName(col, currentLang), col.info?.(currentLang)));
-    }
-    for (const col of OUTPUT_COLUMNS) {
-      nameRow.append(headCell(headerName(col, currentLang)));
-    }
-    nameRow.append(document.createElement("th"));
+  /** Redraws the chart alone, from the current `rows` -- cheap to call from
+   * a single-cell edit as well as a full `redraw()`, since it always rebuilds
+   * from scratch regardless of caller. */
+  function refreshChart(): void {
+    chartBox.replaceChildren(renderMikrosimChart(rows, currentLang));
   }
 
-  function buildRow(row: MikrosimRow, index: number, cells: FieldSet): HTMLTableRowElement {
-    const tr = document.createElement("tr");
-    tr.dataset.mikrosimRow = row.id;
+  element.append(
+    intro,
+    actions,
+    importNote,
+    fileError,
+    inputsLabel,
+    inputsScroll,
+    resultsLabel,
+    resultsScroll,
+    chartBox,
+  );
+
+  /** Row-number and status columns, then the nine input columns, then remove
+   * -- the table where a row is added, edited or removed. */
+  function buildInputHead(): void {
+    inputThead.replaceChildren();
+    const headRow = inputThead.insertRow();
+    headRow.append(document.createElement("th"), document.createElement("th"));
+    for (const col of INPUT_COLUMNS) {
+      headRow.append(headCell(headerName(col, currentLang), col.info?.(currentLang)));
+    }
+    headRow.append(document.createElement("th"));
+  }
+
+  /** Row-number then the twelve output columns -- no status/remove column,
+   * those stay with the inputs table where the thing needing a fix lives. */
+  function buildOutputHead(): void {
+    outputThead.replaceChildren();
+    const headRow = outputThead.insertRow();
+    headRow.append(document.createElement("th"));
+    for (const col of OUTPUT_COLUMNS) {
+      headRow.append(headCell(headerName(col, currentLang)));
+    }
+  }
+
+  interface RowViews {
+    readonly inputRow: HTMLTableRowElement;
+    readonly outputRow: HTMLTableRowElement;
+  }
+
+  /** Builds the two rows (inputs table + results table) that together
+   * represent one `MikrosimRow`, sharing one `editAndRecompute` so an edit
+   * in the inputs table refreshes both this row's own results cells and the
+   * chart. */
+  function buildRowViews(row: MikrosimRow, index: number, cells: FieldSet): RowViews {
+    const inputRow = document.createElement("tr");
+    inputRow.dataset.mikrosimRow = row.id;
+    const outputRow = document.createElement("tr");
+    outputRow.dataset.mikrosimRow = row.id;
 
     const numCell = document.createElement("td");
     numCell.textContent = String(index + 1);
     numCell.className = "mikrosim-rownum";
+
+    const outputNumCell = document.createElement("td");
+    outputNumCell.textContent = String(index + 1);
+    outputNumCell.className = "mikrosim-rownum";
 
     const statusCell = document.createElement("td");
     statusCell.className = "mikrosim-status";
@@ -530,6 +576,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
       computeOneRow(row);
       renderStatus();
       renderOutputs();
+      refreshChart();
     }
 
     const inputCells: HTMLTableCellElement[] = [];
@@ -607,19 +654,25 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     renderStatus();
     renderOutputs();
 
-    tr.append(numCell, statusCell, ...inputCells, ...outputCells, removeCell);
-    return tr;
+    inputRow.append(numCell, statusCell, ...inputCells, removeCell);
+    outputRow.append(outputNumCell, ...outputCells);
+    return { inputRow, outputRow };
   }
 
   function redraw(): void {
-    buildHead();
+    inputsLabel.textContent = say(currentLang, "Indata", "Inputs");
+    resultsLabel.textContent = say(currentLang, "Resultat", "Results");
+    buildInputHead();
+    buildOutputHead();
     // A throwaway container: `number`/`percent`/`select` never touch it or
     // the relabel list (only `field()` does), so this is purely a source of
     // fresh, correctly-clamped cell builders for the current language.
     const cellBuilders = fieldSet(document.createElement("div"), [], currentLang);
-    tbody.replaceChildren(...rows.map((row, i) => buildRow(row, i, cellBuilders)));
+    const views = rows.map((row, i) => buildRowViews(row, i, cellBuilders));
+    inputTbody.replaceChildren(...views.map((v) => v.inputRow));
+    outputTbody.replaceChildren(...views.map((v) => v.outputRow));
     addButton.disabled = rows.length >= MAX_ROWS;
-    chartBox.replaceChildren(renderMikrosimChart(rows, currentLang));
+    refreshChart();
   }
 
   function applyText(l: Lang): void {

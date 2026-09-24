@@ -1560,14 +1560,47 @@ if (chartLinesAtFloor !== 2) {
 await tab.locator('.screen-toggle .panel-btn[data-screen="mikrosim"]').click();
 await tab.waitForTimeout(50);
 
-const mikrosimRow = (i) => tab.locator(".mikrosim-table tbody tr").nth(i);
-const mikrosimCell = (i, col) => mikrosimRow(i).locator("td").nth(col);
-// td indices: 0 row#, 1 status, 2-10 the nine inputs, 11-22 the twelve
-// outputs, 23 remove -- see mikrosim.ts's own INPUT_COLUMNS/OUTPUT_COLUMNS
-// order.
+// Inputs and Results are two independent tables sharing the same row order
+// (Phase 12), each with its own `data-role` since both carry the plain
+// `.mikrosim-table` class -- a bare `.mikrosim-table tbody tr` locator would
+// match rows from both tables at once.
+const mikrosimInputRow = (i) => tab.locator('[data-role="mikrosim-inputs-table"] tbody tr').nth(i);
+const mikrosimInputCell = (i, col) => mikrosimInputRow(i).locator("td").nth(col);
+const mikrosimResultRow = (i) => tab.locator('[data-role="mikrosim-results-table"] tbody tr').nth(i);
+const mikrosimResultCell = (i, col) => mikrosimResultRow(i).locator("td").nth(col);
+const mikrosimRowCount = (which) => tab.locator(`[data-role="mikrosim-${which}-table"] tbody tr`).count();
+// Inputs table td indices: 0 row#, 1 status, 2-10 the nine inputs, 11 remove.
+// Results table td indices: 0 row#, 1-12 the twelve outputs. See mikrosim.ts's
+// own INPUT_COLUMNS/OUTPUT_COLUMNS order.
 const MI_SALARY_TD = 5;
 const MI_SCHEME_TD = 10;
-const MI_FIRST_OUTPUT_TD = 11;
+const MI_FIRST_OUTPUT_TD = 1;
+
+// Each table's own header row -- 12 columns (row#, status, nine inputs,
+// remove) and 13 (row#, twelve outputs) -- locks in the two-table split
+// itself, not just values inside it.
+const mikrosimInputHeadCols = await tab
+  .locator('[data-role="mikrosim-inputs-table"] thead tr')
+  .first()
+  .locator("th")
+  .count();
+const mikrosimResultHeadCols = await tab
+  .locator('[data-role="mikrosim-results-table"] thead tr')
+  .first()
+  .locator("th")
+  .count();
+console.log(`mikrosim tables : inputs header ${mikrosimInputHeadCols} cols, results header ${mikrosimResultHeadCols} cols`);
+if (mikrosimInputHeadCols !== 12) {
+  problems.push(`the Mikrosim inputs table header has ${mikrosimInputHeadCols} columns, expected 12`);
+}
+if (mikrosimResultHeadCols !== 13) {
+  problems.push(`the Mikrosim results table header has ${mikrosimResultHeadCols} columns, expected 13`);
+}
+const mikrosimLabels = await tab.locator(".mikrosim-table-label").allTextContents();
+console.log(`mikrosim labels : ${JSON.stringify(mikrosimLabels)}`);
+if (mikrosimLabels.length !== 2 || !mikrosimLabels[0] || !mikrosimLabels[1]) {
+  problems.push(`expected two Mikrosim table labels (Inputs, Results), found ${JSON.stringify(mikrosimLabels)}`);
+}
 
 // There is no "Beräkna" button to look for -- confirm outright.
 const mikrosimCalcButton = await tab.locator('[data-action="calculate-mikrosim"]').count();
@@ -1575,13 +1608,18 @@ if (mikrosimCalcButton !== 0) {
   problems.push(`found ${mikrosimCalcButton} "Beräkna"-style button(s) on the Mikrosim tab, expected none`);
 }
 
-// A single seed row, already computed with no click needed.
-const mikrosimRowsAtStart = await tab.locator(".mikrosim-table tbody tr").count();
-console.log(`mikrosim rows   : ${mikrosimRowsAtStart}`);
-if (mikrosimRowsAtStart !== 1) {
-  problems.push(`the Mikrosim tab starts with ${mikrosimRowsAtStart} row(s), expected 1`);
+// A single seed row, already computed with no click needed -- in both
+// tables, which have to always agree on row count since they share one
+// underlying row array.
+const mikrosimRowsAtStart = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAtStart = await mikrosimRowCount("results");
+console.log(`mikrosim rows   : ${mikrosimRowsAtStart} inputs, ${mikrosimResultRowsAtStart} results`);
+if (mikrosimRowsAtStart !== 1 || mikrosimResultRowsAtStart !== 1) {
+  problems.push(
+    `the Mikrosim tab starts with ${mikrosimRowsAtStart} input row(s)/${mikrosimResultRowsAtStart} result row(s), expected 1/1`,
+  );
 }
-const mikrosimOutputsAtStart = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimOutputsAtStart = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
 console.log(`mikrosim seed row output (no click): "${mikrosimOutputsAtStart}"`);
 if ((mikrosimOutputsAtStart ?? "").trim() === "") {
   problems.push("the seed Mikrosim row shows no output on load -- live recompute did not run");
@@ -1593,12 +1631,15 @@ await tab.locator('[data-action="add-mikrosim-row"]').click();
 await tab.locator('[data-action="add-mikrosim-row"]').click();
 await tab.locator('[data-action="add-mikrosim-row"]').click();
 await tab.waitForTimeout(50);
-const mikrosimRowsAfterAdd = await tab.locator(".mikrosim-table tbody tr").count();
-console.log(`mikrosim rows   : ${mikrosimRowsAfterAdd} after adding three`);
-if (mikrosimRowsAfterAdd !== 4) {
-  problems.push(`adding three Mikrosim rows left ${mikrosimRowsAfterAdd}, expected 4`);
+const mikrosimRowsAfterAdd = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterAdd = await mikrosimRowCount("results");
+console.log(`mikrosim rows   : ${mikrosimRowsAfterAdd} inputs, ${mikrosimResultRowsAfterAdd} results, after adding three`);
+if (mikrosimRowsAfterAdd !== 4 || mikrosimResultRowsAfterAdd !== 4) {
+  problems.push(
+    `adding three Mikrosim rows left ${mikrosimRowsAfterAdd} input row(s)/${mikrosimResultRowsAfterAdd} result row(s), expected 4/4`,
+  );
 }
-const mikrosimNewRowOutput = await mikrosimCell(3, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimNewRowOutput = await mikrosimResultCell(3, MI_FIRST_OUTPUT_TD).textContent();
 if ((mikrosimNewRowOutput ?? "").trim() === "") {
   problems.push("a freshly added Mikrosim row shows no output -- expected it computed immediately");
 }
@@ -1606,14 +1647,14 @@ if ((mikrosimNewRowOutput ?? "").trim() === "") {
 // Row 1 gets a distinct salary and scheme; rows 2-4 are left at their shared
 // defaults. Editing alone -- no click anywhere -- has to update row 1's own
 // output from its own inputs, while rows 2-4 keep agreeing with each other.
-await mikrosimCell(0, MI_SALARY_TD).locator("input").fill("600000");
-await mikrosimCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
-await mikrosimCell(0, MI_SCHEME_TD).locator("select").selectOption("3");
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").fill("600000");
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
+await mikrosimInputCell(0, MI_SCHEME_TD).locator("select").selectOption("3");
 await tab.waitForTimeout(100);
 
-const mikrosimRow1Salary = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
-const mikrosimRow2Salary = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
-const mikrosimRow3Salary = await mikrosimCell(2, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow1Salary = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow2Salary = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow3Salary = await mikrosimResultCell(2, MI_FIRST_OUTPUT_TD).textContent();
 console.log(`mikrosim Slutlön: row1 ${mikrosimRow1Salary}, row2 ${mikrosimRow2Salary}, row3 ${mikrosimRow3Salary}`);
 if ((mikrosimRow1Salary ?? "").trim() === "") {
   problems.push('editing row 1 left its own "Slutlön" blank -- expected an immediate recompute');
@@ -1631,12 +1672,19 @@ if (mikrosimRow2Salary !== mikrosimRow3Salary) {
 
 // Editing an input again immediately recomputes that row's own output to the
 // new value -- not blank, not the old one -- without touching any other
-// row's own already-computed figures.
-await mikrosimCell(0, MI_SALARY_TD).locator("input").fill("650000");
-await mikrosimCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
+// row's own already-computed figures. This edit alone (no add/remove/import)
+// also has to move the chart's own bars, not just the table -- Phase 12's
+// real bug was `editAndRecompute()` never touching the chart at all, which a
+// bar-*count* check alone (kept further below) would not have caught, since
+// the count stays nonzero whether or not the bars' own values refresh.
+const mikrosimChart = tab.locator(".mikrosim-chart");
+const mikrosimChartBeforePlainEdit = await mikrosimChart.locator("svg").innerHTML();
+
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").fill("650000");
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
 await tab.waitForTimeout(100);
-const mikrosimRow1AfterEdit = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
-const mikrosimRow2AfterEdit = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow1AfterEdit = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow2AfterEdit = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
 console.log(`mikrosim after edit: row1 "${mikrosimRow1AfterEdit}", row2 "${mikrosimRow2AfterEdit}"`);
 if ((mikrosimRow1AfterEdit ?? "").trim() === "" || mikrosimRow1AfterEdit === mikrosimRow1Salary) {
   problems.push(
@@ -1650,9 +1698,18 @@ if (mikrosimRow2AfterEdit !== mikrosimRow2Salary) {
   );
 }
 
+const mikrosimChartAfterPlainEdit = await mikrosimChart.locator("svg").innerHTML();
+console.log(
+  `mikrosim chart  : markup ${mikrosimChartAfterPlainEdit === mikrosimChartBeforePlainEdit ? "unchanged" : "changed"} after a plain edit`,
+);
+if (mikrosimChartAfterPlainEdit === mikrosimChartBeforePlainEdit) {
+  problems.push(
+    "editing a Mikrosim cell alone (no add/remove/import) left the chart's own markup unchanged -- expected its bars to move with the new value",
+  );
+}
+
 // The chart below the table draws one bar group per row, live -- the same
 // edit that just changed row 1's own table cells has to change its own bar.
-const mikrosimChart = tab.locator(".mikrosim-chart");
 const mikrosimBarsBeforeRemove = await mikrosimChart.locator("svg .bar").count();
 const mikrosimLegendItems = await mikrosimChart.locator(".legend li").count();
 console.log(`mikrosim chart  : ${mikrosimBarsBeforeRemove} bar segments, ${mikrosimLegendItems} legend entries`);
@@ -1665,13 +1722,18 @@ if (mikrosimLegendItems === 0 || mikrosimLegendItems > 7) {
 
 // Removing a row drops the count, keeps the remaining rows' own values, and
 // the chart's own bar count drops with it.
-await mikrosimRow(1).locator('[data-action="mikrosim-remove-row"]').click();
+await mikrosimInputRow(1).locator('[data-action="mikrosim-remove-row"]').click();
 await tab.waitForTimeout(50);
-const mikrosimRowsAfterRemove = await tab.locator(".mikrosim-table tbody tr").count();
+const mikrosimRowsAfterRemove = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterRemove = await mikrosimRowCount("results");
 const mikrosimBarsAfterRemove = await mikrosimChart.locator("svg .bar").count();
-console.log(`mikrosim rows   : ${mikrosimRowsAfterRemove} after removing one, chart bars: ${mikrosimBarsAfterRemove}`);
-if (mikrosimRowsAfterRemove !== 3) {
-  problems.push(`removing a Mikrosim row left ${mikrosimRowsAfterRemove}, expected 3`);
+console.log(
+  `mikrosim rows   : ${mikrosimRowsAfterRemove} inputs, ${mikrosimResultRowsAfterRemove} results, after removing one, chart bars: ${mikrosimBarsAfterRemove}`,
+);
+if (mikrosimRowsAfterRemove !== 3 || mikrosimResultRowsAfterRemove !== 3) {
+  problems.push(
+    `removing a Mikrosim row left ${mikrosimRowsAfterRemove} input row(s)/${mikrosimResultRowsAfterRemove} result row(s), expected 3/3`,
+  );
 }
 if (mikrosimBarsAfterRemove >= mikrosimBarsBeforeRemove) {
   problems.push(
@@ -1709,14 +1771,17 @@ await tab
   .locator('[data-action="mikrosim-import-file"]')
   .setInputFiles({ name: "scrambled.csv", mimeType: "text/csv", buffer: Buffer.from(scrambledCsv, "utf8") });
 await tab.waitForTimeout(100);
-const mikrosimRowsAfterImport = await tab.locator(".mikrosim-table tbody tr").count();
-const importedBorn = await mikrosimCell(0, 2).locator("input").inputValue();
-const mikrosimImportedOutput = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRowsAfterImport = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterImport = await mikrosimRowCount("results");
+const importedBorn = await mikrosimInputCell(0, 2).locator("input").inputValue();
+const mikrosimImportedOutput = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
 console.log(
-  `mikrosim import : ${mikrosimRowsAfterImport} rows, row 1 born ${importedBorn}, output "${mikrosimImportedOutput}"`,
+  `mikrosim import : ${mikrosimRowsAfterImport} inputs, ${mikrosimResultRowsAfterImport} results, row 1 born ${importedBorn}, output "${mikrosimImportedOutput}"`,
 );
-if (mikrosimRowsAfterImport !== 2) {
-  problems.push(`importing a 2-row CSV left ${mikrosimRowsAfterImport} rows, expected 2 (replace, not append)`);
+if (mikrosimRowsAfterImport !== 2 || mikrosimResultRowsAfterImport !== 2) {
+  problems.push(
+    `importing a 2-row CSV left ${mikrosimRowsAfterImport} input row(s)/${mikrosimResultRowsAfterImport} result row(s), expected 2/2 (replace, not append)`,
+  );
 }
 if (importedBorn !== "1980") {
   problems.push(`the imported row's birth year reads "${importedBorn}", expected "1980" (scrambled columns)`);
@@ -1738,7 +1803,7 @@ console.log(`mikrosim file error: ${mikrosimFileError}`);
 if (!(mikrosimFileError ?? "").includes("Årslön")) {
   problems.push(`importing a file missing "Årslön" did not name it in the error ("${mikrosimFileError}")`);
 }
-const mikrosimRowsAfterBadImport = await tab.locator(".mikrosim-table tbody tr").count();
+const mikrosimRowsAfterBadImport = await mikrosimRowCount("inputs");
 if (mikrosimRowsAfterBadImport !== 2) {
   problems.push(
     `a refused import changed the row count to ${mikrosimRowsAfterBadImport}, expected the previous 2 to remain`,
@@ -1762,9 +1827,9 @@ await tab.locator('[data-action="mikrosim-import-file"]').setInputFiles({
   ),
 });
 await tab.waitForTimeout(100);
-const mikrosimGoodRowOutput = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
-const mikrosimBadRowOutput = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
-const mikrosimBadRowFlagged = await mikrosimRow(1).locator(".mikrosim-error").count();
+const mikrosimGoodRowOutput = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimBadRowOutput = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimBadRowFlagged = await mikrosimInputRow(1).locator(".mikrosim-error").count();
 console.log(
   `mikrosim mixed  : good "${mikrosimGoodRowOutput}", bad "${mikrosimBadRowOutput}", flagged ${mikrosimBadRowFlagged}`,
 );
@@ -1778,10 +1843,10 @@ if (mikrosimBadRowFlagged !== 1) {
   problems.push(`the row with an invalid scheme is not visibly flagged (found ${mikrosimBadRowFlagged} marker(s))`);
 }
 
-await mikrosimCell(1, MI_SCHEME_TD).locator("select").selectOption("2");
+await mikrosimInputCell(1, MI_SCHEME_TD).locator("select").selectOption("2");
 await tab.waitForTimeout(100);
-const mikrosimFixedOutput = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
-const mikrosimFixedFlag = await mikrosimRow(1).locator(".mikrosim-error").count();
+const mikrosimFixedOutput = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimFixedFlag = await mikrosimInputRow(1).locator(".mikrosim-error").count();
 console.log(`mikrosim fixed  : output "${mikrosimFixedOutput}", flagged ${mikrosimFixedFlag}`);
 if ((mikrosimFixedOutput ?? "").trim() === "") {
   problems.push("fixing a flagged row's scheme through its own dropdown did not recompute it");
@@ -1796,14 +1861,17 @@ await tab
   .locator('[data-action="mikrosim-import-file"]')
   .setInputFiles({ name: "roundtrip.csv", mimeType: "text/csv", buffer: mikrosimCsv.buffer });
 await tab.waitForTimeout(100);
-const mikrosimRowsAfterRoundtrip = await tab.locator(".mikrosim-table tbody tr").count();
-const roundtripSalary = await mikrosimCell(0, MI_SALARY_TD).locator("input").inputValue();
-const roundtripOutput = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRowsAfterRoundtrip = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterRoundtrip = await mikrosimRowCount("results");
+const roundtripSalary = await mikrosimInputCell(0, MI_SALARY_TD).locator("input").inputValue();
+const roundtripOutput = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
 console.log(
-  `mikrosim roundtrip: ${mikrosimRowsAfterRoundtrip} rows, row 1 salary ${roundtripSalary}, output "${roundtripOutput}"`,
+  `mikrosim roundtrip: ${mikrosimRowsAfterRoundtrip} inputs, ${mikrosimResultRowsAfterRoundtrip} results, row 1 salary ${roundtripSalary}, output "${roundtripOutput}"`,
 );
-if (mikrosimRowsAfterRoundtrip !== 3) {
-  problems.push(`re-importing this app's own CSV export left ${mikrosimRowsAfterRoundtrip} rows, expected 3`);
+if (mikrosimRowsAfterRoundtrip !== 3 || mikrosimResultRowsAfterRoundtrip !== 3) {
+  problems.push(
+    `re-importing this app's own CSV export left ${mikrosimRowsAfterRoundtrip} input row(s)/${mikrosimResultRowsAfterRoundtrip} result row(s), expected 3/3`,
+  );
 }
 if (roundtripSalary !== "650000") {
   problems.push(`re-importing this app's own CSV export lost row 1's own salary (read back "${roundtripSalary}")`);

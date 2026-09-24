@@ -828,6 +828,45 @@ from the other is read only inside a function body — a click handler, `parseMi
 render call — never at module-evaluation time, so it does not matter which of the two finishes
 evaluating its own top level first.
 
+**Two independent tables, not one wide one, on request.** `mikrosim.ts` builds an Inputs table
+(row number, status, the nine `INPUT_COLUMNS` cells, remove — 12 columns) and a Results table (row
+number, the twelve `OUTPUT_COLUMNS` cells — 13 columns, no status or remove column, since that is
+where the thing needing a fix or a click lives), each with its own bold, left-aligned caption
+(`.mikrosim-table-label`, reusing the exact "Indata"/"Inputs" and "Resultat"/"Results" bilingual pair
+that used to head the single table's own grouped header row) and its own `.scroll` wrapper. Both
+tables carry the plain `.mikrosim-table` class, so `verify-offline.mjs` tells them apart by a
+`data-role` attribute (`mikrosim-inputs-table`/`mikrosim-results-table`) rather than by DOM order.
+`buildRowViews` builds both rows for one `MikrosimRow` together, sharing one `editAndRecompute` — an
+edit in the Inputs table's own cell still updates that row's own cells in the Results table and the
+chart below, all three in one call.
+
+**A real bug: the chart did not refresh on a plain edit, only on a structural change.** The original
+live-recompute build (below) called `chartBox.replaceChildren(renderMikrosimChart(...))` only from
+`redraw()` — add row, remove row, CSV import, `setContext`, a language switch. A single cell's own
+edit handler, `editAndRecompute()`, called `computeOneRow` then only `renderStatus()`/
+`renderOutputs()`, both of which update *that row's own* already-existing table cells directly but
+never touched `chartBox` — so editing a value correctly moved that row's own output cells but left
+the chart frozen on whatever it last looked like. The existing offline check only asserted the
+chart's bar *count* stayed nonzero after an edit, never that the bars' own *values* had moved, which
+is why it shipped unnoticed. Fixed by pulling the `chartBox.replaceChildren(...)` line out into its
+own `refreshChart()` and calling it from both `redraw()` and `editAndRecompute()` — cheap either way,
+since `renderMikrosimChart` rebuilds from `rows` fresh every time regardless of caller.
+`verify-offline.mjs` now snapshots the chart's own SVG markup immediately before and after a plain
+salary edit (no add/remove/import in between) and asserts it changed, proven to fail against a
+temporarily reverted build before the fix and pass after.
+
+**Privat pensionssparande can legitimately do nothing, depending on the row's own dates — not a
+bug.** `mcalc.ts`'s private-saving block only credits an age whose calendar year (`born + age`) is
+`>= context.ipsStart` (a shared `ModelContext` field, `workbookDefault("IPS_start", 2026)` by
+default) and before the occupational-pension retirement threshold. `newMikrosimRow` seeds every fresh
+row from `defaultInput()` (`born: 1959, retirementAge: 66`), which retires in 2025 — a year *before*
+the default `ipsStart` of 2026 — so no age in that row's working life or retirement satisfies the
+gate, and any IPS amount typed into it earns exactly nothing, by design. `ipsStart` lives in the
+Advanced-settings column, not on any Mikrosim column, so nothing in the table itself explained this
+until now: the Privat pensionssparande column's own `info` tooltip was reworded to name the gate
+("Har ingen effekt för år före inställningen \"Sparandet börjar år\" i Avancerat läge.") rather than
+changing any behaviour.
+
 ### Table 2's own column tooltips, and Ordlista
 
 Two follow-on requests, both about explaining terms rather than adding a new calculation:

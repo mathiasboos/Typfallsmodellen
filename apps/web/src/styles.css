@@ -677,10 +677,13 @@ body {
 .mikrosim-panel > .field-hint { grid-column: auto; grid-row: auto; }
 .mikrosim-file-error { color: var(--danger); font-size: 0.85rem; margin: -6px 0 0; }
 .mikrosim-file-error:empty { display: none; }
+/* Inputs and Results are two independent tables (each with its own scroller
+   and this bold caption above it), not one wide table with a grouped header
+   -- easier to read than a single row scrolling nine input cells then twelve
+   output cells past each other. */
+.mikrosim-table-label { font-weight: 700; text-align: left; margin: 0; }
 .mikrosim-table-scroll { max-height: 70vh; overflow: auto; }
-.mikrosim-table { table-layout: auto; }
-/* Sticks the whole two-row header together, the same reasoning `.adv-grid
-   thead`'s own comment gives for its grouped header. */
+.mikrosim-table { table-layout: auto; font-size: 8px; }
 .mikrosim-table thead { position: sticky; top: 0; z-index: 1; }
 .mikrosim-table th, .mikrosim-table td { white-space: nowrap; }
 .mikrosim-table td.num { text-align: right; }
@@ -692,7 +695,7 @@ body {
   min-width: 8ch;
   padding: 2px 4px;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 8px;
   text-align: right;
   color: var(--text-primary);
   background: var(--surface);
