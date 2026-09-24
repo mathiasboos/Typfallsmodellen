@@ -74,6 +74,29 @@
   --fig-state-tax: #ff5b30;
   --fig-disposable: #000000;
 
+  /*
+   * mikrosim.ts's own stacked chart: the same four component colours Figur 2
+   * already uses (income-pension, premium, guarantee, occupational) plus
+   * three new categorical steps for the three components Figur 2 folds into
+   * combined bands (ATP into its own "income-pension", P_tillägg into its own
+   * "guarantee") or never shows at all (private saving). Reuses this app's
+   * own existing blue and orange-red hues (`--fig-scenario-3`/`--fig-salary`,
+   * `--fig-wage-level`/`--fig-state-tax`) rather than inventing two more, and
+   * adds one genuinely new hue (a purple) for private saving. Validated with
+   * the `dataviz` skill's `validate_palette.js`, against the seven colours in
+   * their actual stack order (income, supplementary, premium, guarantee,
+   * ipt, occupational, private-saving): every *adjacent* pair passes CVD
+   * separation and the normal-vision floor in both themes (worst adjacent
+   * pair unchanged from Figur 2's own guarantee<->premium, normal ΔE 22.2) --
+   * the same adjacent-pair standard `--fig-scenario-*`'s own validation note
+   * above already uses. `--fig-supplementary`/`--fig-ipt` need no dark
+   * variant, matching `--fig-scenario-3`/`--fig-state-tax`'s own precedent of
+   * reading fine unstepped in both themes.
+   */
+  --fig-supplementary: #4885c5;
+  --fig-ipt: #ff5b30;
+  --fig-private-saving: #7a4fa0;
+
   /* compare.ts's scenario colours: on request, the SEB palette's own steps in
      the order given (dark green, green, beige, blue) rather than the
      validator-clean rotation this used before. Run through the same
@@ -127,6 +150,12 @@
     --fig-net: #358157;
     --fig-gross: #99beae;
     --fig-disposable: #ffffff;
+
+    /* Only the private-saving purple needs its own dark step -- one step
+       lighter clears 3:1 against #003824 (the raw light-mode step reads
+       2.17:1); `--fig-supplementary`/`--fig-ipt` read fine unstepped, same
+       as `--fig-scenario-3`/`--fig-state-tax` already do. */
+    --fig-private-saving: #9d6fc0;
 
     /* Only the dark-green step moves -- it sits too close to this theme's
        own dark-green surfaces (contrast 1.64:1 at the raw step); one step

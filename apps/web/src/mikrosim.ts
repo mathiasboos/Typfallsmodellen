@@ -5,7 +5,7 @@
  * 10 input columns, a "Beräkna" button that runs the model over every row, and
  * 12 output columns fill in (`reference/golden/HOWTO.md` documents it at
  * length, since it's also what this project's own golden-file export drives).
- * This reproduces that model closely, minus one input column:
+ * This reproduces that model closely, minus one input column and the button:
  *
  * - Every row is a fully independent `TypfallInput`/`ModelContext` pair, never
  *   a diff against the form on the left the way "Jämför scenarier"'s variants
@@ -14,29 +14,38 @@
  * - "Egen Lönelista" (a whole per-age income table, the same shape as the
  *   Advanced-mode salary path) is out of scope: it doesn't fit one flat batch
  *   row or one CSV cell. Every row uses the standard wage-growth model.
- * - Results are never live-recomputed. "Beräkna" is explicit, on purpose, not
- *   as a performance workaround (`run()` is sub-millisecond even for hundreds
- *   of rows) but because it's what the sheet itself calls this, because it
- *   cleanly separates "editing a batch" from "viewing its results" -- which
- *   matters once CSV import can load a hundred rows in one action -- and
- *   because it needs no extra state: a row's output cells are populated iff
- *   `row.result` is set, editing any input cell clears that row's own
- *   `result`/`error` straight back to blank, and "Beräkna" (re)computes every
- *   row unconditionally, the same way the sheet's own batch runner reruns its
- *   whole range each time rather than tracking which rows are dirty.
+ * - Results are live, unlike the real sheet's own explicit-calculate batch
+ *   runner: `run()` is confirmed cheap even for hundreds of rows, and this
+ *   app's own stated philosophy (`main.ts`'s header comment) is "no debounce,
+ *   no incremental update -- every change re-runs the model." A cell edit
+ *   recomputes that one row immediately; adding a row, finishing a CSV
+ *   import, and `setContext` receiving a new shared context each recompute
+ *   every row that is not currently flagged (see the next paragraph for why
+ *   "not flagged" matters).
+ *
+ * **Editing a row always attempts a fresh compute for it; a bulk recompute
+ * skips any row already flagged.** A CSV-imported row with an invalid
+ * discrete value (an unrecognised scheme) gets `.error` set at parse time,
+ * but the field itself is left at its prior, individually valid value --
+ * there is nothing sensible to clamp an invalid *discrete* value to. A bulk
+ * recompute that blindly re-validated such a row *as it now stands* would
+ * find nothing wrong with it and quietly compute it anyway, hiding the very
+ * problem the flag exists to surface -- so `recomputeAll()` leaves any
+ * already-`.error`-carrying row alone. Editing that row's own field, by
+ * contrast, is a deliberate attempt to fix it, so the per-cell handlers
+ * clear `.error` first and always try a fresh compute regardless of what was
+ * flagged before.
  *
  * No `onChange` callback up to `main.ts`, unlike `compare.ts` -- nothing
  * outside this panel depends on a Mikrosim row's contents, so there is
- * nothing to notify. `setContext` only stashes the shared `ModelContext`/
- * `DeathProbabilities` for the next "Beräkna" click; it does not itself
- * recompute anything, matching the explicit-calculate rule above -- so
- * changing an Advanced setting while old results are showing does not
- * invalidate them either. That is a deliberate simplification, not an
- * oversight: `main.ts`'s own `viewContext` builds a fresh `ModelContext`
- * object on every render regardless of whether anything relevant changed, so
- * there is no cheap way to tell "the settings actually changed" from "the
- * page merely re-rendered" -- and the sheet itself does not auto-rerun on a
- * settings change elsewhere in the workbook either.
+ * nothing to notify. `setContext` both stashes the shared `ModelContext`/
+ * `DeathProbabilities` and triggers `recomputeAll()`, with no check for
+ * whether the context actually changed: `main.ts`'s own `viewContext` builds
+ * a fresh `ModelContext` object on every render regardless, so there is no
+ * cheap way to tell "the settings actually changed" from "the page merely
+ * re-rendered" -- and this app's own "an extra run() per keystroke is free"
+ * stance already covers the cost of recomputing every Mikrosim row on every
+ * keystroke anywhere on the page while this tab is the one showing.
  *
  * `INPUT_COLUMNS`/`OUTPUT_COLUMNS` are the one canonical description of
  * Mikrosim's own columns -- headers (in both languages), bounds, and the
@@ -69,6 +78,7 @@ import type {
   TypfallResult,
 } from "@typfallsmodellen/engine";
 
+import { renderMikrosimChart } from "./chart.js";
 import type { Bounds, FieldSet } from "./controls.js";
 import { fieldSet, span } from "./controls.js";
 import { csvExportButton } from "./export.js";
@@ -122,8 +132,8 @@ export interface MikrosimRow {
    * own `savingAmountOrShare` already documents and preserves. */
   ipsMonthly: number;
   scheme: SchemeId;
-  /** Set only by "Beräkna". `undefined` means "not currently calculated for
-   * the inputs this row holds right now". */
+  /** Kept in sync live by `computeOneRow`/`recomputeAll` -- `undefined` means
+   * this row is currently flagged (`.error` set) rather than "not yet run". */
   result?: TypfallResult;
   /** Set instead of `result` when the row could not be run at all. */
   error?: string;
@@ -352,8 +362,9 @@ export function headerName(col: { readonly sv: string; readonly en: string }, la
 export interface MikrosimHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
-  /** Stashes the context/deaths the next "Beräkna" click runs against. Does
-   * not itself compute anything -- see the file comment. */
+  /** Stashes the shared context/deaths and recomputes every row that is not
+   * currently flagged -- see the file comment for why a flagged row is left
+   * alone here rather than blindly re-run. */
   setContext(context: ModelContext, deaths: DeathProbabilities): void;
 }
 
@@ -388,47 +399,48 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
   addButton.dataset.action = "add-mikrosim-row";
   addButton.addEventListener("click", () => {
     if (rows.length >= MAX_ROWS) return;
-    rows.push(newMikrosimRow(freshId()));
-    rebuildTable();
+    const newRow = newMikrosimRow(freshId());
+    rows.push(newRow);
+    computeOneRow(newRow);
+    redraw();
   });
 
-  const calcButton = document.createElement("button");
-  calcButton.type = "button";
-  calcButton.className = "export-btn";
-  calcButton.dataset.action = "calculate-mikrosim";
-  calcButton.addEventListener("click", () => {
+  /** Validates and runs one row, leaving `.result`/`.error` set accordingly.
+   * Never skips -- callers that need the "leave a flagged row alone" rule
+   * (see the file comment) check `row.error` themselves before calling this. */
+  function computeOneRow(row: MikrosimRow): void {
     if (!deaths) return;
     const activeDeaths = deaths;
-    for (const row of rows) {
-      // A row already flagged (e.g. an invalid scheme a CSV import couldn't
-      // apply, so the field itself silently sits at its old, individually
-      // valid value) is left alone until an edit clears it -- otherwise
-      // re-validating would find nothing wrong with the field as it stands
-      // now and quietly compute the row anyway, hiding the very problem the
-      // flag exists to surface.
-      if (row.error) continue;
-      const invalid = validateMikrosimRow(row, currentLang);
-      if (invalid) {
-        row.error = invalid;
-        delete row.result;
-        continue;
-      }
-      try {
-        row.result = run(mikrosimRowToInput(row), mikrosimRowToContext(row, context), {
-          deaths: activeDeaths,
-        });
-        delete row.error;
-      } catch {
-        delete row.result;
-        row.error = say(
-          currentLang,
-          "Beräkningen misslyckades för raden.",
-          "The calculation failed for this row.",
-        );
-      }
+    const invalid = validateMikrosimRow(row, currentLang);
+    if (invalid) {
+      row.error = invalid;
+      delete row.result;
+      return;
     }
-    rebuildTable();
-  });
+    try {
+      row.result = run(mikrosimRowToInput(row), mikrosimRowToContext(row, context), {
+        deaths: activeDeaths,
+      });
+      delete row.error;
+    } catch {
+      delete row.result;
+      row.error = say(
+        currentLang,
+        "Beräkningen misslyckades för raden.",
+        "The calculation failed for this row.",
+      );
+    }
+  }
+
+  /** Recomputes every row that is not already flagged, then redraws --
+   * called after a CSV import and whenever the shared context changes. */
+  function recomputeAll(): void {
+    for (const row of rows) {
+      if (row.error) continue;
+      computeOneRow(row);
+    }
+    redraw();
+  }
 
   const fileInput = document.createElement("input");
   fileInput.type = "file";
@@ -449,7 +461,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
       fileError.textContent = "";
       rows = parsed.rows.length > 0 ? [...parsed.rows] : [newMikrosimRow(freshId())];
       nextId = rows.length + 1;
-      rebuildTable();
+      recomputeAll();
     });
   });
   const importLabel = document.createElement("label");
@@ -459,7 +471,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
 
   let exportBtn = csvExportButton(lang, "mikrosim.csv", () => mikrosimRowsToCsv(rows, currentLang));
 
-  actions.append(addButton, calcButton, importLabel, exportBtn);
+  actions.append(addButton, importLabel, exportBtn);
 
   const tableScroll = document.createElement("div");
   tableScroll.className = "scroll mikrosim-table-scroll";
@@ -469,7 +481,10 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
   const tbody = table.createTBody();
   tableScroll.append(table);
 
-  element.append(intro, actions, importNote, fileError, tableScroll);
+  const chartBox = document.createElement("div");
+  chartBox.className = "mikrosim-chart";
+
+  element.append(intro, actions, importNote, fileError, tableScroll, chartBox);
 
   function buildHead(): void {
     thead.replaceChildren();
@@ -507,9 +522,12 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     const statusCell = document.createElement("td");
     statusCell.className = "mikrosim-status";
 
-    function clearResult(): void {
-      delete row.result;
+    /** An edit is a deliberate attempt to fix the row, so this always clears
+     * any standing flag and tries a fresh compute -- unlike `recomputeAll()`,
+     * which leaves an already-flagged row alone (see the file comment). */
+    function editAndRecompute(): void {
       delete row.error;
+      computeOneRow(row);
       renderStatus();
       renderOutputs();
     }
@@ -520,13 +538,13 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
       if (col.control.kind === "number") {
         const field = cells.number(col.get(row), col.control.bounds, (v) => {
           col.set(row, v);
-          clearResult();
+          editAndRecompute();
         });
         td.append(field.element);
       } else if (col.control.kind === "percent") {
         const field = cells.percent(col.get(row), (v) => {
           col.set(row, v);
-          clearResult();
+          editAndRecompute();
         });
         td.append(field.element);
       } else {
@@ -535,7 +553,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
           col.get(row),
           (v) => {
             col.set(row, v);
-            clearResult();
+            editAndRecompute();
           },
         );
         td.append(field.element);
@@ -581,7 +599,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
       const at = rows.findIndex((r) => r.id === row.id);
       if (at === -1 || rows.length <= 1) return;
       rows.splice(at, 1);
-      rebuildTable();
+      redraw();
     });
     const removeCell = document.createElement("td");
     removeCell.append(removeBtn);
@@ -593,7 +611,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     return tr;
   }
 
-  function rebuildTable(): void {
+  function redraw(): void {
     buildHead();
     // A throwaway container: `number`/`percent`/`select` never touch it or
     // the relabel list (only `field()` does), so this is purely a source of
@@ -601,20 +619,19 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     const cellBuilders = fieldSet(document.createElement("div"), [], currentLang);
     tbody.replaceChildren(...rows.map((row, i) => buildRow(row, i, cellBuilders)));
     addButton.disabled = rows.length >= MAX_ROWS;
+    chartBox.replaceChildren(renderMikrosimChart(rows, currentLang));
   }
 
   function applyText(l: Lang): void {
     intro.textContent = say(
       l,
-      'Mikrosim körs som ett eget läge: varje rad är ett fristående typfall, inte en avvikelse mot ' +
-        'formuläret till vänster. Lägg till rader för hand eller importera en CSV-fil, och klicka ' +
-        'sedan på "Beräkna" för att fylla i resultatkolumnerna.',
-      'Mikrosim runs as its own mode: each row is a standalone case, not a variation on the form to ' +
-        'the left. Add rows by hand or import a CSV file, then click "Calculate" to fill in ' +
-        'the result columns.',
+      "Mikrosim körs som ett eget läge: varje rad är ett fristående typfall, inte en avvikelse mot " +
+        "formuläret till vänster. Lägg till rader för hand eller importera en CSV-fil -- " +
+        "resultatkolumnerna fylls i direkt.",
+      "Mikrosim runs as its own mode: each row is a standalone case, not a variation on the form to " +
+        "the left. Add rows by hand or import a CSV file -- the result columns fill in immediately.",
     );
     addButton.textContent = say(l, "+ Lägg till rad", "+ Add row");
-    calcButton.textContent = say(l, "Beräkna", "Calculate");
     importText.textContent = say(l, "Importera CSV", "Import CSV");
     importNote.textContent = say(
       l,
@@ -631,18 +648,19 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
   }
 
   applyText(lang);
-  rebuildTable();
+  redraw();
 
   return {
     element,
     relabel(l) {
       currentLang = l;
       applyText(l);
-      rebuildTable();
+      redraw();
     },
     setContext(nextContext, nextDeaths) {
       context = nextContext;
       deaths = nextDeaths;
+      recomputeAll();
     },
   };
 }

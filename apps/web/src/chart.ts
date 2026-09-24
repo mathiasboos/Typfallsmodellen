@@ -28,12 +28,21 @@
  * `netto` (see `MvaluesRow.municipalTax`/`stateTax`) since the workbook
  * computes and discards that split rather than ever showing it.
  */
+import { Table1Key } from "@typfallsmodellen/engine";
 import type { MvaluesRow, TypfallResult } from "@typfallsmodellen/engine";
 
 import { kronor } from "./format.js";
 import { dropHeadingNumber, t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
+import { OUTPUT_COLUMNS, headerName } from "./mikrosim.js";
+import type { MikrosimRow } from "./mikrosim.js";
 import type { ScenarioColumn } from "./tables.js";
+
+// `mikrosim.ts` imports `renderMikrosimChart` back from this file -- a
+// circular import, the same safe shape as `mikrosim.ts`/`mikrosimCsv.ts`'s
+// own pair: every value either side uses from the other is read only inside
+// a function body (a render call, `redraw()` itself), never at module-
+// evaluation time.
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -543,7 +552,7 @@ function ageTicks(
  * (harmlessly invisible at zero); this only trims the legend, not the
  * chart's own arithmetic.
  */
-function visibleSeries(rows: readonly MvaluesRow[], series: readonly Series[]): readonly Series[] {
+function visibleSeries<T>(rows: readonly T[], series: readonly Series<T>[]): readonly Series<T>[] {
   return series.filter((item) => rows.some((row) => item.get(row) > 0));
 }
 
@@ -568,11 +577,13 @@ function retirementEdge(
   return index < 0 ? PLOT.right : centre(index) - step / 2;
 }
 
-/** Draws one stack of columns, bottom band first. */
-function stack(
+/** Draws one stack of columns, bottom band first. Generic over the row type
+ * so `renderMikrosimChart` can reuse it for `MikrosimRow`s -- it never reads
+ * anything off a row except through `series[].get(row)`. */
+function stack<T>(
   svg: SVGSVGElement,
-  rows: readonly MvaluesRow[],
-  series: readonly Series[],
+  rows: readonly T[],
+  series: readonly Series<T>[],
   y: (v: number) => number,
   centre: (i: number) => number,
   width: number,
@@ -867,4 +878,113 @@ export function renderTaxChart(result: TypfallResult, view: FigureView): HTMLEle
     lang,
   );
   return figure;
+}
+
+// --------------------------------------------------- Mikrosim's own chart ---
+
+/**
+ * Mikrosim's own stacked column chart: one column per row, its total pension
+ * broken into the same seven components as the table's own middle output
+ * columns above it (Slutlön, Brutto-pension, Efter skatt, Bostadstillägg +
+ * ÄFS and Disponibel inkomst are all left out -- each is either a
+ * pre-retirement figure or downstream of the pension total itself, and
+ * stacking either alongside its own components would double-count). Labels
+ * come from `mikrosim.ts`'s own `OUTPUT_COLUMNS`, so this chart can never
+ * disagree with the table above it about what a category is called.
+ *
+ * Unlike every other figure here, the x-axis is not time -- it is row order,
+ * so `ageTicks`/`retirementEdge`/`shadeRetirement` (all genuinely
+ * age-specific) do not apply; this draws its own plain row-number labels
+ * instead, via the module's own `label()` text helper. No hover either:
+ * every other figure's `hover()` reads one shared age-indexed series over
+ * time, but a Mikrosim column is one whole independent case, not a point in
+ * a series, and the table directly above already gives every exact number.
+ *
+ * A row with no `result` (not yet computed, or currently flagged --
+ * `mikrosim.ts`'s own `computeOneRow`/`recomputeAll`) reads as all zeros
+ * here, the same way a zero-value band already draws invisibly everywhere
+ * else in this file -- it just shows as an empty column, not an error.
+ */
+export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang): HTMLElement {
+  const valueOf = (row: MikrosimRow, key: Table1Key): number =>
+    row.result?.table1.find((r) => r.key === key)?.adjusted ?? 0;
+  const columnLabel = (key: Table1Key): ((l: Lang) => string) => {
+    const col = OUTPUT_COLUMNS.find((c) => c.key === key)!;
+    return (l) => headerName(col, l);
+  };
+
+  const bands: readonly Series<MikrosimRow>[] = [
+    {
+      key: "income",
+      name: columnLabel(Table1Key.IncomePension),
+      colour: "--fig-income-pension",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.IncomePension),
+    },
+    {
+      key: "supplementary",
+      name: columnLabel(Table1Key.SupplementaryPension),
+      colour: "--fig-supplementary",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.SupplementaryPension),
+    },
+    {
+      key: "premium",
+      name: columnLabel(Table1Key.PremiumPension),
+      colour: "--fig-premium",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.PremiumPension),
+    },
+    {
+      key: "guarantee",
+      name: columnLabel(Table1Key.GuaranteePension),
+      colour: "--fig-guarantee",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.GuaranteePension),
+    },
+    {
+      key: "ipt",
+      name: columnLabel(Table1Key.IncomePensionSupplement),
+      colour: "--fig-ipt",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.IncomePensionSupplement),
+    },
+    {
+      key: "occupational",
+      name: columnLabel(Table1Key.OccupationalPension),
+      colour: "--fig-occupational",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.OccupationalPension),
+    },
+    {
+      key: "private",
+      name: columnLabel(Table1Key.PrivateSaving),
+      colour: "--fig-private-saving",
+      mark: "fill",
+      get: (r) => valueOf(r, Table1Key.PrivateSaving),
+    },
+  ];
+
+  const title = lang === "sv" ? "Pensionens sammansättning per rad" : "Pension breakdown by row";
+  const svg = newSvg(title);
+  const { centre, width } = columns(rows.length);
+  const max = Math.max(
+    ...rows.map((row) => bands.reduce((sum, s) => sum + Math.max(s.get(row), 0), 0)),
+    1,
+  );
+  const axis = vertical(max);
+  const y = axis.y;
+
+  gridlines(svg, axis, lang);
+  stack(svg, rows, bands, y, centre, width);
+  rows.forEach((_row, i) => {
+    svg.append(label(String(i + 1), centre(i), PLOT.bottom + 16, "tick tick-x"));
+  });
+
+  const legendSeries = visibleSeries(rows, bands);
+  const note =
+    lang === "sv"
+      ? "En rad som inte kunnat beräknas visas som en tom kolumn."
+      : "A row that could not be calculated shows as an empty column.";
+  return frame(title, undefined, svg, legend(legendSeries, lang), [note]);
 }

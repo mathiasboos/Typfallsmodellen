@@ -746,28 +746,60 @@ column is "Bostadstillägg + ÄFS". Mixing sources would have silently mislabell
 text is this port's own translation, the same situation every other new-UI string in this app is
 already in.
 
-**Explicit "Beräkna," not a performance workaround.** `run()` is confirmed cheap even for hundreds of
-rows, so live recompute on every keystroke was never the concern. "Beräkna" stays explicit because it
-is literally what the sheet calls this, because it cleanly separates editing a batch from viewing its
-results — which matters once a CSV import can load a hundred rows in one action — and because it needs
-no extra state: a row's twelve output cells are populated **iff** `row.result` is set; editing any
-input cell clears that row's own `result`/`error` straight back to blank; "Beräkna" (re)computes every
-row unconditionally, the same way the real sheet's own batch runner reruns its whole range each time
-rather than tracking which rows are dirty. There is no `onChange` callback up to `main.ts` the way
-"Jämför scenarier" has one — nothing outside this panel depends on a Mikrosim row's contents, so there
-is nothing to notify; `setContext` only stashes the shared `ModelContext`/`DeathProbabilities` for the
-next "Beräkna" click.
+**Live recompute, on request — there is no "Beräkna" button in this build.** The sheet's own explicit-
+calculate batch runner shipped first; the user then asked for live recompute instead, which this port
+honours outright — `run()` is confirmed cheap even for hundreds of rows, so there was never a
+performance reason to keep the button, and dropping it brings Mikrosim in line with every other view
+in this app (`main.ts`'s own stated philosophy: "no debounce, no incremental update — every change
+re-runs the model"). Editing a cell always attempts a fresh compute for that one row; adding a row,
+finishing a CSV import, and `setContext` receiving a new shared context each recompute every row that
+is not currently flagged. There is no `onChange` callback up to `main.ts` the way "Jämför scenarier"
+has one — nothing outside this panel depends on a Mikrosim row's contents, so there is nothing to
+notify; `setContext` both stashes the shared `ModelContext`/`DeathProbabilities` and triggers that
+recompute, with no check for whether the context actually changed — `main.ts`'s own `viewContext`
+builds a fresh `ModelContext` object on every render regardless, so there is no cheap way to tell
+"the settings actually changed" from "the page merely re-rendered," and this app's "an extra `run()`
+per keystroke is free" stance already covers the cost of recomputing every Mikrosim row on every
+keystroke anywhere on the page while this tab is the one showing.
 
-**Non-fatal, per-row validation.** "Beräkna" runs `validateMikrosimRow` first; a failing row is
-skipped (flagged, not dropped) while every other row still runs — the real sheet's own `InputXGetY`
-aborts the *entire* batch on the first bad row (`Exit Sub` after a `MsgBox`), which does not fit a
-web batch tool well. One real bug surfaced writing the check for this: a CSV row with an invalid
-scheme value gets `.error` set at parse time, but the field itself is left at its prior, individually
-valid value (a discrete column has nothing sensible to clamp an invalid value to) — so a naive
-"Beräkna" that only re-validates the row *as it currently stands* would find nothing wrong and quietly
-compute it anyway, silently substituting a scheme the file never asked for. The fix: "Beräkna" skips
-any row that already carries an `.error` (from import or a previous click) without re-validating it,
-leaving it flagged until an actual edit clears it.
+**Non-fatal, per-row validation — and one real bug that live recompute did not remove, just moved.**
+`validateMikrosimRow` runs before every compute; a failing row is skipped (flagged, not dropped)
+while every other row still runs — the real sheet's own `InputXGetY` aborts the *entire* batch on the
+first bad row (`Exit Sub` after a `MsgBox`), which does not fit a web batch tool well. The bug: a CSV
+row with an invalid scheme value gets `.error` set at parse time, but the field itself is left at its
+prior, individually valid value (a discrete column has nothing sensible to clamp an invalid value
+to) — so a bulk recompute that blindly re-validated such a row *as it now stands* would find nothing
+wrong and quietly compute it anyway, silently substituting a scheme the file never asked for. This
+was first found and fixed for the button (a click skipped any row already carrying `.error`); moving
+to live recompute could easily have reintroduced it on every keystroke instead of only on a click, so
+the same rule was carried over deliberately: **editing a row's own cell always clears `.error` first
+and tries a fresh compute** (an edit is a deliberate attempt to fix it), while **a bulk recompute —
+after an import, after `setContext` — skips any row that already carries `.error`**, leaving it
+flagged until an actual edit on that row clears it. `verify-offline.mjs` proves both halves: a fixed
+row's own dropdown edit recomputes it immediately, and the same bulk-recompute-leaves-it-flagged
+check from the button era still passes under live recompute.
+
+**A stacked-column chart under the table**, on request, one column per row, breaking each case's
+total pension into the same seven components as the table's own middle output columns above it
+(`chart.ts`'s new `renderMikrosimChart`) — Slutlön, Brutto-pension, Efter skatt, Bostadstillägg + ÄFS
+and Disponibel inkomst are all left out, each either a pre-retirement figure or downstream of the
+pension total itself, stacking either alongside its own components would double-count. Almost every
+piece already existed: `columns(count)` (`chart.ts`) computes column positions from a plain count, no
+age dependency at all, already exactly Mikrosim's own x-axis; `stack`/`visibleSeries` needed only a
+generic type parameter (they never read anything `MvaluesRow`-specific, only through `series[].get
+(row)`) to accept `MikrosimRow`s instead. Not reused: `ageTicks`/`retirementEdge`/`shadeRetirement`
+are genuinely age-specific and do not apply to a batch of unrelated cases — the chart draws its own
+plain row-number labels instead — and there is no hover tooltip in this first cut, since a Mikrosim
+column is one whole independent case rather than a point in an age-indexed series, and the table
+directly above already gives every exact number. Four of the seven bands reuse an existing `--fig-*`
+colour token from Figur 2 (income-pension, premium, guarantee, occupational); three are new
+(`--fig-supplementary`, `--fig-ipt`, `--fig-private-saving`, for the two components Figur 2 folds into
+combined bands and for private saving, which Figur 2 never shows at all), validated with the
+`dataviz` skill's `validate_palette.js` against the *actual adjacent pairs in the real stack order* —
+the same standard `--fig-scenario-*`'s own validation note already uses — rather than every possible
+pair: an all-pairs check surfaces a pre-existing, out-of-scope confusability between Figur 2's own
+tan and yellow steps (`--fig-occupational`/`--fig-guarantee`, normal-vision ΔE 12.6, below the 15
+floor) that predates this chart and was left alone, not "fixed" as part of adding three new colours.
 
 **CSV import is hand-rolled; there is no CSV or `.xlsx` *parsing* anywhere else in this codebase** (only
 writing, via `write-excel-file`, this app's one runtime dependency, added for exports). A real `.xlsx`
@@ -788,10 +820,13 @@ inline-correction conventions better than a merge would.
 
 `mikrosim.ts` and `mikrosimCsv.ts` import from each other — `mikrosimCsv.ts` needs `MikrosimRow`/
 `newMikrosimRow`/`validateMikrosimRow`/`INPUT_COLUMNS`/`OUTPUT_COLUMNS`/`headerName` from
-`mikrosim.ts`, and the panel calls `parseMikrosimCsv`/`mikrosimRowsToCsv` back. That circular import is
-safe: every value either side uses from the other is read only inside a function body — a click
-handler, `parseMikrosimCsv` itself — never at module-evaluation time, so it does not matter which of
-the two finishes evaluating its own top level first.
+`mikrosim.ts`, and the panel calls `parseMikrosimCsv`/`mikrosimRowsToCsv` back. `mikrosim.ts` and
+`chart.ts` form the same shape of pair, for the same reason: `chart.ts` needs `OUTPUT_COLUMNS`/
+`headerName`/`MikrosimRow` from `mikrosim.ts` for `renderMikrosimChart`, and the panel's own
+`redraw()` calls that function back. Both circular imports are safe: every value either side uses
+from the other is read only inside a function body — a click handler, `parseMikrosimCsv` itself, a
+render call — never at module-evaluation time, so it does not matter which of the two finishes
+evaluating its own top level first.
 
 ### Table 2's own column tooltips, and Ordlista
 
