@@ -29,6 +29,7 @@ import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis, retirementAge } from "./kpis.js";
+import { createMikrosimPanel } from "./mikrosim.js";
 import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
 import {
@@ -51,8 +52,9 @@ interface View {
 /** The workbook's two radio circles: `Normalt` and `Avancerat`. */
 type Mode = "normal" | "advanced";
 
-/** Not a workbook mode -- a second top-level view alongside the forecast. */
-type Screen = "single" | "compare";
+/** Not a workbook mode -- a second and third top-level view alongside the
+ * forecast. */
+type Screen = "single" | "compare" | "mikrosim";
 
 const deaths = loadDeathProbabilities();
 
@@ -134,6 +136,7 @@ const pgbGrid = createPgbGrid(view.lang, (patch) => {
 });
 
 const comparePanel = createComparePanel(view.lang, input, () => render());
+const mikrosimPanel = createMikrosimPanel(view.lang);
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");
@@ -194,6 +197,9 @@ function screenToggle(): HTMLElement {
   const choices: readonly { screen: Screen; label: (l: Lang) => string }[] = [
     { screen: "single", label: (l) => (l === "sv" ? "Prognos" : "Forecast") },
     { screen: "compare", label: (l) => (l === "sv" ? "Jämför scenarier" : "Compare scenarios") },
+    // A proper noun from the workbook's own sheet name -- the same word in
+    // both languages, so no `say()`-style branching is needed here.
+    { screen: "mikrosim", label: () => "Mikrosim" },
   ];
   for (const choice of choices) {
     const button = document.createElement("button");
@@ -262,6 +268,7 @@ function renderHeading(): void {
       salaryPath.relabel(lang);
       pgbGrid.relabel(lang);
       comparePanel.relabel(lang);
+      mikrosimPanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -389,6 +396,16 @@ function render(): void {
   if (screen === "compare") {
     results.append(comparePanel.element);
     comparePanel.renderResults(typfall, context, deaths, lang, view.monthly);
+    return;
+  }
+
+  if (screen === "mikrosim") {
+    results.append(mikrosimPanel.element);
+    // Only stashes context/deaths for the next "Beräkna" click -- unlike
+    // `comparePanel`, nothing here depends on `typfall`/`perMonth`, since
+    // every Mikrosim row is independent of the baseline form (see
+    // mikrosim.ts's own file comment).
+    mikrosimPanel.setContext(context, deaths);
     return;
   }
 

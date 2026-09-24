@@ -694,6 +694,105 @@ of a long select option; `.compare-results { min-width: 0; }` (and `> *`) gives 
 table the same treatment `.results` already needed for the single-scenario view, so the wide table
 scrolls inside `.scroll` instead of widening the page.
 
+### Mikrosim
+
+`apps/web/src/mikrosim.ts` is a third top-level view, a fourth `.panel-toggle` entry after
+"Jämför scenarier", reproducing the workbook's own `Mikrosim` sheet — a batch runner where each row
+is an independent typfall and a "Beräkna" button fills in every row's output columns at once
+(`reference/golden/HOWTO.md` documents that sheet at length, since it is also what this project's
+own golden-file export drives). Unlike "Jämför scenarier", a Mikrosim row is **not** a diff against
+the baseline form on the left — it is a complete, standalone `TypfallInput`/`ModelContext` pair,
+seeded from `defaultInput()`'s own workbook defaults, never from whatever the form currently holds.
+That is what makes CSV import make sense here: a file doesn't carry a baseline to diff against, the
+same way the real sheet's own rows don't either.
+
+**One column dropped.** The real sheet's tenth input column, `Egen Lönelista` (a custom per-age
+income list — the same shape as the Advanced-mode salary path), is out of scope: it is a whole table,
+not a scalar, and does not fit one flat batch row or one CSV cell. Every Mikrosim row uses the
+standard wage-growth model. The other nine inputs and all twelve outputs are exposed.
+
+**Column mapping, verified against the real sheet's own header row.** `INPUT_COLUMNS`/
+`OUTPUT_COLUMNS` (`mikrosim.ts`) are the one canonical description of Mikrosim's columns — Swedish
+and English headers, bounds, and the mapping to/from `TypfallInput`/`ModelContext`/`Table1Key` —
+shared with `mikrosimCsv.ts` so the on-screen table and the CSV file can never drift apart. Most of
+the mapping is direct (`born`, `startWorkAge`, `retirementAge`, `scheme`, the three rate fields), with
+two real subtleties:
+
+- **Årslön is annual; `TypfallInput.monthlySalary` is always monthly** in this port (the same
+  conversion `form.ts` already documents). A `MikrosimRow` stores the annual figure and divides by 12
+  only at mapping time, so the on-screen cell, the CSV cell and the workbook's own column all show
+  literally the same number.
+- **Privat pensionssparande lives on `ModelContext.ipsMonthly`, not `TypfallInput`** — the dual-meaning
+  field `advanced.ts`'s own `savingAmountOrShare` already documents (a value `>1` is kronor/month, `≤1`
+  a share of income). Only `ipsMonthly` varies per row; `ipsStart`/`privateSavingKind` are not Mikrosim
+  columns, so every row shares whatever the app's current Advanced settings hold for those two.
+
+**`Eget sparande` is `Table1Key.PrivateSaving` ("ips"), not `PrivateSavingAfterTax` ("pps").** This
+was genuinely ambiguous from the column name alone — resolved by laying the real sheet's own header
+row (`reference/golden/golden-cases.csv:101`, its committed bytes ISO-8859-1 mojibake but the Swedish
+text unambiguous once decoded) against `tables.ts`'s `TABLE1_LINES` order: every one of Mikrosim's
+twelve columns matches a strictly increasing, adjacency-preserving walk through `TABLE1_LINES` with
+`TotalGross` pulled forward to the second position, and `PrivateSavingAfterTax` is not one of
+Mikrosim's twelve columns at all — `PrivateSaving` is the one immediately after `OccupationalPension`,
+exactly where "Eget sparande" sits after "Tjänstepension" in the real header row. The same walk gives
+`DisposableAtRetirement` ("dispEfterSkatt") for "Disponibel inkomst", not `DisposableBeforeRetirement`
+("dispInkomst", the year *before* retirement).
+
+**Mikrosim's own column headers are their own hardcoded table, not `apps/web/src/i18n.ts`'s `t()`.**
+Cross-checking the real header row against `t()` turns up genuine wording mismatches for the same
+concept — `t("realReturn")` is "Real avkastning", the sheet's own Mikrosim column is "Real
+fondavkastning"; `t("housingSupplement")` is "Bostadstillägg för pensionärer m.m.", the sheet's own
+column is "Bostadstillägg + ÄFS". Mixing sources would have silently mislabelled a column. English
+text is this port's own translation, the same situation every other new-UI string in this app is
+already in.
+
+**Explicit "Beräkna," not a performance workaround.** `run()` is confirmed cheap even for hundreds of
+rows, so live recompute on every keystroke was never the concern. "Beräkna" stays explicit because it
+is literally what the sheet calls this, because it cleanly separates editing a batch from viewing its
+results — which matters once a CSV import can load a hundred rows in one action — and because it needs
+no extra state: a row's twelve output cells are populated **iff** `row.result` is set; editing any
+input cell clears that row's own `result`/`error` straight back to blank; "Beräkna" (re)computes every
+row unconditionally, the same way the real sheet's own batch runner reruns its whole range each time
+rather than tracking which rows are dirty. There is no `onChange` callback up to `main.ts` the way
+"Jämför scenarier" has one — nothing outside this panel depends on a Mikrosim row's contents, so there
+is nothing to notify; `setContext` only stashes the shared `ModelContext`/`DeathProbabilities` for the
+next "Beräkna" click.
+
+**Non-fatal, per-row validation.** "Beräkna" runs `validateMikrosimRow` first; a failing row is
+skipped (flagged, not dropped) while every other row still runs — the real sheet's own `InputXGetY`
+aborts the *entire* batch on the first bad row (`Exit Sub` after a `MsgBox`), which does not fit a
+web batch tool well. One real bug surfaced writing the check for this: a CSV row with an invalid
+scheme value gets `.error` set at parse time, but the field itself is left at its prior, individually
+valid value (a discrete column has nothing sensible to clamp an invalid value to) — so a naive
+"Beräkna" that only re-validates the row *as it currently stands* would find nothing wrong and quietly
+compute it anyway, silently substituting a scheme the file never asked for. The fix: "Beräkna" skips
+any row that already carries an `.error` (from import or a previous click) without re-validating it,
+leaving it flagged until an actual edit clears it.
+
+**CSV import is hand-rolled; there is no CSV or `.xlsx` *parsing* anywhere else in this codebase** (only
+writing, via `write-excel-file`, this app's one runtime dependency, added for exports). A real `.xlsx`
+parser would be a large new dependency against the app's tracked single-file budget (currently
+~1MB; `write-excel-file` itself added ~70kB) for a feature a plain-text format already serves.
+`mikrosimCsv.ts`'s `parseMikrosimCsv` matches the nine input columns **by header text**, in either
+language, not by position, so a hand-adapted real Excel export — one that dropped or reordered a
+column — still lines up; a missing required column refuses the whole file, naming it, while a bad cell
+or an invalid scheme flags only that row. Every numeric cell, on both import and export, is a plain
+unformatted number (no thousands grouping, a decimal point) — a deliberate departure from
+`table1ToCsv`'s locale-formatted style, since that export is read once in Excel and never read back,
+while Mikrosim's file is a genuine round trip and a locale-formatted number would either need
+thousands-separator parsing or could collide with the chosen delimiter. Only the delimiter itself
+(`;` for Swedish, `,` for English) still comes from `tables.ts`'s existing `delimiterFor`, exported
+for this reuse. Import always **replaces** the table wholesale — this app has no native
+`confirm()`/`alert()` anywhere, so a predictable "load this file as the new batch" fits its other
+inline-correction conventions better than a merge would.
+
+`mikrosim.ts` and `mikrosimCsv.ts` import from each other — `mikrosimCsv.ts` needs `MikrosimRow`/
+`newMikrosimRow`/`validateMikrosimRow`/`INPUT_COLUMNS`/`OUTPUT_COLUMNS`/`headerName` from
+`mikrosim.ts`, and the panel calls `parseMikrosimCsv`/`mikrosimRowsToCsv` back. That circular import is
+safe: every value either side uses from the other is read only inside a function body — a click
+handler, `parseMikrosimCsv` itself — never at module-evaluation time, so it does not matter which of
+the two finishes evaluating its own top level first.
+
 ### Table 2's own column tooltips, and Ordlista
 
 Two follow-on requests, both about explaining terms rather than adding a new calculation:

@@ -632,6 +632,71 @@ body {
 }
 .compare-table th .compare-swatch { margin-right: 6px; vertical-align: middle; }
 
+/*
+ * mikrosim.ts's own table -- unlike every other grid in this app, its column
+ * count and row count are both open-ended (nine inputs, twelve outputs, and
+ * CSV import can bring in far more rows than anyone would type by hand), so
+ * it gets a real scroller in both directions rather than a fixed-width
+ * sidebar layout (`.adv-grid`'s own `table-layout: fixed` doesn't fit a
+ * table this wide) or a row cap.
+ */
+.mikrosim-panel { display: grid; gap: 12px; }
+/* `.field-hint` alone would inherit that class's `grid-row: 2` (meant for
+   pairing with a `.field`'s own caption in row 1), which -- being a grid
+   container's own direct child here, not a `.field`'s -- would stack every
+   hint paragraph into the same row instead of stacking them top to bottom. */
+.mikrosim-panel > .field-hint { grid-column: auto; grid-row: auto; }
+.mikrosim-file-error { color: var(--danger); font-size: 0.85rem; margin: -6px 0 0; }
+.mikrosim-file-error:empty { display: none; }
+.mikrosim-table-scroll { max-height: 70vh; overflow: auto; }
+.mikrosim-table { table-layout: auto; }
+/* Sticks the whole two-row header together, the same reasoning `.adv-grid
+   thead`'s own comment gives for its grouped header. */
+.mikrosim-table thead { position: sticky; top: 0; z-index: 1; }
+.mikrosim-table th, .mikrosim-table td { white-space: nowrap; }
+.mikrosim-table td.num { text-align: right; }
+.mikrosim-rownum { color: var(--text-muted); text-align: right; }
+.mikrosim-status { width: 1.4em; text-align: center; }
+.mikrosim-status .mikrosim-error { color: var(--danger); font-weight: 700; }
+.mikrosim-table td > input, .mikrosim-table td > select {
+  width: 100%;
+  min-width: 8ch;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.mikrosim-table td > select { text-align: left; }
+.mikrosim-table td > input:focus, .mikrosim-table td > select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mikrosim-table td > input::-webkit-outer-spin-button,
+.mikrosim-table td > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.mikrosim-table td > input[type="number"] { -moz-appearance: textfield; }
+
+/* The file-picker button: an ordinary `.export-btn` wrapping a visually
+   hidden native file input, so clicking the label's own text opens the file
+   dialog with no extra script -- the input itself stays reachable (not
+   `display: none`) for a screen reader, a keyboard `Tab`, and Playwright's
+   own `setInputFiles`. */
+.mikrosim-import-label { position: relative; cursor: pointer; }
+.mikrosim-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px;

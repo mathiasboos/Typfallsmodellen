@@ -1324,8 +1324,8 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 2) {
-  problems.push(`screen toggle has ${screenButtons} buttons, expected 2 (Prognos / Jämför scenarier)`);
+if (screenButtons !== 3) {
+  problems.push(`screen toggle has ${screenButtons} buttons, expected 3 (Prognos / Jämför scenarier / Mikrosim)`);
 }
 
 await tab.locator('.screen-toggle .panel-btn[data-screen="compare"]').click();
@@ -1542,6 +1542,217 @@ if (!removeDisabled) {
 }
 if (chartLinesAtFloor !== 2) {
   problems.push(`the compare chart draws ${chartLinesAtFloor} lines at the floor, expected 2`);
+}
+
+// ---- Mikrosim --------------------------------------------------------------
+//
+// The workbook's own batch runner, reproduced as a third top-level view: each
+// row is a fully independent typfall (not a diff against the form on the
+// left, unlike Jämför scenarier's variants), edited freely with no live
+// recompute, and only "Beräkna" fills in every row's output columns at once.
+// The point of each check is the same independence property Jämför
+// scenarier's own checks establish -- one row's own inputs reach only that
+// row's own run -- plus CSV import/export, which has no precedent anywhere
+// else in this app to borrow a pattern from.
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="mikrosim"]').click();
+await tab.waitForTimeout(50);
+
+const mikrosimRow = (i) => tab.locator(".mikrosim-table tbody tr").nth(i);
+const mikrosimCell = (i, col) => mikrosimRow(i).locator("td").nth(col);
+// td indices: 0 row#, 1 status, 2-10 the nine inputs, 11-22 the twelve
+// outputs, 23 remove -- see mikrosim.ts's own INPUT_COLUMNS/OUTPUT_COLUMNS
+// order.
+const MI_SALARY_TD = 5;
+const MI_SCHEME_TD = 10;
+const MI_FIRST_OUTPUT_TD = 11;
+const MI_LAST_OUTPUT_TD = 22;
+
+const mikrosimRowsAtStart = await tab.locator(".mikrosim-table tbody tr").count();
+console.log(`mikrosim rows   : ${mikrosimRowsAtStart}`);
+if (mikrosimRowsAtStart !== 1) {
+  problems.push(`the Mikrosim tab starts with ${mikrosimRowsAtStart} row(s), expected 1`);
+}
+const mikrosimOutputsAtStart = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+if ((mikrosimOutputsAtStart ?? "").trim() !== "") {
+  problems.push(`a fresh Mikrosim row already shows an output ("${mikrosimOutputsAtStart}") before "Beräkna"`);
+}
+
+// Adding rows: three clicks from one row should leave four.
+await tab.locator('[data-action="add-mikrosim-row"]').click();
+await tab.locator('[data-action="add-mikrosim-row"]').click();
+await tab.locator('[data-action="add-mikrosim-row"]').click();
+await tab.waitForTimeout(50);
+const mikrosimRowsAfterAdd = await tab.locator(".mikrosim-table tbody tr").count();
+console.log(`mikrosim rows   : ${mikrosimRowsAfterAdd} after adding three`);
+if (mikrosimRowsAfterAdd !== 4) {
+  problems.push(`adding three Mikrosim rows left ${mikrosimRowsAfterAdd}, expected 4`);
+}
+
+// Row 1 gets a distinct salary and scheme; rows 2-4 are left at their shared
+// defaults. One "Beräkna" click has to fill in every row's own outputs from
+// its own inputs -- row 1's figure has to differ from the others', and the
+// others have to agree with each other.
+await mikrosimCell(0, MI_SALARY_TD).locator("input").fill("600000");
+await mikrosimCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
+await mikrosimCell(0, MI_SCHEME_TD).locator("select").selectOption("3");
+await tab.waitForTimeout(50);
+
+await tab.locator('[data-action="calculate-mikrosim"]').click();
+await tab.waitForTimeout(100);
+
+const mikrosimRow1Salary = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow2Salary = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow3Salary = await mikrosimCell(2, MI_FIRST_OUTPUT_TD).textContent();
+console.log(`mikrosim Slutlön: row1 ${mikrosimRow1Salary}, row2 ${mikrosimRow2Salary}, row3 ${mikrosimRow3Salary}`);
+if ((mikrosimRow1Salary ?? "").trim() === "") {
+  problems.push('"Beräkna" left row 1\'s "Slutlön" blank');
+}
+if (mikrosimRow1Salary === mikrosimRow2Salary) {
+  problems.push(
+    `row 1's own salary raise did not change its "Slutlön" relative to row 2's ("${mikrosimRow1Salary}" both)`,
+  );
+}
+if (mikrosimRow2Salary !== mikrosimRow3Salary) {
+  problems.push(
+    `two untouched Mikrosim rows show different "Slutlön" ("${mikrosimRow2Salary}" vs "${mikrosimRow3Salary}")`,
+  );
+}
+
+// Editing an input after a calculation clears that row's own outputs back to
+// blank -- proving the "blank means not currently calculated" rule -- without
+// touching any other row's already-computed figures.
+await mikrosimCell(0, MI_SALARY_TD).locator("input").fill("650000");
+await mikrosimCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
+await tab.waitForTimeout(50);
+const mikrosimRow1AfterEdit = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow2AfterEdit = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
+console.log(`mikrosim after edit: row1 "${mikrosimRow1AfterEdit}", row2 "${mikrosimRow2AfterEdit}"`);
+if ((mikrosimRow1AfterEdit ?? "").trim() !== "") {
+  problems.push(`editing row 1's salary left its own "Slutlön" as "${mikrosimRow1AfterEdit}", expected blank`);
+}
+if (mikrosimRow2AfterEdit !== mikrosimRow2Salary) {
+  problems.push(
+    `editing row 1's salary changed row 2's already-computed "Slutlön" ("${mikrosimRow2Salary}" -> ` +
+      `"${mikrosimRow2AfterEdit}")`,
+  );
+}
+
+// Removing a row drops the count and keeps the remaining rows' own values.
+await mikrosimRow(1).locator('[data-action="mikrosim-remove-row"]').click();
+await tab.waitForTimeout(50);
+const mikrosimRowsAfterRemove = await tab.locator(".mikrosim-table tbody tr").count();
+console.log(`mikrosim rows   : ${mikrosimRowsAfterRemove} after removing one`);
+if (mikrosimRowsAfterRemove !== 3) {
+  problems.push(`removing a Mikrosim row left ${mikrosimRowsAfterRemove}, expected 3`);
+}
+
+// CSV export: the canonical Swedish headers, byte for byte, plus a
+// calculated row's own numbers.
+await tab.locator('[data-action="calculate-mikrosim"]').click();
+await tab.waitForTimeout(100);
+const mikrosimPanel = tab.locator(".mikrosim-panel");
+const mikrosimCsv = await download(mikrosimPanel.getByRole("button", { name: "Ladda ner CSV" }));
+const mikrosimCsvText = mikrosimCsv.buffer.toString("utf8");
+console.log(`mikrosim CSV    : ${mikrosimCsv.filename}, ${mikrosimCsv.buffer.length} bytes`);
+const expectedHeader =
+  "Födelseår;Börjar arbeta vid ålder;Går i pension vid ålder;Årslön;Årlig inflation;Real tillväxt;" +
+  "Real fondavkastning;Privat pensionssparande (med avdragsrätt);Välj tjänstepension;Slutlön;" +
+  "Brutto-pension;Inkomstpension;Tilläggspension;Premiepension;Garanti-pension;P_tillägg;" +
+  "Tjänstepension;Eget sparande;Efter skatt;Bostadstillägg + ÄFS;Disponibel inkomst";
+if (!mikrosimCsvText.includes(expectedHeader)) {
+  problems.push(`the Mikrosim CSV's header line doesn't match the workbook's own Mikrosim columns`);
+}
+if (!mikrosimCsvText.includes("650000")) {
+  problems.push(`the Mikrosim CSV doesn't contain row 1's own salary (650000)`);
+}
+
+// CSV import replaces the table -- a file with the same nine columns in a
+// scrambled order, matched by header text rather than position.
+const scrambledCsv =
+  "Välj tjänstepension;Födelseår;Årslön;Börjar arbeta vid ålder;Går i pension vid ålder;" +
+  "Årlig inflation;Real tillväxt;Real fondavkastning;Privat pensionssparande (med avdragsrätt)\n" +
+  "2;1980;500000;22;65;0;0;0,017;0\n" +
+  "4;1965;300000;19;66;0;0;0,017;0\n";
+await tab
+  .locator('[data-action="mikrosim-import-file"]')
+  .setInputFiles({ name: "scrambled.csv", mimeType: "text/csv", buffer: Buffer.from(scrambledCsv, "utf8") });
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterImport = await tab.locator(".mikrosim-table tbody tr").count();
+const importedBorn = await mikrosimCell(0, 2).locator("input").inputValue();
+console.log(`mikrosim import : ${mikrosimRowsAfterImport} rows, row 1 born ${importedBorn}`);
+if (mikrosimRowsAfterImport !== 2) {
+  problems.push(`importing a 2-row CSV left ${mikrosimRowsAfterImport} rows, expected 2 (replace, not append)`);
+}
+if (importedBorn !== "1980") {
+  problems.push(`the imported row's birth year reads "${importedBorn}", expected "1980" (scrambled columns)`);
+}
+
+// A file missing a required column is refused outright, with the missing
+// column named, and the table already on screen is left untouched.
+await tab.locator('[data-action="mikrosim-import-file"]').setInputFiles({
+  name: "missing-column.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from("Födelseår;Går i pension vid ålder\n1970;65\n", "utf8"),
+});
+await tab.waitForTimeout(100);
+const mikrosimFileError = await tab.locator(".mikrosim-file-error").textContent();
+console.log(`mikrosim file error: ${mikrosimFileError}`);
+if (!(mikrosimFileError ?? "").includes("Årslön")) {
+  problems.push(`importing a file missing "Årslön" did not name it in the error ("${mikrosimFileError}")`);
+}
+const mikrosimRowsAfterBadImport = await tab.locator(".mikrosim-table tbody tr").count();
+if (mikrosimRowsAfterBadImport !== 2) {
+  problems.push(
+    `a refused import changed the row count to ${mikrosimRowsAfterBadImport}, expected the previous 2 to remain`,
+  );
+}
+
+// A row with an invalid scheme is flagged, not dropped, and "Beräkna" still
+// fills in every other row.
+await tab.locator('[data-action="mikrosim-import-file"]').setInputFiles({
+  name: "one-bad-row.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from(
+    "Födelseår;Börjar arbeta vid ålder;Går i pension vid ålder;Årslön;Årlig inflation;Real tillväxt;" +
+      "Real fondavkastning;Privat pensionssparande (med avdragsrätt);Välj tjänstepension\n" +
+      "1970;20;66;480000;0;0;0,017;0;3\n" +
+      "1970;20;66;480000;0;0;0,017;0;99\n",
+    "utf8",
+  ),
+});
+await tab.waitForTimeout(100);
+await tab.locator('[data-action="calculate-mikrosim"]').click();
+await tab.waitForTimeout(100);
+const mikrosimGoodRowOutput = await mikrosimCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimBadRowOutput = await mikrosimCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimBadRowFlagged = await mikrosimRow(1).locator(".mikrosim-error").count();
+console.log(
+  `mikrosim mixed  : good "${mikrosimGoodRowOutput}", bad "${mikrosimBadRowOutput}", flagged ${mikrosimBadRowFlagged}`,
+);
+if ((mikrosimGoodRowOutput ?? "").trim() === "") {
+  problems.push("a valid row next to an invalid one was not calculated by \"Beräkna\"");
+}
+if ((mikrosimBadRowOutput ?? "").trim() !== "") {
+  problems.push(`the row with an invalid scheme shows an output ("${mikrosimBadRowOutput}"), expected blank`);
+}
+if (mikrosimBadRowFlagged !== 1) {
+  problems.push(`the row with an invalid scheme is not visibly flagged (found ${mikrosimBadRowFlagged} marker(s))`);
+}
+
+// Round trip: importing this app's own export back in recovers the same rows.
+await tab
+  .locator('[data-action="mikrosim-import-file"]')
+  .setInputFiles({ name: "roundtrip.csv", mimeType: "text/csv", buffer: mikrosimCsv.buffer });
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterRoundtrip = await tab.locator(".mikrosim-table tbody tr").count();
+const roundtripSalary = await mikrosimCell(0, MI_SALARY_TD).locator("input").inputValue();
+console.log(`mikrosim roundtrip: ${mikrosimRowsAfterRoundtrip} rows, row 1 salary ${roundtripSalary}`);
+if (mikrosimRowsAfterRoundtrip !== 3) {
+  problems.push(`re-importing this app's own CSV export left ${mikrosimRowsAfterRoundtrip} rows, expected 3`);
+}
+if (roundtripSalary !== "650000") {
+  problems.push(`re-importing this app's own CSV export lost row 1's own salary (read back "${roundtripSalary}")`);
 }
 
 // Back to the single-scenario view for the screenshots, and to leave the

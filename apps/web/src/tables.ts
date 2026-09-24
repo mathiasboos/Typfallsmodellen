@@ -560,14 +560,14 @@ export function renderTable2(result: TypfallResult, lang: Lang): HTMLElement {
  * A field for a delimited row: quoted, with internal quotes doubled, only when
  * it contains the delimiter, a quote or a newline -- the ordinary CSV rule.
  */
-function csvField(value: string, delimiter: string): string {
+export function csvField(value: string, delimiter: string): string {
   if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
 
-function csvLine(cells: readonly string[], delimiter: string): string {
+export function csvLine(cells: readonly string[], delimiter: string): string {
   return cells.map((c) => csvField(c, delimiter)).join(delimiter);
 }
 
@@ -576,8 +576,11 @@ function csvLine(cells: readonly string[], delimiter: string): string {
  * else's with `,` fields and a decimal point. Both tables are already
  * formatted in the chosen locale (`kronor`, `percent`), so the delimiter is
  * the one thing this has to choose for itself.
+ *
+ * Exported for `mikrosimCsv.ts`, which reuses the same per-language choice
+ * for its own CSV rather than duplicating it.
  */
-function delimiterFor(lang: Lang): string {
+export function delimiterFor(lang: Lang): string {
   return lang === "sv" ? ";" : ",";
 }
 
