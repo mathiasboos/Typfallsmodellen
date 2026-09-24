@@ -904,10 +904,27 @@ export function renderTaxChart(result: TypfallResult, view: FigureView): HTMLEle
  * `mikrosim.ts`'s own `computeOneRow`/`recomputeAll`) reads as all zeros
  * here, the same way a zero-value band already draws invisibly everywhere
  * else in this file -- it just shows as an empty column, not an error.
+ *
+ * `monthly` is a toggle local to this chart (`mikrosim.ts`'s own
+ * `chartMonthly`), not the app-wide Årsvis/Månadsvis switch (`main.ts`'s
+ * `view.monthly`) -- the Results table above always shows annual figures, so
+ * only the bars and the Bruttopension labels below switch. `Table1Row`
+ * already carries both `.adjusted` (annual) and `.monthly` (`.adjusted / 12`,
+ * `result.ts`), so this is a plain field choice, no new arithmetic.
+ *
+ * Each bar's own Bruttopension total (`Table1Key.TotalGross`) is labelled
+ * above it -- `result.ts`'s `closeRetirementYear` builds `TotalGross` as
+ * exactly the sum of the seven bands stacked here, so the label sits right
+ * at each bar's own top -- but only for up to 10 rows: past that the labels
+ * would overlap and clutter more than they inform, so none are drawn at all
+ * rather than some.
  */
-export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang): HTMLElement {
-  const valueOf = (row: MikrosimRow, key: Table1Key): number =>
-    row.result?.table1.find((r) => r.key === key)?.adjusted ?? 0;
+export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang, monthly: boolean): HTMLElement {
+  const valueOf = (row: MikrosimRow, key: Table1Key): number => {
+    const found = row.result?.table1.find((r) => r.key === key);
+    if (!found) return 0;
+    return monthly ? found.monthly : found.adjusted;
+  };
   const columnLabel = (key: Table1Key): ((l: Lang) => string) => {
     const col = OUTPUT_COLUMNS.find((c) => c.key === key)!;
     return (l) => headerName(col, l);
@@ -972,13 +989,21 @@ export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang): H
     ...rows.map((row) => bands.reduce((sum, s) => sum + Math.max(s.get(row), 0), 0)),
     1,
   );
-  const axis = vertical(max);
+  // A row's own Bruttopension label sits right above its bar; past 10 rows
+  // none are drawn at all, so this extra headroom is only reserved when it
+  // is actually needed.
+  const showValues = rows.length > 0 && rows.length <= 10;
+  const axis = vertical(showValues ? max * 1.15 : max);
   const y = axis.y;
 
   gridlines(svg, axis, lang);
   stack(svg, rows, bands, y, centre, width);
-  rows.forEach((_row, i) => {
+  rows.forEach((row, i) => {
     svg.append(label(String(i + 1), centre(i), PLOT.bottom + 16, "tick tick-x"));
+    if (showValues) {
+      const brutto = valueOf(row, Table1Key.TotalGross);
+      svg.append(label(kronor(brutto, lang), centre(i), y(brutto) - 6, "tick tick-x mikrosim-bar-value"));
+    }
   });
 
   const legendSeries = visibleSeries(rows, bands);

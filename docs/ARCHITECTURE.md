@@ -877,6 +877,30 @@ until now: the Privat pensionssparande column's own `info` tooltip was reworded 
 ("Har ingen effekt för år före inställningen \"Sparandet börjar år\" i Avancerat läge.") rather than
 changing any behaviour.
 
+**The Inputs/Results tables' own column headers read 8px bold, on request** — matching the body cells'
+own 8px (set on `.mikrosim-table` itself, Phase 12 above), but the headers needed their own override:
+`.table thead th` (the app-wide table style) sets `0.76rem`/`600` at the same selector specificity as
+a plain `.mikrosim-table thead th` would, so whichever rule happens to come later in the stylesheet
+wins regardless of which one "looks like" it should apply — accidental, not a deliberate choice.
+`.mikrosim-table.table thead th` (both classes, already both present on every Mikrosim `<table>`) has
+strictly higher specificity, so it wins independent of source order.
+
+**The chart's own Årsvis/Månadsvis toggle, and a Bruttopension label per bar, both on request.** A
+small `.panel-toggle` local to `mikrosim.ts` (`chartMonthly`, default `false`) sits above the chart —
+distinct from `main.ts`'s app-wide Årsvis/Månadsvis switch (`view.monthly`, which scales Table 2 and
+the three figures), since Mikrosim's own Results table always shows annual figures regardless of
+either toggle. `renderMikrosimChart` takes `monthly: boolean` and reads `Table1Row.monthly` (already
+`adjusted / 12`, `result.ts`) instead of `.adjusted` when it's set — a plain field choice, no new
+arithmetic. Each bar also gets its own Bruttopension figure (`Table1Key.TotalGross`) labelled directly
+above it, in the same annual/monthly unit as the toggle: `result.ts`'s `closeRetirementYear` builds
+`TotalGross` as exactly the sum of the seven bands stacked here (`v.income.get(par)` is zeroed just
+before that sum, so nothing outside the seven bands enters it), so the label lands right at each bar's
+own top by construction, not by a separate lookup that could disagree with the bar's own height. Past
+10 rows, no labels are drawn at all — not some of them — since they would start overlapping and
+clutter more than they inform; `vertical()`'s own multiplier is bumped an extra 15% only when labels
+will actually be drawn, reserving headroom for the tallest bar's own label without changing every
+other chart's shared vertical-scale headroom.
+
 ### Table 2's own column tooltips, and Ordlista
 
 Two follow-on requests, both about explaining terms rather than adding a new calculation:

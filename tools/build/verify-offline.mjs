@@ -1602,6 +1602,21 @@ if (mikrosimLabels.length !== 2 || !mikrosimLabels[0] || !mikrosimLabels[1]) {
   problems.push(`expected two Mikrosim table labels (Inputs, Results), found ${JSON.stringify(mikrosimLabels)}`);
 }
 
+// Both tables' own column headers, not just their body cells, read 8px bold.
+const mikrosimHeadStyle = await tab
+  .locator('[data-role="mikrosim-inputs-table"] thead th')
+  .nth(2)
+  .evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { fontSize: cs.fontSize, fontWeight: cs.fontWeight };
+  });
+console.log(`mikrosim head style: ${mikrosimHeadStyle.fontSize} / ${mikrosimHeadStyle.fontWeight}`);
+if (mikrosimHeadStyle.fontSize !== "8px" || Number(mikrosimHeadStyle.fontWeight) < 700) {
+  problems.push(
+    `the Mikrosim inputs table's own column headers read ${mikrosimHeadStyle.fontSize}/${mikrosimHeadStyle.fontWeight}, expected 8px/700+`,
+  );
+}
+
 // There is no "Beräkna" button to look for -- confirm outright.
 const mikrosimCalcButton = await tab.locator('[data-action="calculate-mikrosim"]').count();
 if (mikrosimCalcButton !== 0) {
@@ -1719,6 +1734,44 @@ if (mikrosimBarsBeforeRemove === 0) {
 if (mikrosimLegendItems === 0 || mikrosimLegendItems > 7) {
   problems.push(`the Mikrosim chart legend has ${mikrosimLegendItems} entries, expected 1-7`);
 }
+
+// A row's own Bruttopension total is labelled above its bar -- annual by
+// default, matching the Results table's own "Brutto-pension" column exactly
+// (both read the same `TotalGross`, and the sum of the seven stacked bands
+// equals it by construction) -- with 4 rows, at or under the 10-row cap.
+const mikrosimBrutto = await mikrosimResultCell(0, 2).textContent();
+const mikrosimBarValueLabels = await mikrosimChart.locator(".mikrosim-bar-value").allTextContents();
+console.log(`mikrosim brutto : table "${mikrosimBrutto}", chart labels ${JSON.stringify(mikrosimBarValueLabels)}`);
+if (mikrosimBarValueLabels.length !== 4) {
+  problems.push(
+    `the Mikrosim chart shows ${mikrosimBarValueLabels.length} Bruttopension label(s), expected 4 (one per row, at or under the 10-row cap)`,
+  );
+}
+if (mikrosimBarValueLabels[0] !== mikrosimBrutto?.trim()) {
+  problems.push(
+    `the chart's own row-1 Bruttopension label ("${mikrosimBarValueLabels[0]}") doesn't match the Results table's own value ("${mikrosimBrutto}")`,
+  );
+}
+
+// The chart's own Årsvis/Månadsvis toggle is local to the chart -- it moves
+// the bars and this label, never the Results table above, which always
+// reads annual.
+const mikrosimChartToggle = tab.locator(".mikrosim-panel .panel-toggle").last();
+await mikrosimChartToggle.locator("button", { hasText: "Månadsvis" }).click();
+await tab.waitForTimeout(100);
+const mikrosimBarValueLabelsMonthly = await mikrosimChart.locator(".mikrosim-bar-value").allTextContents();
+const mikrosimBruttoAfterToggle = await mikrosimResultCell(0, 2).textContent();
+console.log(`mikrosim brutto (månadsvis): chart "${mikrosimBarValueLabelsMonthly[0]}", table "${mikrosimBruttoAfterToggle}"`);
+if (mikrosimBarValueLabelsMonthly[0] === mikrosimBarValueLabels[0]) {
+  problems.push("switching the Mikrosim chart to Månadsvis did not change its own Bruttopension label");
+}
+if (mikrosimBruttoAfterToggle !== mikrosimBrutto) {
+  problems.push(
+    "switching the Mikrosim chart's own Årsvis/Månadsvis toggle changed the Results table too, expected it to stay annual",
+  );
+}
+await mikrosimChartToggle.locator("button", { hasText: "Årsvis" }).click();
+await tab.waitForTimeout(100);
 
 // Removing a row drops the count, keeps the remaining rows' own values, and
 // the chart's own bar count drops with it.
@@ -1878,6 +1931,22 @@ if (roundtripSalary !== "650000") {
 }
 if ((roundtripOutput ?? "").trim() === "") {
   problems.push("re-importing this app's own CSV export left row 1 uncalculated");
+}
+
+// Past 10 rows, no Bruttopension labels are drawn at all -- not some of
+// them -- since they would overlap and clutter more than they inform.
+for (let i = 0; i < 8; i += 1) {
+  await tab.locator('[data-action="add-mikrosim-row"]').click();
+}
+await tab.waitForTimeout(100);
+const mikrosimRowsOver10 = await mikrosimRowCount("inputs");
+const mikrosimBarValueLabelsOver10 = await mikrosimChart.locator(".mikrosim-bar-value").count();
+console.log(`mikrosim >10 rows: ${mikrosimRowsOver10} rows, ${mikrosimBarValueLabelsOver10} Bruttopension label(s)`);
+if (mikrosimRowsOver10 <= 10) {
+  problems.push(`expected more than 10 Mikrosim rows for this check, found ${mikrosimRowsOver10}`);
+}
+if (mikrosimBarValueLabelsOver10 !== 0) {
+  problems.push(`the Mikrosim chart shows ${mikrosimBarValueLabelsOver10} Bruttopension label(s) with over 10 rows, expected 0`);
 }
 
 // Back to the single-scenario view for the screenshots, and to leave the

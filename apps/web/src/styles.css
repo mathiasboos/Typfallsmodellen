@@ -686,6 +686,11 @@ body {
 .mikrosim-table { table-layout: auto; font-size: 8px; }
 .mikrosim-table thead { position: sticky; top: 0; z-index: 1; }
 .mikrosim-table th, .mikrosim-table td { white-space: nowrap; }
+/* `.table thead th` (below) sets its own 0.76rem/600 at equal selector
+   specificity to a plain `.mikrosim-table thead th` -- the extra `.table`
+   class here (already on every Mikrosim `<table>`) is what makes this win
+   regardless of the two rules' order in the file. */
+.mikrosim-table.table thead th { font-size: 8px; font-weight: 700; }
 .mikrosim-table td.num { text-align: right; }
 .mikrosim-rownum { color: var(--text-muted); text-align: right; }
 .mikrosim-status { width: 1.4em; text-align: center; }
@@ -914,6 +919,9 @@ body {
 .tick-y { text-anchor: end; }
 .tick-x { text-anchor: middle; }
 .tick-year { font-size: 10px; }
+/* Mikrosim chart's own per-bar Bruttopension label -- darker and bolder than
+   a plain axis tick so it reads as a value, not another axis mark. */
+.mikrosim-bar-value { fill: var(--text-primary); font-weight: 700; }
 .axis-title { fill: var(--text-secondary); font-size: 11px; font-family: var(--font); }
 .line { stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 /* Figur 1 separates its three views by dash as well as by hue, and Figur 2 its

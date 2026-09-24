@@ -84,6 +84,7 @@ import { fieldSet, span } from "./controls.js";
 import { csvExportButton } from "./export.js";
 import { kronor } from "./format.js";
 import type { Lang } from "./i18n.js";
+import { t } from "./i18n.js";
 import { mikrosimRowsToCsv, parseMikrosimCsv } from "./mikrosimCsv.js";
 import { headCell } from "./tables.js";
 
@@ -501,6 +502,38 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
   const outputTbody = resultsTable.createTBody();
   resultsScroll.append(resultsTable);
 
+  // Local to the chart, not the app-wide Årsvis/Månadsvis toggle (`main.ts`'s
+  // `view.monthly`, which scales Table 2 and the three figures) -- Mikrosim's
+  // own Results table always shows annual figures regardless, so this only
+  // ever affects the chart's own bars and value labels. Starts on "Årsvis" to
+  // match the chart's own figures before this toggle existed.
+  let chartMonthly = false;
+
+  const chartToggle = document.createElement("div");
+  chartToggle.className = "panel-toggle";
+  chartToggle.setAttribute("role", "group");
+
+  function buildChartToggle(): void {
+    chartToggle.replaceChildren();
+    chartToggle.setAttribute("aria-label", t("show", currentLang));
+    const choices: readonly { monthly: boolean; label: string }[] = [
+      { monthly: false, label: t("yearlyView", currentLang) },
+      { monthly: true, label: t("monthlyView", currentLang) },
+    ];
+    for (const choice of choices) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = choice.label;
+      button.className = choice.monthly === chartMonthly ? "panel-btn active" : "panel-btn";
+      button.addEventListener("click", () => {
+        chartMonthly = choice.monthly;
+        buildChartToggle();
+        refreshChart();
+      });
+      chartToggle.append(button);
+    }
+  }
+
   const chartBox = document.createElement("div");
   chartBox.className = "mikrosim-chart";
 
@@ -508,7 +541,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
    * a single-cell edit as well as a full `redraw()`, since it always rebuilds
    * from scratch regardless of caller. */
   function refreshChart(): void {
-    chartBox.replaceChildren(renderMikrosimChart(rows, currentLang));
+    chartBox.replaceChildren(renderMikrosimChart(rows, currentLang, chartMonthly));
   }
 
   element.append(
@@ -520,6 +553,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     inputsScroll,
     resultsLabel,
     resultsScroll,
+    chartToggle,
     chartBox,
   );
 
@@ -676,6 +710,7 @@ export function createMikrosimPanel(lang: Lang): MikrosimHandle {
     inputTbody.replaceChildren(...views.map((v) => v.inputRow));
     outputTbody.replaceChildren(...views.map((v) => v.outputRow));
     addButton.disabled = rows.length >= MAX_ROWS;
+    buildChartToggle();
     refreshChart();
   }
 
