@@ -736,7 +736,10 @@ twelve columns matches a strictly increasing, adjacency-preserving walk through 
 Mikrosim's twelve columns at all — `PrivateSaving` is the one immediately after `OccupationalPension`,
 exactly where "Eget sparande" sits after "Tjänstepension" in the real header row. The same walk gives
 `DisposableAtRetirement` ("dispEfterSkatt") for "Disponibel inkomst", not `DisposableBeforeRetirement`
-("dispInkomst", the year *before* retirement).
+("dispInkomst", the year *before* retirement). (On request, both this output column's own label and
+the input column driving it were later renamed on screen to "Privat pensionsförsäkring" — the mapping
+above is about the real sheet's own header text, which the port's current display label has since
+diverged from.)
 
 **Mikrosim's own column headers are their own hardcoded table, not `apps/web/src/i18n.ts`'s `t()`.**
 Cross-checking the real header row against `t()` turns up genuine wording mismatches for the same
@@ -808,7 +811,14 @@ parser would be a large new dependency against the app's tracked single-file bud
 `mikrosimCsv.ts`'s `parseMikrosimCsv` matches the nine input columns **by header text**, in either
 language, not by position, so a hand-adapted real Excel export — one that dropped or reordered a
 column — still lines up; a missing required column refuses the whole file, naming it, while a bad cell
-or an invalid scheme flags only that row. Every numeric cell, on both import and export, is a plain
+or an invalid scheme flags only that row. Since the Privat pensionsförsäkring input and its own output
+column now share the exact same label, `findIndex` -- which returns the first match -- resolves the
+input column correctly only because inputs are always written before outputs in this app's own
+export; a file whose columns have been reordered so that the *output* Privat pensionsförsäkring
+column comes first would read that column's own (blank, for an uncalculated row) values into the
+input instead. Not guarded against: no existing export or import path produces that ordering, and the
+scrambled-order test/check only exercises the nine input headers on their own, never alongside the
+output ones. Every numeric cell, on both import and export, is a plain
 unformatted number (no thousands grouping, a decimal point) — a deliberate departure from
 `table1ToCsv`'s locale-formatted style, since that export is read once in Excel and never read back,
 while Mikrosim's file is a genuine round trip and a locale-formatted number would either need

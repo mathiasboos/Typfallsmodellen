@@ -297,16 +297,16 @@ export const INPUT_COLUMNS: readonly InputColumnDef[] = [
     clamp: (v) => v,
   },
   {
-    sv: "Privat pensionssparande (med avdragsrätt)",
-    en: "Private pension saving (tax-deductible)",
+    sv: "Privat pensionsförsäkring",
+    en: "Private pension insurance",
     control: { kind: "number", bounds: IPS },
     info: (l) =>
       say(
         l,
-        "Över 1 tolkas som kronor/månad; 1 eller mindre tolkas som andel av inkomsten (samma regel som i " +
-          "Avancerat läge). Har ingen effekt för år före inställningen \"Sparandet börjar år\" i Avancerat läge.",
-        "Above 1 is read as kronor/month; 1 or less is read as a share of income (the same rule as in " +
-          "Advanced mode). Has no effect for years before the \"Saving starts in\" setting in Advanced mode.",
+        "Månadssparande i kr. Beräkningen utgår ifrån att du sparar fram till pensionen. För att ändra, " +
+          "välj Avancerat/Privat sparande och tjänstepension/Sparandet börjar år.",
+        "Monthly saving in kr. The calculation assumes you save until retirement. To change this, go to " +
+          "Advanced/Private saving and occupational pension/Saving starts in.",
       ),
     get: (r) => r.ipsMonthly,
     set: (r, v) => (r.ipsMonthly = v),
@@ -331,14 +331,18 @@ export interface OutputColumnDef {
 
 /**
  * Mikrosim's twelve output columns, in the real sheet's own order
- * (`reference/golden/golden-cases.csv`'s own header row). `Eget sparande` is
- * `Table1Key.PrivateSaving` ("ips"), not `PrivateSavingAfterTax` ("pps") --
- * confirmed by laying the real header row against `tables.ts`'s
- * `TABLE1_LINES` order: every column matches a strictly-increasing,
- * adjacency-preserving walk through it with `TotalGross` pulled forward, and
- * `PrivateSavingAfterTax` is not one of Mikrosim's twelve columns at all --
- * `PrivateSaving` is the one immediately after `OccupationalPension`, exactly
- * where "Eget sparande" sits after "Tjänstepension" in the real header row.
+ * (`reference/golden/golden-cases.csv`'s own header row). The real sheet's
+ * own "Eget sparande" column is `Table1Key.PrivateSaving` ("ips"), not
+ * `PrivateSavingAfterTax` ("pps") -- confirmed by laying the real header row
+ * against `tables.ts`'s `TABLE1_LINES` order: every column matches a
+ * strictly-increasing, adjacency-preserving walk through it with
+ * `TotalGross` pulled forward, and `PrivateSavingAfterTax` is not one of
+ * Mikrosim's twelve columns at all -- `PrivateSaving` is the one immediately
+ * after `OccupationalPension`, exactly where "Eget sparande" sits after
+ * "Tjänstepension" in the real header row. (On request, this column's own
+ * on-screen/CSV label is "Privat pensionsförsäkring," matching the renamed
+ * input column it is driven by -- the `PrivateSaving` mapping above is about
+ * the *real sheet's* header text, not this port's current display label.)
  * `DisposableAtRetirement` ("dispEfterSkatt"), not `DisposableBeforeRetirement`
  * ("dispInkomst", the year *before* retirement), for the same reason.
  */
@@ -351,7 +355,7 @@ export const OUTPUT_COLUMNS: readonly OutputColumnDef[] = [
   { sv: "Garanti-pension", en: "Guarantee pension", key: Table1Key.GuaranteePension },
   { sv: "P_tillägg", en: "Income pension supplement", key: Table1Key.IncomePensionSupplement },
   { sv: "Tjänstepension", en: "Occupational pension", key: Table1Key.OccupationalPension },
-  { sv: "Eget sparande", en: "Private saving", key: Table1Key.PrivateSaving },
+  { sv: "Privat pensionsförsäkring", en: "Private pension insurance", key: Table1Key.PrivateSaving },
   { sv: "Efter skatt", en: "After tax", key: Table1Key.PensionAfterTax },
   { sv: "Bostadstillägg + ÄFS", en: "Housing supplement + old-age support", key: Table1Key.BenefitsAtRetirement },
   { sv: "Disponibel inkomst", en: "Disposable income", key: Table1Key.DisposableAtRetirement },

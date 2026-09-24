@@ -1749,9 +1749,9 @@ const mikrosimCsvText = mikrosimCsv.buffer.toString("utf8");
 console.log(`mikrosim CSV    : ${mikrosimCsv.filename}, ${mikrosimCsv.buffer.length} bytes`);
 const expectedHeader =
   "Födelseår;Börjar arbeta vid ålder;Går i pension vid ålder;Årslön;Årlig inflation;Real tillväxt;" +
-  "Real fondavkastning;Privat pensionssparande (med avdragsrätt);Välj tjänstepension;Slutlön;" +
+  "Real fondavkastning;Privat pensionsförsäkring;Välj tjänstepension;Slutlön;" +
   "Brutto-pension;Inkomstpension;Tilläggspension;Premiepension;Garanti-pension;P_tillägg;" +
-  "Tjänstepension;Eget sparande;Efter skatt;Bostadstillägg + ÄFS;Disponibel inkomst";
+  "Tjänstepension;Privat pensionsförsäkring;Efter skatt;Bostadstillägg + ÄFS;Disponibel inkomst";
 if (!mikrosimCsvText.includes(expectedHeader)) {
   problems.push(`the Mikrosim CSV's header line doesn't match the workbook's own Mikrosim columns`);
 }
@@ -1764,7 +1764,7 @@ if (!mikrosimCsvText.includes("650000")) {
 // imported rows are computed immediately, no click needed.
 const scrambledCsv =
   "Välj tjänstepension;Födelseår;Årslön;Börjar arbeta vid ålder;Går i pension vid ålder;" +
-  "Årlig inflation;Real tillväxt;Real fondavkastning;Privat pensionssparande (med avdragsrätt)\n" +
+  "Årlig inflation;Real tillväxt;Real fondavkastning;Privat pensionsförsäkring\n" +
   "2;1980;500000;22;65;0;0;0,017;0\n" +
   "4;1965;300000;19;66;0;0;0,017;0\n";
 await tab
@@ -1820,7 +1820,7 @@ await tab.locator('[data-action="mikrosim-import-file"]').setInputFiles({
   mimeType: "text/csv",
   buffer: Buffer.from(
     "Födelseår;Börjar arbeta vid ålder;Går i pension vid ålder;Årslön;Årlig inflation;Real tillväxt;" +
-      "Real fondavkastning;Privat pensionssparande (med avdragsrätt);Välj tjänstepension\n" +
+      "Real fondavkastning;Privat pensionsförsäkring;Välj tjänstepension\n" +
       "1970;20;66;480000;0;0;0,017;0;3\n" +
       "1970;20;66;480000;0;0;0,017;0;99\n",
     "utf8",

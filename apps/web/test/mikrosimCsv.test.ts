@@ -13,7 +13,7 @@ import { newMikrosimRow } from "../src/mikrosim.js";
 describe("parsing a Mikrosim CSV", () => {
   const HEADER =
     "Välj tjänstepension;Födelseår;Årslön;Börjar arbeta vid ålder;Går i pension vid ålder;" +
-    "Årlig inflation;Real tillväxt;Real fondavkastning;Privat pensionssparande (med avdragsrätt)";
+    "Årlig inflation;Real tillväxt;Real fondavkastning;Privat pensionsförsäkring";
 
   it("matches columns by header text, in scrambled order, not by position", () => {
     const csv = `${HEADER}\n3;1970;480000;20;68;0,02;0,01;0,03;500\n`;
@@ -35,7 +35,7 @@ describe("parsing a Mikrosim CSV", () => {
   it("accepts a ,-delimited, .-decimal file, a leading BOM and a #-comment provenance line", () => {
     const en =
       "Occupational pension scheme,Birth year,Annual salary,Starts working at age,Retires at age," +
-      "Yearly inflation,Real growth,Real fund return,Private pension saving (tax-deductible)";
+      "Yearly inflation,Real growth,Real fund return,Private pension insurance";
     const csv = `﻿# exported by typfallsmodellen\n${en}\n1,1959,462000,23,66,0,0,0.017,0\n`;
     const result = parseMikrosimCsv(csv, "en");
     expect(result.fileError).toBeUndefined();
