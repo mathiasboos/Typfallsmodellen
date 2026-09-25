@@ -8,11 +8,20 @@
  * first alone, which is why `main.ts` could get this far passing an empty
  * settings map. This panel is the second.
  *
- * Thirty of the sheet's seventy-six rows are here, grouped as sections 3.2
- * to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag" half --
- * its "Barnår" half, `rng_Född_Barn1..4`, lives in pgb.ts instead, alongside
- * the sheet's other three pension-qualifying-amount sources). The rest are
- * left out on purpose: some
+ * Thirty of the sheet's seventy-six rows are here, mostly grouped as sections
+ * 3.2 to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag"
+ * half -- its "Barnår" half, `rng_Född_Barn1..4`, lives in pgb.ts instead,
+ * alongside the sheet's other three pension-qualifying-amount sources). Two
+ * departures from the manual's own grouping, both on request: section 3.2's
+ * own combined group split into "Privat sparande" (the private-saving half)
+ * and "Tjänstepension" (the occupational half, which also picked up row 46's
+ * flexpension setting -- the manual files that one under 3.6, but it is an
+ * occupational-scheme premium through and through); and row 103/43 (the
+ * "Slutlön" settings, manual 3.6's other two rows) moved out of a now-empty
+ * "Övrigt" group entirely, into `salaryPath.ts`'s own "Salary" section
+ * instead, alongside the wage path they describe -- see `FINAL_SALARY_YEARS`/
+ * `PENSION_SAME_YEAR_AS_FINAL_SALARY` below and that file's own comment on
+ * why. The rest are
  * are Excel's own business (`Visa_process`, `rngTurboMode`, `Verbose`), some
  * feed a sheet this port does not have (`Rng_belopp12`, `Alt_p_age`,
  * `Rng_compareTo` are Mikrosim's), some are not ported (`Wealth` and the
@@ -121,9 +130,9 @@ const WITHDRAWAL_SHARE: readonly Choice[] = [
 
 export const GROUPS: readonly Group[] = [
   {
-    key: "saving",
+    key: "privateSaving",
     section: "3.2",
-    title: text("Privat sparande och tjänstepension", "Private saving and occupational pension"),
+    title: text("Privat sparande", "Private savings"),
     settings: [
       {
         // row 11 "Privat pensionssparande belopp" / "kronor per månad, sedan 2026"
@@ -164,6 +173,23 @@ export const GROUPS: readonly Group[] = [
         set: (privateSavingKind) => ({ privateSavingKind }),
       },
       {
+        // row 18 "Temporärt uttag av privatsparande (ange antal år)" / "Livsvarigt"
+        key: "tempIpsUttag",
+        row: 18,
+        control: years(0, 40),
+        label: text("Temporärt uttag av privat sparande", "Private saving drawn over"),
+        hint: text("antal år, 0 = livsvarigt", "number of years, 0 = lifelong"),
+        get: (c) => c.tempIpsUttag,
+        set: (tempIpsUttag) => ({ tempIpsUttag }),
+      },
+    ],
+  },
+  {
+    key: "occupational",
+    section: "3.2",
+    title: text("Tjänstepension", "Occupational pension"),
+    settings: [
+      {
         // row 14 "Uttagsålder för tjänstepension (och ev. IPS eller pensionsförsäkring)"
         key: "tjpPar",
         row: 14,
@@ -184,16 +210,6 @@ export const GROUPS: readonly Group[] = [
         set: (tempTjpUttag) => ({ tempTjpUttag }),
       },
       {
-        // row 18 "Temporärt uttag av privatsparande (ange antal år)" / "Livsvarigt"
-        key: "tempIpsUttag",
-        row: 18,
-        control: years(0, 40),
-        label: text("Temporärt uttag av privat sparande", "Private saving drawn over"),
-        hint: text("antal år, 0 = livsvarigt", "number of years, 0 = lifelong"),
-        get: (c) => c.tempIpsUttag,
-        set: (tempIpsUttag) => ({ tempIpsUttag }),
-      },
-      {
         // row 15 "Arvsvinster tjänstepension". Manual 3.2: with återbetalnings-
         // skydd the capital goes to survivors, so no inheritance gains accrue.
         key: "occupationalInheritanceGains",
@@ -206,6 +222,26 @@ export const GROUPS: readonly Group[] = [
         ),
         get: (c) => c.occupationalInheritanceGains,
         set: (occupationalInheritanceGains) => ({ occupationalInheritanceGains }),
+      },
+      {
+        // row 46 "Flexpension för ITP 1 och SAF-LO från och med 2014". Manual
+        // 3.6: "lägger till en extra premie till de ovan nämnda
+        // tjänstepensionsavtalen från 2014 och framåt. Anges 0 läggs ingen
+        // premie till, om större procentsats än 0 läggs den angivna premien
+        // till" -- already wired into itp.ts/safLo.ts (`flexPension`, added
+        // straight onto both agreements' own premium rates for `year > 2013`).
+        // Grouped here rather than under its own manual section: it is an
+        // occupational-scheme premium, on request.
+        key: "flexPension",
+        row: 46,
+        control: percent,
+        label: text("Flexpension, ITP 1 och SAF-LO", "Flex pension, ITP 1 and SAF-LO"),
+        hint: text(
+          "Extra premie i %, från och med 2014. 0 = ingen premie",
+          "Extra premium in %, from 2014 onward. 0 = no premium",
+        ),
+        get: (c) => c.flexPension,
+        set: (flexPension) => ({ flexPension }),
       },
     ],
   },
@@ -476,82 +512,74 @@ export const GROUPS: readonly Group[] = [
       },
     ],
   },
-  {
-    key: "other",
-    section: "3.6",
-    title: text("Övrigt", "Other"),
-    settings: [
-      {
-        // row 103 "Slutlön: Medel av de senaste angivna årens inkomster"
-        key: "finalSalaryYears",
-        row: 103,
-        control: years(1, 40),
-        label: text("Slutlönen är medel av de senaste", "The final salary averages the last"),
-        hint: text("årens inkomster, och används i Pensionsinkomst", "years, and is used in Pension income"),
-        get: (c) => c.finalSalaryYears,
-        set: (finalSalaryYears) => ({ finalSalaryYears }),
-      },
-      {
-        // row 43 "(1)-> Pensioneringen sker samma år som slutlönen" -- the
-        // row's own "(1)->" shorthand reads like a flag, but manual 3.6 is
-        // explicit that it is not one: "Om 0 anges sker pensionering samma år
-        // som slutlön. Om större siffra än 0 anges sker pensionering så många
-        // år efter slutlönen. [Detta] påverkar resultatet som skrivs ut i
-        // Tabell 1." (0 = same year as the final salary, any larger number =
-        // that many years after it; the manual's own last sentence scopes the
-        // whole effect to Table 1.) `adjustmentFactors` (packages/engine/src/
-        // model/result.ts) reads it as `timeLag`, added into the price-index
-        // lookup that feeds `beforeRetirement` -- which only rescales the
-        // *price-adjusted* ("Fasta priser") column of Table 1's Slutlön/Lön
-        // efter skatt/Disponibel inkomst rows. It does not move `par` (the
-        // retirement age) or anything in Table 2: raising this to 5 does NOT
-        // delay when Income/Premium/Occupational pension start being paid by
-        // five years, confirmed against a user's own test after this control
-        // first shipped -- only Table 1's own real-terms Slutlön figure moves.
-        // A genuine "stop working before the pension starts" scenario is
-        // modeled today by setting "Går i pension vid ålder" to the later age
-        // and zeroing the gap years in the own salary-path grid instead; this
-        // setting is a narrower price-basis knob the manual itself scopes to
-        // Table 1, not a withdrawal-timing control. A checkbox here (writing
-        // only 0 or 1) could still only ever reach a one-year shift, which is
-        // why it is a plain year count now -- that part of the fix stands
-        // regardless of the setting's own narrow real-world scope.
-        key: "pensionSameYearAsFinalSalary",
-        row: 43,
-        control: years(0, 40),
-        label: text("Slutlönens referensår efter pensioneringen", "Final salary's reference year after retiring"),
-        hint: text(
-          "Justerar bara Slutlönens belopp i Tabell 1 (Fasta priser) -- flyttar inte när pensionen betalas ut",
-          "Only adjusts the Slutlön figure in Table 1 (Fasta priser) -- does not move when the pension itself starts",
-        ),
-        get: (c) => c.pensionSameYearAsFinalSalary,
-        set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
-      },
-      {
-        // row 46 "Flexpension för ITP 1 och SAF-LO från och med 2014". Manual
-        // 3.6: "lägger till en extra premie till de ovan nämnda
-        // tjänstepensionsavtalen från 2014 och framåt. Anges 0 läggs ingen
-        // premie till, om större procentsats än 0 läggs den angivna premien
-        // till" -- already wired into itp.ts/safLo.ts (`flexPension`, added
-        // straight onto both agreements' own premium rates for `year > 2013`),
-        // just not reachable from this panel before now.
-        key: "flexPension",
-        row: 46,
-        control: percent,
-        label: text("Flexpension, ITP 1 och SAF-LO", "Flex pension, ITP 1 and SAF-LO"),
-        hint: text(
-          "Extra premie i %, från och med 2014. 0 = ingen premie",
-          "Extra premium in %, from 2014 onward. 0 = no premium",
-        ),
-        get: (c) => c.flexPension,
-        set: (flexPension) => ({ flexPension }),
-      },
-    ],
-  },
 ];
 
-/** Every exposed setting, flattened -- what the tests walk. */
-export const SETTINGS: readonly Setting[] = GROUPS.flatMap((g) => g.settings);
+/**
+ * Manual 3.6's "Slutlön" pair -- moved out of `GROUPS` entirely, on request,
+ * since the now-empty "Övrigt" group they used to share with `flexPension`
+ * (moved into "occupational" above) had nothing else left in it. Both settings
+ * describe the derived final-salary figure a typed wage path (`salaryPath.ts`)
+ * also feeds, so they render inside that file's own "Salary" section instead
+ * of getting a `<details>` of their own here -- `salaryPath.ts` imports these
+ * two consts directly and renders them with the same `fieldSet` builders this
+ * file's own loop below uses for a plain number setting.
+ */
+export const FINAL_SALARY_YEARS: Setting = {
+  // row 103 "Slutlön: Medel av de senaste angivna årens inkomster"
+  key: "finalSalaryYears",
+  row: 103,
+  control: years(1, 40),
+  label: text("Slutlönen är medel av de senaste", "The final salary averages the last"),
+  hint: text("årens inkomster, och används i Pensionsinkomst", "years, and is used in Pension income"),
+  get: (c) => c.finalSalaryYears,
+  set: (finalSalaryYears) => ({ finalSalaryYears }),
+};
+
+export const PENSION_SAME_YEAR_AS_FINAL_SALARY: Setting = {
+  // row 43 "(1)-> Pensioneringen sker samma år som slutlönen" -- the row's
+  // own "(1)->" shorthand reads like a flag, but manual 3.6 is explicit that
+  // it is not one: "Om 0 anges sker pensionering samma år som slutlön. Om
+  // större siffra än 0 anges sker pensionering så många år efter slutlönen.
+  // [Detta] påverkar resultatet som skrivs ut i Tabell 1." (0 = same year as
+  // the final salary, any larger number = that many years after it; the
+  // manual's own last sentence scopes the whole effect to Table 1.)
+  // `adjustmentFactors` (packages/engine/src/model/result.ts) reads it as
+  // `timeLag`, added into the price-index lookup that feeds
+  // `beforeRetirement` -- which only rescales the *price-adjusted* ("Fasta
+  // priser") column of Table 1's Slutlön/Lön efter skatt/Disponibel inkomst
+  // rows. It does not move `par` (the retirement age) or anything in Table 2:
+  // raising this to 5 does NOT delay when Income/Premium/Occupational pension
+  // start being paid by five years, confirmed against a user's own test after
+  // this control first shipped -- only Table 1's own real-terms Slutlön
+  // figure moves. A genuine "stop working before the pension starts" scenario
+  // is modeled today by setting "Går i pension vid ålder" to the later age
+  // and zeroing the gap years in the own salary-path grid instead; this
+  // setting is a narrower price-basis knob the manual itself scopes to Table
+  // 1, not a withdrawal-timing control. A checkbox here (writing only 0 or 1)
+  // could still only ever reach a one-year shift, which is why it is a plain
+  // year count now -- that part of the fix stands regardless of the
+  // setting's own narrow real-world scope.
+  key: "pensionSameYearAsFinalSalary",
+  row: 43,
+  control: years(0, 40),
+  label: text("Slutlönens referensår efter pensioneringen", "Final salary's reference year after retiring"),
+  hint: text(
+    "Justerar bara Slutlönens belopp i Tabell 1 (Fasta priser) -- flyttar inte när pensionen betalas ut",
+    "Only adjusts the Slutlön figure in Table 1 (Fasta priser) -- does not move when the pension itself starts",
+  ),
+  get: (c) => c.pensionSameYearAsFinalSalary,
+  set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
+};
+
+/** Every exposed setting, flattened -- what the tests walk. Includes
+ * `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`, which render in
+ * `salaryPath.ts` rather than in a `GROUPS`-driven `<details>` here, but are
+ * exposed settings all the same. */
+export const SETTINGS: readonly Setting[] = [
+  ...GROUPS.flatMap((g) => g.settings),
+  FINAL_SALARY_YEARS,
+  PENSION_SAME_YEAR_AS_FINAL_SALARY,
+];
 
 /**
  * A companion `<select>` beside a Setting's own percent field -- not through

@@ -442,6 +442,24 @@ if (advGroups !== 9) {
   problems.push(`advanced mode shows ${advGroups} groups, expected 9`);
 }
 
+// The old combined "saving" group split into two, on request, and "Övrigt"/
+// "Other" was removed entirely once flexPension and the two Slutlön settings
+// moved out of it -- confirm the new titles exist and the old ones don't.
+const advGroupTitles = await tab.locator(".advanced-box .adv-group summary").allTextContents();
+console.log(`advanced titles : ${JSON.stringify(advGroupTitles)}`);
+if (!advGroupTitles.includes("Privat sparande")) {
+  problems.push('expected an advanced-mode group titled "Privat sparande"');
+}
+if (!advGroupTitles.includes("Tjänstepension")) {
+  problems.push('expected an advanced-mode group titled "Tjänstepension"');
+}
+if (advGroupTitles.includes("Privat sparande och tjänstepension")) {
+  problems.push('the old combined "Privat sparande och tjänstepension" group title is still shown');
+}
+if (advGroupTitles.includes("Övrigt")) {
+  problems.push('the "Övrigt" group is still shown, expected it removed');
+}
+
 /** Opens the group holding a setting and returns its control. */
 async function setting(key) {
   const control = tab.locator(`[data-setting="${key}"]`);
@@ -1262,6 +1280,13 @@ await tab.getByLabel("Välj tjänstepension").selectOption("4");
 await tab.waitForTimeout(80);
 const tjpBeforeFlex = await shown("tjp", "monthly");
 const flexPensionField = await setting("flexPension");
+// Moved into "Tjänstepension"/"Occupational pension" from "Övrigt", on request.
+const flexPensionGroup = await flexPensionField
+  .locator("xpath=ancestor::details[1]")
+  .getAttribute("data-group");
+if (flexPensionGroup !== "occupational") {
+  problems.push(`flexPension sits in the "${flexPensionGroup}" group, expected "occupational"`);
+}
 await flexPensionField.fill("10");
 await flexPensionField.dispatchEvent("change");
 await tab.waitForTimeout(80);
@@ -1291,6 +1316,23 @@ await tab.waitForTimeout(50);
 // paid (Table 2), so this checks only the one figure it does move.
 const finalSalaryAdjustedBefore = await shown("slutlon", "adjusted");
 const pensionGapField = await setting("pensionSameYearAsFinalSalary");
+// Moved into the renamed "Salary" section (formerly "Own salary path") from
+// "Övrigt", on request -- alongside `finalSalaryYears`.
+const pensionGapGroup = await pensionGapField.locator("xpath=ancestor::details[1]").getAttribute("data-group");
+if (pensionGapGroup !== "salary-path") {
+  problems.push(`pensionSameYearAsFinalSalary sits in the "${pensionGapGroup}" group, expected "salary-path"`);
+}
+const finalSalaryYearsField = tab.locator('[data-setting="finalSalaryYears"]');
+const finalSalaryYearsGroup = await finalSalaryYearsField
+  .locator("xpath=ancestor::details[1]")
+  .getAttribute("data-group");
+if (finalSalaryYearsGroup !== "salary-path") {
+  problems.push(`finalSalaryYears sits in the "${finalSalaryYearsGroup}" group, expected "salary-path"`);
+}
+const salaryGroupTitle = await tab.locator('[data-group="salary-path"] summary').textContent();
+if (salaryGroupTitle !== "Lön") {
+  problems.push(`the salary-path section is titled "${salaryGroupTitle}", expected "Lön"`);
+}
 await pensionGapField.fill("5");
 await pensionGapField.dispatchEvent("change");
 await tab.waitForTimeout(80);

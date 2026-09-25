@@ -113,13 +113,20 @@ const advancedPanel = createAdvancedPanel(view.lang, (patch) => {
   render();
 });
 
-const salaryPath = createSalaryPath(view.lang, (path) => {
-  const next = { ...advancedInput };
-  if (path === undefined) delete next.ownIncome;
-  else next.ownIncome = path;
-  advancedInput = next;
-  render();
-});
+const salaryPath = createSalaryPath(
+  view.lang,
+  (path) => {
+    const next = { ...advancedInput };
+    if (path === undefined) delete next.ownIncome;
+    else next.ownIncome = path;
+    advancedInput = next;
+    render();
+  },
+  (patch) => {
+    advanced = { ...advanced, ...patch };
+    render();
+  },
+);
 
 const pgbGrid = createPgbGrid(view.lang, (patch) => {
   const next = { ...advancedInput };

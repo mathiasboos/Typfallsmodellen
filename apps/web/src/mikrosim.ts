@@ -342,9 +342,9 @@ export const INPUT_COLUMNS: readonly InputColumnDef[] = [
       say(
         l,
         "Månadssparande i kr. Beräkningen utgår ifrån att du sparar fram till pensionen. För att ändra, " +
-          "välj Avancerat/Privat sparande och tjänstepension/Sparandet börjar år.",
+          "välj Avancerat/Privat sparande/Sparandet börjar år.",
         "Monthly saving in kr. The calculation assumes you save until retirement. To change this, go to " +
-          "Advanced/Private saving and occupational pension/Saving starts in.",
+          "Advanced/Private savings/Saving starts in.",
       ),
     get: (r) => r.ipsMonthly,
     set: (r, v) => (r.ipsMonthly = v),

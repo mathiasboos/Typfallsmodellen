@@ -1,5 +1,17 @@
 /**
- * Egen löneutveckling -- the Indata_lista sheet, as a grid.
+ * "Salary" -- the Indata_lista sheet as a grid, renamed from "Own salary
+ * path" and, on request, now also the home for manual 3.6's "Slutlön" pair
+ * (`FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`, imported from
+ * `advanced.ts`): both describe the derived final-salary figure this file's
+ * own typed wage path also feeds, so they render here, above the path
+ * toggle, using the same `fieldSet` builders `advanced.ts`'s own loop uses
+ * for a plain number setting -- rather than in a `<details>` of their own
+ * (that used to be `advanced.ts`'s "Övrigt"/"Other" group, now removed since
+ * nothing was left in it once this and `flexPension` moved out). A second
+ * `onSettingChange` callback carries their own `ModelContext` patches up to
+ * `main.ts`'s `advanced` state, alongside the existing `onChange` for the
+ * wage path itself (a `TypfallInput` field) -- the same two-callbacks-one-
+ * component shape `pgb.ts`'s own `childBirthYears` already established.
  *
  * Manual section 3.1: tick the box and the model stops deriving the wage path
  * and reads a typed one instead, one row per age with two columns, read
@@ -33,8 +45,11 @@
  * the rounding against the unrounded path: 0.02 kr per month on the final
  * salary, and less on everything else.
  */
-import type { OwnIncomeYear } from "@typfallsmodellen/engine";
+import { defaultContext } from "@typfallsmodellen/engine";
+import type { ModelContext, OwnIncomeYear } from "@typfallsmodellen/engine";
 
+import { FINAL_SALARY_YEARS, PENSION_SAME_YEAR_AS_FINAL_SALARY } from "./advanced.js";
+import { fieldSet } from "./controls.js";
 import type { Lang } from "./i18n.js";
 
 /** The first age an own path is ever read at -- `setup.ts:139`. */
@@ -59,11 +74,15 @@ const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
 export function createSalaryPath(
   lang: Lang,
   onChange: (path: readonly OwnIncomeYear[] | undefined) => void,
+  onSettingChange: (patch: Partial<ModelContext>) => void,
 ): SalaryPathHandle {
   let currentLang = lang;
   let baseline: readonly OwnIncomeYear[] = [];
   let born = 0;
   let rows: OwnIncomeYear[] = [];
+  const relabels: ((l: Lang) => void)[] = [];
+  const restores: (() => void)[] = [];
+  const normal = defaultContext();
 
   const element = document.createElement("details");
   element.className = "adv-group";
@@ -72,6 +91,24 @@ export function createSalaryPath(
   const summary = document.createElement("summary");
   const body = document.createElement("div");
   body.className = "adv-body";
+
+  // The "Slutlön" pair (see this file's own header comment) -- plain number
+  // fields, rendered with the same builder `advanced.ts`'s own loop uses for
+  // a setting of this `control.kind`, since neither needs that loop's other
+  // branches (percent, select, check, the ipsMonthly special case).
+  const { field, number } = fieldSet(body, relabels, lang);
+  for (const setting of [FINAL_SALARY_YEARS, PENSION_SAME_YEAR_AS_FINAL_SALARY]) {
+    if (setting.control.kind !== "number") continue; // both are; guards the destructure below
+    const initial = setting.get(normal);
+    const { min, max, step } = setting.control;
+    const control = number(initial, { min, max, step }, (v) => onSettingChange(setting.set(v)));
+    control.element.dataset.setting = setting.key;
+    field(control.element, (l) => ({
+      label: setting.label(l),
+      ...(setting.hint ? { hint: setting.hint(l) } : {}),
+    }));
+    restores.push(() => control.setValue(initial));
+  }
 
   const toggleWrap = document.createElement("label");
   toggleWrap.className = "field field-check";
@@ -215,7 +252,7 @@ export function createSalaryPath(
   actions.hidden = true;
 
   const applyText = (l: Lang) => {
-    summary.textContent = say(l, "Egen löneutveckling", "Own salary path");
+    summary.textContent = say(l, "Lön", "Salary");
     toggleLabel.textContent = say(l, "Använd egen löneutveckling", "Use an own salary path");
     toggleHint.textContent = say(
       l,
@@ -239,6 +276,7 @@ export function createSalaryPath(
     relabel(l) {
       currentLang = l;
       applyText(currentLang);
+      for (const r of relabels) r(l);
     },
     setBaseline(path, bornYear) {
       baseline = path;
@@ -264,6 +302,7 @@ export function createSalaryPath(
       scroll.hidden = true;
       actions.hidden = true;
       rows = [];
+      for (const r of restores) r();
     },
   };
 }

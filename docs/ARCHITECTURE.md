@@ -314,10 +314,23 @@ row (`.adv-ips-share`) instead.
 onto both agreements' own premium rates for `year > 2013`, exactly the manual's own 3.6 description:
 "lägger till en extra premie till de ovan nämnda tjänstepensionsavtalen från 2014 och framåt. Anges 0
 läggs ingen premie till, om större procentsats än 0 läggs den angivna premien till." The setting simply
-did not have a row in `advanced.ts`'s own descriptor table yet. It sits in the "Övrigt" group (section
-3.6), the same group the manual's own table of contents puts it in — the group already existing there
-for `finalSalaryYears`/`pensionSameYearAsFinalSalary` is coincidence, not evidence the group was
-mislabelled.
+did not have a row in `advanced.ts`'s own descriptor table yet. It originally sat in the "Övrigt" group
+(section 3.6, the manual's own table-of-contents placement); on request it later moved into
+"Tjänstepension"/"Occupational pension" instead (below) — an occupational-scheme premium fits that
+group better than the manual's own section number, even though row 46 itself is still section 3.6's.
+
+**The combined "Privat sparande och tjänstepension" group split in two, and "Övrigt" was removed, both
+on request.** Section 3.2's own settings used to share one group; it is now "Privat sparande"/"Private
+savings" (`ipsMonthly`, `ipsStart`, `privateSavingKind`, `tempIpsUttag`) and "Tjänstepension"/
+"Occupational pension" (`tjpPar`, `tempTjpUttag`, `occupationalInheritanceGains`, plus `flexPension`
+moved in from "Övrigt" — see above). `finalSalaryYears`/`pensionSameYearAsFinalSalary` — "Övrigt"'s
+other two settings — moved out at the same time, into `salaryPath.ts`'s own renamed "Salary" section
+(below), which left "Övrigt" with nothing in it, so the group itself was deleted from `GROUPS` rather
+than left empty. `advanced.ts` still exports both settings, as `FINAL_SALARY_YEARS`/
+`PENSION_SAME_YEAR_AS_FINAL_SALARY`, for `salaryPath.ts` to import and render — and `SETTINGS` (what
+`advanced.test.ts` walks) still includes them, assembled as `[...GROUPS.flatMap(...), FINAL_SALARY_YEARS,
+PENSION_SAME_YEAR_AS_FINAL_SALARY]` rather than purely from `GROUPS`, so moving where a setting renders
+never has to also mean losing its own generic round-trip/label/bounds test coverage.
 
 **"Slutlönens referensår efter pensioneringen" (row 43) was exposed as a checkbox, which was a real
 bug — but it is a narrower setting than its own name suggests, and does not do what its first read
@@ -347,6 +360,21 @@ me". Amounts are rounded to whole kronor, shown and used, which costs 0.02 kr pe
 final salary and keeps the rule that the form never shows a number the run did not use. Once a
 typed path is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from
 a second run with `ownIncome` removed.
+
+**Renamed "Salary", from "Own salary path" ("Egen löneutveckling"), and now also home to manual 3.6's
+"Slutlön" pair, both on request.** `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY` — plain
+number settings defined in `advanced.ts` (see above) — render here, above the wage-path toggle, with
+the same `fieldSet` builders `advanced.ts`'s own loop uses for a setting of that `control.kind`; neither
+needs that loop's other branches (percent, select, check, the `ipsMonthly` special case), so duplicating
+just the plain-number path rather than factoring out a shared renderer for two call sites was the
+smaller change. `createSalaryPath` takes a second callback, `onSettingChange: (patch: Partial
+<ModelContext>) => void`, alongside the existing `onChange` for the wage path itself (a `TypfallInput`
+field) — the same two-callbacks-one-component shape `pgb.ts`'s own `childBirthYears` patch already
+established for a `ModelContext` field living inside an otherwise `TypfallInput`-focused panel.
+`main.ts` wires it exactly like `advancedPanel`'s own `onChange`: merge the patch into `advanced`, then
+`render()`. Resetting ("Använd normala inställningar") restores both fields' own displayed values the
+same way `advanced.ts`'s own settings do — visually only; the actual state reset is `main.ts`'s own
+`advanced = {}`, unchanged.
 
 **`Inkomst` and `Varav lön` are read independently, not one derived from the other, and neither is
 redundant with the other** — asked directly whether `Inkomst` could be dropped. `setup.ts:424` sets
@@ -557,9 +585,10 @@ kr premiepension) — and age 70 itself is back to 0 kr salary and a pension hig
 figure, since the extra working years between 66 and 70 earned more pension rights on top of a now-full
 withdrawal. `rngLönPartUttag` (`workDuringPartialWithdrawal`), which would let work run at a *fixed*
 share independent of the withdrawal, and the sibling `tempTjpUttag`/`tempIpsUttag` bounds already
-exposed in the "saving" group (occupational pension and private saving's own withdrawal length) are left
-for later — not needed for the manual's own example to work end to end, and each wants its own look
-rather than riding in on this one.
+exposed in the "Tjänstepension"/"Occupational pension" and "Privat sparande"/"Private savings" groups
+respectively (occupational pension and private saving's own withdrawal length) are left for later — not
+needed for the manual's own example to work end to end, and each wants its own look rather than riding
+in on this one.
 
 **Barnår, section 3.7's other half, is exposed too — as the "Barn" type in the PGB add-entry form
 (`apps/web/src/pgb.ts`), not in this file's own `GROUPS` table.** Writes into `context.childBirthYears`
