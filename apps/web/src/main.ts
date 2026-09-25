@@ -234,19 +234,16 @@ modeBox.className = "mode-row";
 const noticeSummary = document.createElement("summary");
 const noticeStrong = document.createElement("strong");
 const noticeRest = document.createElement("span");
-const noticeMail = document.createElement("a");
-noticeMail.href = "mailto:typfallsmodellen@pensionsmyndigheten.se";
-noticeMail.textContent = "typfallsmodellen@pensionsmyndigheten.se";
 const notice = document.createElement("details");
 notice.className = "disclaimer";
 notice.dataset.role = "disclaimer";
-notice.append(noticeSummary, noticeStrong, noticeRest, noticeMail, document.createTextNode("."));
+notice.append(noticeSummary, noticeStrong, noticeRest);
 applyNoticeText(view.lang);
 
 /** Rebuilt on a language change, so the subtitle and the active chip follow. */
 function renderHeading(): void {
   const title = document.createElement("h1");
-  title.textContent = "Pensionsprognos";
+  title.textContent = "Typfallsmodellen web version";
 
   const sub = document.createElement("p");
   sub.className = "subtitle";
@@ -288,12 +285,11 @@ function renderHeading(): void {
  *
  * The site computes a pension forecast and looks like it knows what it is
  * talking about, which is exactly why it has to say whose model it is and what
- * a forecast is worth. The agency's own address is here because a question
- * about the model belongs with the people who wrote it, not with this port.
+ * a forecast is worth.
  *
  * A `<details>`, matching Ordlista, rather than an always-open box: the text
  * doesn't change while someone works, only the language does, so this just
- * fills in the four text nodes `notice` was built from (see where it's
+ * fills in the three text nodes `notice` was built from (see where it's
  * constructed, above) rather than rebuilding the element.
  */
 function applyNoticeText(l: Lang): void {
@@ -304,11 +300,11 @@ function applyNoticeText(l: Lang): void {
       ? " Den här sidan är inte utvecklad av, kopplad till eller godkänd av " +
         "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. " +
         "Resultatet är en prognos under de antaganden du anger – inte ett besked om din " +
-        "pension. Frågor om själva modellen går till "
+        "pension."
       : " This page is not built by, affiliated with or endorsed by Pensionsmyndigheten, " +
         "the Swedish Pensions Agency. The model, its data and its user manual are theirs. " +
         "What it shows is a forecast under the assumptions you enter – not a statement " +
-        "about your pension. Questions about the model itself go to ";
+        "about your pension.";
 }
 
 /**

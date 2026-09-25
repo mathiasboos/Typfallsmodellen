@@ -13,8 +13,7 @@ and updated roughly once a year. This project ports it to a static website that 
 computes entirely in the browser, and can absorb the yearly data release through a script.
 
 > **Unofficial.** Not affiliated with or endorsed by Pensionsmyndigheten. The model, its data and
-> its user manual are theirs. Questions about the model itself go to
-> `typfallsmodellen@pensionsmyndigheten.se`.
+> its user manual are theirs.
 
 ## Layout
 

@@ -2072,6 +2072,16 @@ await tab.waitForTimeout(50);
 // say whose model it is; and people print a forecast to take to a meeting, so
 // paper is a real output rather than an afterthought.
 
+const pageTitle = await tab.locator("h1").first().textContent();
+const documentTitle = await tab.title();
+console.log(`page title      : h1 "${pageTitle}", document title "${documentTitle}"`);
+if (pageTitle !== "Typfallsmodellen web version") {
+  problems.push(`the page's own h1 reads "${pageTitle}", expected "Typfallsmodellen web version"`);
+}
+if (documentTitle !== "Typfallsmodellen web version") {
+  problems.push(`the document title reads "${documentTitle}", expected "Typfallsmodellen web version"`);
+}
+
 const notice = tab.locator('[data-role="disclaimer"]');
 const noticeText = (await notice.count()) > 0 ? ((await notice.textContent()) ?? "") : "";
 if (!/inofficiell|unofficial/i.test(noticeText)) {
@@ -2080,8 +2090,8 @@ if (!/inofficiell|unofficial/i.test(noticeText)) {
 if (!noticeText.includes("Pensionsmyndigheten")) {
   problems.push("the disclaimer does not name Pensionsmyndigheten");
 }
-if (!noticeText.includes("typfallsmodellen@pensionsmyndigheten.se")) {
-  problems.push("the disclaimer does not give the agency's address for model questions");
+if (noticeText.includes("typfallsmodellen@pensionsmyndigheten.se")) {
+  problems.push("the disclaimer still names the agency's address for model questions, expected it removed");
 }
 
 const closedOnScreen = await tab.locator("details:not([open])").count();
