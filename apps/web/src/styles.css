@@ -432,9 +432,14 @@ body {
 .pgb-form { display: grid; gap: 10px; }
 .pgb-add { justify-self: start; }
 /* Reports back when the entry just added earned no pension rights (an age
-   outside 16-70, the income+PGB cap, an ineligible conscription window or
-   birth year) -- read from the run's own result, not a client-side guess. */
-.pgb-add-feedback { margin: -2px 0 0; font-size: 0.78rem; color: var(--danger); }
+   outside 16-70, the income+PGB cap, or a birth year too young) -- read from
+   the run's own result, not a client-side guess. Not `--danger`: nothing is
+   lost or malformed here, the model just credited 0 the way the workbook's
+   own rules say it should, the same "expected, not broken" case
+   `.pgb-conscription-readout` below already renders as a plain note rather
+   than an alarm -- both use `--text-secondary` so an entry that earns
+   nothing reads the same way regardless of which control produced it. */
+.pgb-add-feedback { margin: -2px 0 0; font-size: 0.78rem; color: var(--text-secondary); }
 .pgb-add-feedback:empty { display: none; }
 
 /* Year (or a child's birth year) plus a read-only age readout beside it --
