@@ -74,6 +74,29 @@
   --fig-state-tax: #ff5b30;
   --fig-disposable: #000000;
 
+  /*
+   * mikrosim.ts's own stacked chart: the same four component colours Figur 2
+   * already uses (income-pension, premium, guarantee, occupational) plus
+   * three new categorical steps for the three components Figur 2 folds into
+   * combined bands (ATP into its own "income-pension", P_tillägg into its own
+   * "guarantee") or never shows at all (private saving). Reuses this app's
+   * own existing blue and orange-red hues (`--fig-scenario-3`/`--fig-salary`,
+   * `--fig-wage-level`/`--fig-state-tax`) rather than inventing two more, and
+   * adds one genuinely new hue (a purple) for private saving. Validated with
+   * the `dataviz` skill's `validate_palette.js`, against the seven colours in
+   * their actual stack order (income, supplementary, premium, guarantee,
+   * ipt, occupational, private-saving): every *adjacent* pair passes CVD
+   * separation and the normal-vision floor in both themes (worst adjacent
+   * pair unchanged from Figur 2's own guarantee<->premium, normal ΔE 22.2) --
+   * the same adjacent-pair standard `--fig-scenario-*`'s own validation note
+   * above already uses. `--fig-supplementary`/`--fig-ipt` need no dark
+   * variant, matching `--fig-scenario-3`/`--fig-state-tax`'s own precedent of
+   * reading fine unstepped in both themes.
+   */
+  --fig-supplementary: #4885c5;
+  --fig-ipt: #ff5b30;
+  --fig-private-saving: #7a4fa0;
+
   /* compare.ts's scenario colours: on request, the SEB palette's own steps in
      the order given (dark green, green, beige, blue) rather than the
      validator-clean rotation this used before. Run through the same
@@ -127,6 +150,12 @@
     --fig-net: #358157;
     --fig-gross: #99beae;
     --fig-disposable: #ffffff;
+
+    /* Only the private-saving purple needs its own dark step -- one step
+       lighter clears 3:1 against #003824 (the raw light-mode step reads
+       2.17:1); `--fig-supplementary`/`--fig-ipt` read fine unstepped, same
+       as `--fig-scenario-3`/`--fig-state-tax` already do. */
+    --fig-private-saving: #9d6fc0;
 
     /* Only the dark-green step moves -- it sits too close to this theme's
        own dark-green surfaces (contrast 1.64:1 at the raw step); one step
@@ -184,6 +213,8 @@ body {
 }
 .disclaimer strong { color: var(--text-secondary); }
 .disclaimer a { color: var(--text-secondary); }
+.disclaimer > summary { cursor: pointer; }
+.disclaimer > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .langs { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -365,7 +396,11 @@ body {
 .adv-grid thead th:nth-child(3), .adv-grid td:nth-child(3),
 .adv-grid thead th:nth-child(4), .adv-grid td:nth-child(4) { width: 30%; } /* Inkomst, Varav lön */
 .adv-grid th, .adv-grid td { padding: 2px 4px; font-size: 0.75rem; }
-.adv-grid thead th { position: sticky; top: 0; z-index: 1; }
+/* On `thead` itself rather than each `th` -- pgb.ts's grid has a two-row
+   header (a group row above a sub-column row), and sticking the whole group
+   keeps both rows pinned together, rather than each needing its own `top`
+   offset computed from the other row's height. */
+.adv-grid thead { position: sticky; top: 0; z-index: 1; }
 /* pgb.ts's three amount headers are longer, unbroken compound words (no space
    to wrap at) that would otherwise overflow their fixed-width cell and bleed
    into the next one -- salaryPath.ts's two-word headers never hit this, but
@@ -390,75 +425,206 @@ body {
 .adv-grid td > input[type="number"] { -moz-appearance: textfield; }
 
 /*
- * pgb.ts's grid has five columns, not salaryPath.ts's four -- three amount
- * columns instead of two, in the same sidebar width. Splitting that width
- * five ways at the same proportions left each amount input around 45px,
- * measured to clip a sixth digit that salaryPath.ts's own 30%-wide, ~62px
- * amount columns do not. Rather than shrink the type further, the table gets
- * a min-width instead: percentages still add up to 100% of that width, so
- * every column keeps the same proportions and just renders bigger, and the
- * grid scrolls horizontally the same way `.adv-grid-scroll` already lets a
- * tall grid scroll vertically -- inside the sidebar, which is the one place
- * this rule still applies once `.pgb-dialog` below gives the same table
- * somewhere wider to render without the floor at all.
+ * pgb.ts's add-entry form: one shared grid of `.field`/`.field-wide` rows,
+ * the same layout `.adv-body` uses elsewhere -- built with controls.ts's own
+ * `fieldSet`, unlike the fixed 55-row grid this replaced.
  */
-.pgb-grid { min-width: 380px; }
-.pgb-grid thead th:nth-child(1), .pgb-grid td:nth-child(1) { width: 16%; }  /* År */
-.pgb-grid thead th:nth-child(2), .pgb-grid td:nth-child(2) { width: 12%; }  /* Ålder */
-.pgb-grid thead th:nth-child(3), .pgb-grid td:nth-child(3),
-.pgb-grid thead th:nth-child(4), .pgb-grid td:nth-child(4),
-.pgb-grid thead th:nth-child(5), .pgb-grid td:nth-child(5) { width: 24%; } /* Sjuk-/aktivitetsersättning, Antal terminer, PGB studier */
-.pgb-study-kr { color: var(--text-secondary); }
+.pgb-form { display: grid; gap: 10px; }
+.pgb-add { justify-self: start; }
+/* Reports back when the entry just added earned no pension rights (an age
+   outside 16-70, the income+PGB cap, or a birth year too young) -- read from
+   the run's own result, not a client-side guess. Not `--danger`: nothing is
+   lost or malformed here, the model just credited 0 the way the workbook's
+   own rules say it should, the same "expected, not broken" case
+   `.pgb-conscription-readout` below already renders as a plain note rather
+   than an alarm -- both use `--text-secondary` so an entry that earns
+   nothing reads the same way regardless of which control produced it. */
+.pgb-add-feedback { margin: -2px 0 0; font-size: 0.78rem; color: var(--text-secondary); }
+.pgb-add-feedback:empty { display: none; }
 
-/* Värnplikt: two date fields plus a day-split readout, above the per-age
-   grid -- a single wsPGB!H4/H5 range, not a row-per-age entry. */
-.pgb-vpl { display: grid; gap: 8px; margin-bottom: 4px; }
-.pgb-vpl-fields { display: flex; gap: 8px; flex-wrap: wrap; }
-.pgb-vpl-fields .field { flex: 1 1 140px; }
-.pgb-vpl-readout:empty { display: none; }
+/* Year (or a child's birth year) plus a read-only age readout beside it --
+   its own composite row, the same reason `.adv-ips` (advanced.ts's IPS
+   toggle) gets one: the standard field shape has no room for a second,
+   dependent readout. */
+.field-wide > .pgb-year { grid-column: 1; grid-row: 2; }
+.pgb-year { display: flex; align-items: center; gap: 8px; }
+.pgb-year input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.pgb-year input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pgb-year-age { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-secondary); min-width: 2.5em; }
+
+/* Conscription's from/to pair, its own clear button and a "too short"
+   readout -- carried over from the old grid's header-cell widget, just no
+   longer glued to a Värnplikt table column. */
+.field-wide > .pgb-conscription { grid-column: 1; grid-row: 2; }
+.pgb-conscription { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.pgb-conscription-date { display: block; font-weight: 400; }
+.pgb-conscription-date span { display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 1px; }
+.pgb-conscription-date input {
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.pgb-conscription-date input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* A native date input's own clear affordance (Backspace, or a hover-only
+   icon in Chromium) is easy to miss, and there is no way to clear just the
+   period without "Använd normala inställningar" clearing the rest of
+   advanced mode too. Hidden rather than disabled when nothing is set yet --
+   nothing to undo. */
+.pgb-conscription-clear {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 400;
+  padding: 0 0 6px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.pgb-conscription-clear:hover { color: var(--text-primary); }
+.pgb-conscription-readout {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.pgb-conscription-readout:empty { display: none; }
+
+/* Not `.field-hint`: see pgb.ts's own comment on `intro` for why that
+   class's hardcoded `grid-row: 2` is wrong outside a `.field`'s own grid. */
+.pgb-intro { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 8px; }
+
+/* The children mini-list: one always-editable birth-year field per filled
+   slot, starting empty -- see pgb.ts's own comment on why editing/removing
+   a child lives here rather than in the summary table. */
+.pgb-children {
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.pgb-children h4 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pgb-children-list { display: grid; gap: 6px; }
+.pgb-child-row { display: flex; align-items: center; gap: 8px; }
+.pgb-child-row span { flex: 1 1 auto; font-size: 0.8rem; }
+.pgb-child-row input {
+  flex: 0 0 90px;
+  padding: 3px 4px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.pgb-child-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Shared by the children list's own remove button and the summary table's
+   per-cell ones -- a small round "x", never its own row or column since a
+   row can hold more than one category's own figure. */
+.pgb-remove {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.pgb-remove:hover { background: rgb(0 0 0 / 10%); color: var(--text-primary); }
+
+/* The summary table itself: only ever the years/categories that actually
+   have data (pgb.ts's own `summaryRows`/`visibleColumns`), so unlike the old
+   fixed grid it needs no min-width floor and no <colgroup> -- a handful of
+   rows and up to four category columns fit `.table`'s own default layout
+   inside the sidebar most of the time. "Visa alla kolumner" (below) is there
+   for when they don't. */
+.pgb-summary { margin-top: 4px; }
+.pgb-summary-head { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.pgb-summary-table td .pgb-remove { margin-left: 6px; vertical-align: middle; }
+.pgb-summary-empty { font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0; }
+
+/*
+ * "Visa alla kolumner" moves the same table (not a copy) into this floating
+ * panel instead of widening it past the sidebar -- asked for again after the
+ * panel's redesign dropped the old grid's own modal `<dialog>`, since adding
+ * one PGB entry at a time is only useful if the table is still visible (and
+ * the form still usable) while it grows. Plain `position: fixed`, not a
+ * `<dialog>` with `showModal()`: nothing here makes the rest of the page
+ * inert, so the add-entry form just above keeps working exactly as before
+ * while the table floats.
+ *
+ * Full-width and bottom-anchored below `.layout`'s own 860px breakpoint,
+ * where the sidebar and the results column already stack into one --
+ * confirmed by hand that a first draft of this, full-width at every size,
+ * could float right over the sidebar's own add-entry form once the sidebar
+ * scrolled far enough for the two to overlap, defeating the whole point.
+ * Above 860px, docked to the right instead, narrow enough (`min(48vw,
+ * 640px)`) to stay clear of `.layout`'s own `minmax(0, 300px)` sidebar
+ * column plus its 20px gap regardless of scroll position, so the two can
+ * never overlap there at all rather than merely being unlikely to.
+ */
+.pgb-summary-drawer {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+  max-height: 55vh;
+  overflow: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 30%);
+  z-index: 40;
+}
+@media (min-width: 861px) {
+  .pgb-summary-drawer {
+    left: auto;
+    right: 24px;
+    width: min(48vw, 640px);
+    max-width: none;
+    margin: 0;
+  }
+}
+.pgb-summary-drawer .pgb-summary-head { justify-content: space-between; align-items: center; }
+.pgb-summary-title { font-weight: 700; font-size: 0.85rem; color: var(--text-secondary); }
+
 @media (max-width: 860px) {
   /* Stacked on one column, a sticky input panel with its own scroller would
      pin half the screen and hide the results behind it. */
   .input-column { position: static; max-height: none; overflow-y: visible; }
   .adv-grid-scroll { max-height: 60vh; }
 }
-
-/*
- * pgb.ts's "Visa alla kolumner" button moves the grid -- the same table, same
- * inputs, same listeners, not a copy -- into this dialog instead of widening
- * it past the sidebar. Freed from the ~280px the sidebar leaves it, the
- * dialog alone is already wider than `.pgb-grid`'s 380px floor, so
- * `min-width: 0` here lets the table settle back to a plain 100%-wide fixed
- * layout and every column fits without `.adv-grid-scroll`'s horizontal
- * scrollbar -- reported as having to scroll sideways to see the rest of the
- * table.
- */
-.pgb-dialog {
-  width: min(94vw, 480px);
-  max-width: 94vw;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-}
-.pgb-dialog::backdrop { background: rgb(0 0 0 / 45%); }
-.pgb-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.pgb-dialog-head h3 { margin: 0; font-size: 0.9rem; }
-.dialog-close {
-  font: inherit;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 2px 9px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.dialog-close:hover { background: rgb(0 0 0 / 10%); }
-.pgb-dialog .adv-grid-scroll { max-height: 70vh; }
-.pgb-dialog .pgb-grid { min-width: 0; }
 
 /*
  * compare.ts's scenario cards -- a horizontally scrolling row, the same way
@@ -500,6 +666,79 @@ body {
 }
 .compare-table th .compare-swatch { margin-right: 6px; vertical-align: middle; }
 
+/*
+ * mikrosim.ts's own table -- unlike every other grid in this app, its column
+ * count and row count are both open-ended (nine inputs, twelve outputs, and
+ * CSV import can bring in far more rows than anyone would type by hand), so
+ * it gets a real scroller in both directions rather than a fixed-width
+ * sidebar layout (`.adv-grid`'s own `table-layout: fixed` doesn't fit a
+ * table this wide) or a row cap.
+ */
+.mikrosim-panel { display: grid; gap: 12px; }
+/* `.field-hint` alone would inherit that class's `grid-row: 2` (meant for
+   pairing with a `.field`'s own caption in row 1), which -- being a grid
+   container's own direct child here, not a `.field`'s -- would stack every
+   hint paragraph into the same row instead of stacking them top to bottom. */
+.mikrosim-panel > .field-hint { grid-column: auto; grid-row: auto; }
+.mikrosim-file-error { color: var(--danger); font-size: 0.85rem; margin: -6px 0 0; }
+.mikrosim-file-error:empty { display: none; }
+/* Inputs and Results are two independent tables (each with its own scroller
+   and this bold caption above it), not one wide table with a grouped header
+   -- easier to read than a single row scrolling nine input cells then twelve
+   output cells past each other. */
+.mikrosim-table-label { font-weight: 700; text-align: left; margin: 0; }
+.mikrosim-table-scroll { max-height: 70vh; overflow: auto; }
+.mikrosim-table { table-layout: auto; font-size: 8px; }
+.mikrosim-table thead { position: sticky; top: 0; z-index: 1; }
+.mikrosim-table th, .mikrosim-table td { white-space: nowrap; }
+/* `.table thead th` (below) sets its own 0.76rem/600 at equal selector
+   specificity to a plain `.mikrosim-table thead th` -- the extra `.table`
+   class here (already on every Mikrosim `<table>`) is what makes this win
+   regardless of the two rules' order in the file. */
+.mikrosim-table.table thead th { font-size: 8px; font-weight: 700; }
+.mikrosim-table td.num { text-align: right; }
+.mikrosim-rownum { color: var(--text-muted); text-align: right; }
+.mikrosim-status { width: 1.4em; text-align: center; }
+.mikrosim-status .mikrosim-error { color: var(--danger); font-weight: 700; }
+.mikrosim-table td > input, .mikrosim-table td > select {
+  width: 100%;
+  min-width: 8ch;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 8px;
+  text-align: right;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.mikrosim-table td > select { text-align: left; }
+.mikrosim-table td > input:focus, .mikrosim-table td > select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mikrosim-table td > input::-webkit-outer-spin-button,
+.mikrosim-table td > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.mikrosim-table td > input[type="number"] { -moz-appearance: textfield; }
+
+/* The file-picker button: an ordinary `.export-btn` wrapping a visually
+   hidden native file input, so clicking the label's own text opens the file
+   dialog with no extra script -- the input itself stays reachable (not
+   `display: none`) for a screen reader, a keyboard `Tab`, and Playwright's
+   own `setInputFiles`. */
+.mikrosim-import-label { position: relative; cursor: pointer; }
+.mikrosim-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px;
@@ -538,6 +777,35 @@ body {
 .field-wide { grid-template-columns: minmax(0, 1fr); }
 .field-wide > select { grid-column: 1; grid-row: 2; text-align: left; }
 .field-wide > .field-hint { grid-row: 3; }
+.field-wide > .adv-ips { grid-column: 1; grid-row: 2; }
+
+/*
+ * "Privat pensionssparande": the same underlying number reads as kronor per
+ * month or a share of income depending on its own size (advanced.ts's own
+ * comment on `savingAmountOrShare` says why), so this is a toggle plus
+ * whichever one of two inputs the toggle currently means, not a single box.
+ * `.panel-toggle`/`.panel-btn` are already styled for the mode/screen/scale
+ * toggles elsewhere; reused here rather than a second toggle style.
+ */
+.adv-ips .panel-toggle { margin-bottom: 4px; }
+.adv-ips input {
+  width: 100%;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.adv-ips input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The share input's own "%" marker -- next to the box, not below the whole
+   widget the way `field()`'s usual hint slot would put it (see
+   `savingAmountOrShare`'s own comment on why it builds this row itself). */
+.adv-ips-share { display: flex; align-items: center; gap: 6px; }
+.adv-ips-share input { flex: 1; min-width: 0; }
+.adv-ips-share .field-hint { flex: 0 0 auto; }
 
 .field-check { grid-template-columns: auto minmax(0, 1fr); }
 .field-check > input {
@@ -656,6 +924,9 @@ body {
 .tick-y { text-anchor: end; }
 .tick-x { text-anchor: middle; }
 .tick-year { font-size: 10px; }
+/* Mikrosim chart's own per-bar Bruttopension label -- darker and bolder than
+   a plain axis tick so it reads as a value, not another axis mark. */
+.mikrosim-bar-value { fill: var(--text-primary); font-weight: 700; }
 .axis-title { fill: var(--text-secondary); font-size: 11px; font-family: var(--font); }
 .line { stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 /* Figur 1 separates its three views by dash as well as by hue, and Figur 2 its

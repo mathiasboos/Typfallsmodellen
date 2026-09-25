@@ -14,7 +14,7 @@
  * sheet, and this keeps them: normal mode runs on a `TypfallInput` alone, which
  * is the whole reason `viewContext` could get this far handing `run()` an empty
  * settings map. Avancerat adds `advanced.ts`'s settings and `salaryPath.ts`'s
- * own wage vector on top.
+ * own salary path on top.
  */
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
@@ -29,6 +29,7 @@ import { createForm } from "./form.js";
 import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis, retirementAge } from "./kpis.js";
+import { createMikrosimPanel } from "./mikrosim.js";
 import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
 import {
@@ -51,8 +52,9 @@ interface View {
 /** The workbook's two radio circles: `Normalt` and `Avancerat`. */
 type Mode = "normal" | "advanced";
 
-/** Not a workbook mode -- a second top-level view alongside the forecast. */
-type Screen = "single" | "compare";
+/** Not a workbook mode -- a second and third top-level view alongside the
+ * forecast. */
+type Screen = "single" | "compare" | "mikrosim";
 
 const deaths = loadDeathProbabilities();
 
@@ -89,7 +91,7 @@ let mode: Mode = "normal";
 let screen: Screen = "single";
 /** Adv_settings, as overrides on top of the workbook's own normal values. */
 let advanced: Partial<ModelContext> = {};
-/** The Start-sheet side of advanced mode: today just the own wage vector. */
+/** The Start-sheet side of advanced mode: the own salary path and PGB. */
 let advancedInput: Partial<TypfallInput> = {};
 
 const root = document.querySelector("#app");
@@ -111,13 +113,20 @@ const advancedPanel = createAdvancedPanel(view.lang, (patch) => {
   render();
 });
 
-const salaryPath = createSalaryPath(view.lang, (path) => {
-  const next = { ...advancedInput };
-  if (path === undefined) delete next.ownIncome;
-  else next.ownIncome = path;
-  advancedInput = next;
-  render();
-});
+const salaryPath = createSalaryPath(
+  view.lang,
+  (path) => {
+    const next = { ...advancedInput };
+    if (path === undefined) delete next.ownIncome;
+    else next.ownIncome = path;
+    advancedInput = next;
+    render();
+  },
+  (patch) => {
+    advanced = { ...advanced, ...patch };
+    render();
+  },
+);
 
 const pgbGrid = createPgbGrid(view.lang, (patch) => {
   const next = { ...advancedInput };
@@ -126,16 +135,45 @@ const pgbGrid = createPgbGrid(view.lang, (patch) => {
   if (patch.pgbConscription === undefined) delete next.pgbConscription;
   else next.pgbConscription = patch.pgbConscription;
   advancedInput = next;
+  // `childBirthYears` is a ModelContext (Adv_settings) field, unlike the two
+  // above (TypfallInput, the Start sheet) -- it rides in the same patch
+  // since it lives in the same panel, but goes into `advanced` instead.
+  advanced = { ...advanced, childBirthYears: patch.childBirthYears };
   render();
 });
 
 const comparePanel = createComparePanel(view.lang, input, () => render());
+const mikrosimPanel = createMikrosimPanel(
+  view.lang,
+  () => runInput(),
+  () => comparePanel.scenarioInputs(runInput()),
+);
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");
 advancedBox.className = "advanced-box";
 advancedBox.hidden = true;
-advancedBox.append(advancedPanel.element, salaryPath.element, pgbGrid.element);
+// The nine sections in plain Swedish alphabetical order by their own
+// displayed title (on request) -- see advanced.ts's own header comment.
+// `advancedPanel.groups` holds seven of them, keyed by `Group.key`;
+// `salaryPath`'s "Lön" and `pgbGrid`'s "Pensionsgrundande belopp (PGB)"
+// are the other two, interleaved here rather than appended after.
+const group = (key: string): HTMLElement => {
+  const element = advancedPanel.groups.get(key);
+  if (!element) throw new Error(`advanced.ts has no "${key}" group`);
+  return element;
+};
+advancedBox.append(
+  group("partialWithdrawal"), // Allmän pension
+  group("housing"), // Bostadstillägg
+  group("insurance"), // Garantipension
+  group("tax"), // Inkomstskatt
+  group("capital"), // Kapital och avkastning
+  salaryPath.element, // Lön
+  pgbGrid.element, // Pensionsgrundande belopp (PGB)
+  group("privateSaving"), // Privat sparande
+  group("occupational"), // Tjänstepension
+);
 
 /**
  * `Använd normala inställningar` -- the button the Adv_settings sheet carries.
@@ -190,6 +228,9 @@ function screenToggle(): HTMLElement {
   const choices: readonly { screen: Screen; label: (l: Lang) => string }[] = [
     { screen: "single", label: (l) => (l === "sv" ? "Prognos" : "Forecast") },
     { screen: "compare", label: (l) => (l === "sv" ? "Jämför scenarier" : "Compare scenarios") },
+    // A proper noun from the workbook's own sheet name -- the same word in
+    // both languages, so no `say()`-style branching is needed here.
+    { screen: "mikrosim", label: () => "Mikrosim" },
   ];
   for (const choice of choices) {
     const button = document.createElement("button");
@@ -209,10 +250,27 @@ function screenToggle(): HTMLElement {
 const modeBox = document.createElement("div");
 modeBox.className = "mode-row";
 
+// Built once, not inside `renderHeading()` -- that function reruns on every
+// `render()`, which is every input change anywhere on the page, and a fresh
+// `document.createElement("details")` each time would reset `.open` back to
+// closed the instant someone who had expanded it touched anything else.
+// Moving the same node around the DOM (what `header.replaceChildren` below
+// still does every render) does not reset it; only recreating the element
+// would. Collapsed by default -- a freshly created `<details>` starts closed,
+// and nothing here ever sets `.open`.
+const noticeSummary = document.createElement("summary");
+const noticeStrong = document.createElement("strong");
+const noticeRest = document.createElement("span");
+const notice = document.createElement("details");
+notice.className = "disclaimer";
+notice.dataset.role = "disclaimer";
+notice.append(noticeSummary, noticeStrong, noticeRest);
+applyNoticeText(view.lang);
+
 /** Rebuilt on a language change, so the subtitle and the active chip follow. */
 function renderHeading(): void {
   const title = document.createElement("h1");
-  title.textContent = "Pensionsprognos";
+  title.textContent = "Typfallsmodellen web version";
 
   const sub = document.createElement("p");
   sub.className = "subtitle";
@@ -220,8 +278,6 @@ function renderHeading(): void {
     view.lang === "sv"
       ? `Alla beräkningar sker i din webbläsare; ingenting skickas någonstans.`
       : `Everything is computed in your browser; nothing is sent anywhere.`;
-
-  const notice = disclaimer(view.lang);
 
   const langs = document.createElement("div");
   langs.className = "langs";
@@ -234,11 +290,13 @@ function renderHeading(): void {
     button.className = lang === view.lang ? "chip active" : "chip";
     button.addEventListener("click", () => {
       view = { ...view, lang };
+      applyNoticeText(lang);
       form.relabel(lang);
       advancedPanel.relabel(lang);
       salaryPath.relabel(lang);
       pgbGrid.relabel(lang);
       comparePanel.relabel(lang);
+      mikrosimPanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -254,36 +312,26 @@ function renderHeading(): void {
  *
  * The site computes a pension forecast and looks like it knows what it is
  * talking about, which is exactly why it has to say whose model it is and what
- * a forecast is worth. The agency's own address is here because a question
- * about the model belongs with the people who wrote it, not with this port.
+ * a forecast is worth.
+ *
+ * A `<details>`, matching Ordlista, rather than an always-open box: the text
+ * doesn't change while someone works, only the language does, so this just
+ * fills in the three text nodes `notice` was built from (see where it's
+ * constructed, above) rather than rebuilding the element.
  */
-function disclaimer(l: Lang): HTMLElement {
-  const box = document.createElement("aside");
-  box.className = "disclaimer";
-  box.dataset.role = "disclaimer";
-
-  const strong = document.createElement("strong");
-  strong.textContent = l === "sv" ? "Inofficiell version." : "Unofficial version.";
-
-  const rest = document.createElement("span");
-  rest.textContent =
+function applyNoticeText(l: Lang): void {
+  noticeSummary.textContent = l === "sv" ? "Om modellen" : "About the model";
+  noticeStrong.textContent = l === "sv" ? "Inofficiell version." : "Unofficial version.";
+  noticeRest.textContent =
     l === "sv"
       ? " Den här sidan är inte utvecklad av, kopplad till eller godkänd av " +
         "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. " +
         "Resultatet är en prognos under de antaganden du anger – inte ett besked om din " +
-        "pension. Frågor om själva modellen går till "
+        "pension."
       : " This page is not built by, affiliated with or endorsed by Pensionsmyndigheten, " +
         "the Swedish Pensions Agency. The model, its data and its user manual are theirs. " +
         "What it shows is a forecast under the assumptions you enter – not a statement " +
-        "about your pension. Questions about the model itself go to ";
-
-  const mail = document.createElement("a");
-  mail.href = "mailto:typfallsmodellen@pensionsmyndigheten.se";
-  mail.textContent = "typfallsmodellen@pensionsmyndigheten.se";
-
-  const stop = document.createTextNode(".");
-  box.append(strong, rest, mail, stop);
-  return box;
+        "about your pension.";
 }
 
 /**
@@ -358,7 +406,7 @@ function render(): void {
   const par = retirementAge(typfall, result);
 
   // The salary grid fills from, and resets to, the path the model derives for
-  // the Start sheet as it currently stands. Once an own vector is in use the
+  // the Start sheet as it currently stands. Once an own path is in use the
   // run's own `wagePath` just echoes it back, so the baseline has to come from
   // a run without it. A run is well under a millisecond, and this second one
   // only happens in advanced mode.
@@ -366,7 +414,7 @@ function render(): void {
     const { ownIncome, ...withoutOwnIncome } = typfall;
     const baseline = ownIncome === undefined ? result : run(withoutOwnIncome, context, { deaths });
     salaryPath.setBaseline(baseline.wagePath, input.born);
-    pgbGrid.setBaseline(input.born, context.marginal);
+    pgbGrid.setBaseline(input.born, context.marginal, result.pgbBreakdown);
   }
 
   results.replaceChildren();
@@ -375,6 +423,16 @@ function render(): void {
   if (screen === "compare") {
     results.append(comparePanel.element);
     comparePanel.renderResults(typfall, context, deaths, lang, view.monthly);
+    return;
+  }
+
+  if (screen === "mikrosim") {
+    results.append(mikrosimPanel.element);
+    // Only stashes context/deaths for the next "Beräkna" click -- unlike
+    // `comparePanel`, nothing here depends on `typfall`/`perMonth`, since
+    // every Mikrosim row is independent of the baseline form (see
+    // mikrosim.ts's own file comment).
+    mikrosimPanel.setContext(context, deaths);
     return;
   }
 

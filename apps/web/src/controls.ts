@@ -7,6 +7,7 @@
  * are a factory now. The bodies are the ones that were in form.ts; what changed
  * is only where they append and which relabel list they register with.
  */
+import { locale } from "./format.js";
 import type { Lang } from "./i18n.js";
 
 export type Relabel = (lang: Lang) => void;
@@ -25,10 +26,15 @@ export interface NumberField {
 }
 
 /** The same, for a percent field -- `setValue` takes the fraction the field
- * represents (0.324), not the percentage it displays (32.4), matching `apply`. */
+ * represents (0.324), not the percentage it displays (32.4), matching `apply`.
+ * `relabel` re-renders the current value in the new language's own decimal
+ * separator -- a comma in Swedish, same as every other number this app shows,
+ * never the plain period a native `type="number"` input renders regardless of
+ * the page's own language. */
 export interface PercentField {
   readonly element: HTMLInputElement;
   setValue(v: number): void;
+  relabel: Relabel;
 }
 
 export interface PercentOptions {
@@ -134,21 +140,51 @@ export function fieldSet(container: HTMLElement, relabels: Relabel[], lang: Lang
   const percent: FieldSet["percent"] = (value, apply, options = {}) => {
     const maxDecimals = options.maxDecimals ?? 1;
     const scale = 10 ** maxDecimals;
+    // `type="text"`, not `type="number"`: a number input's own decimal mark is
+    // whichever one the *browser's* UI language uses, not this page's own --
+    // Sverige uses "," and a native number input here would still show "."
+    // under an English-language browser regardless of which language this
+    // page is showing, which is backwards for a site whose language is its
+    // own toggle, not the visitor's OS. `inputMode="decimal"` keeps the same
+    // numeric keyboard on a phone that `type="number"` would have given it.
     const el = document.createElement("input");
-    el.type = "number";
-    el.step = String(1 / scale);
+    el.type = "text";
+    el.inputMode = "decimal";
     el.className = "percent";
+    let current = value;
+    let currentLang = lang;
     // `maxDecimals: 1` reduces to `Math.round(v * 1000) / 10` exactly -- the
-    // formula every field used before this option existed, unchanged.
-    const setValue = (v: number) => {
-      el.value = String(Math.round(v * 100 * scale) / scale);
+    // formula every field used before this option existed, unchanged; only
+    // the separator `Intl.NumberFormat` renders it with now depends on the
+    // language, where `String(...)` never did.
+    const render = () => {
+      const rounded = Math.round(current * 100 * scale) / scale;
+      el.value = new Intl.NumberFormat(locale(currentLang), { maximumFractionDigits: maxDecimals }).format(
+        rounded,
+      );
     };
-    setValue(value);
+    const setValue = (v: number) => {
+      current = v;
+      render();
+    };
+    render();
     el.addEventListener("change", () => {
-      const v = Number(el.value);
-      if (Number.isFinite(v)) apply(v / 100);
+      // Accepts a typed "," or a typed "." either way -- a Swedish decimal
+      // comma by design, a period because nothing stops someone from typing
+      // one out of habit and a number that looks right should still be read
+      // as the number it looks like.
+      const v = Number(el.value.replace(",", "."));
+      if (Number.isFinite(v)) {
+        current = v / 100;
+        apply(v / 100);
+      }
+      render();
     });
-    return { element: el, setValue };
+    const relabel = (l: Lang) => {
+      currentLang = l;
+      render();
+    };
+    return { element: el, setValue, relabel };
   };
 
   const check: FieldSet["check"] = (checked, apply) => {

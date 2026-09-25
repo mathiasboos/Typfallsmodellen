@@ -8,17 +8,50 @@
  * first alone, which is why `main.ts` could get this far passing an empty
  * settings map. This panel is the second.
  *
- * Twenty-eight of the sheet's seventy-six rows are here, grouped as sections 3.2
- * to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag" half --
- * its "Barnår" half, `rng_Född_Barn1..4`, stays unexposed backlog). The rest are
- * left out on purpose: some
- * are Excel's own business (`Visa_process`, `rngTurboMode`, `Verbose`), some
- * feed a sheet this port does not have (`Rng_belopp12`, `Alt_p_age`,
- * `Rng_compareTo` are Mikrosim's), some are not ported (`Wealth` and the
- * respektavstånd box, `rng_Syntetisk`, `Scenario`), and the remainder are
- * policy experiments -- pinning a year's tax rules, removing the rounding from
- * the rule system -- that want a more careful UI than a number box. Adding any
- * of them is a row in the table below.
+ * Thirty of the sheet's seventy-six rows are here (plus 3.7's own "Partiellt
+ * uttag" half -- its "Barnår" half, `rng_Född_Barn1..4`, lives in pgb.ts
+ * instead, alongside the sheet's other three pension-qualifying-amount
+ * sources). They no longer render in the manual's own 3.2-3.8 order: on
+ * request, the nine sections this file and `salaryPath.ts`/`pgb.ts` between
+ * them produce are arranged in plain Swedish alphabetical order by their own
+ * displayed title instead -- `main.ts` picks each group's own element out of
+ * `createAdvancedPanel`'s `groups` map by key and appends them in that order,
+ * with `salaryPath.ts`'s "Lön" and `pgb.ts`'s "Pensionsgrundande belopp
+ * (PGB)" interleaved among them (see `main.ts`'s own `advancedBox.append`
+ * call). `GROUPS` below is itself kept in that same order for the seven
+ * groups it owns, so the array and the screen agree without a second lookup
+ * table.
+ *
+ * Several groups were also renamed, shorter than the manual's own section
+ * headings, dropping "Underlag för"/"...basis" from two of them: "Partiellt
+ * uttag" is now "Allmän pension"/"Public pension", "Underlag för
+ * bostadstillägg" is "Bostadstillägg"/"Housing supplement", "Försäkringstid"
+ * is "Garantipension"/"Guarantee pension" (reusing the term this port already
+ * uses everywhere else for `Table1Key.GuaranteePension`, since insurance time
+ * only ever matters here for its effect on that one benefit), "Underlag för
+ * inkomstskatt" is "Inkomstskatt"/"Income tax", and "Känt pensionskapital och
+ * avkastning" is "Kapital och avkastning"/"Capital and return" -- whose own
+ * five balance settings (`pbhYear`/`pbhIp`/`pbhPp`/`pbhTjp`/`pbhIps`) were
+ * reworded to match, "behållning(en)" to "kapitalvärde(t)"; English stays
+ * "balance", since the rename request only named the Swedish wording.
+ *
+ * Two further departures from the manual's own grouping, both on request:
+ * section 3.2's own combined group split into "Privat sparande" (the
+ * private-saving half) and "Tjänstepension" (the occupational half, which
+ * also picked up row 46's flexpension setting -- the manual files that one
+ * under 3.6, but it is an occupational-scheme premium through and through);
+ * and row 103/43 (the "Slutlön" settings, manual 3.6's other two rows) moved
+ * out of a now-empty "Övrigt" group entirely, into `salaryPath.ts`'s own
+ * "Salary" section instead, alongside the wage path they describe -- see
+ * `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY` below and that
+ * file's own comment on why. The rest are Excel's own business
+ * (`Visa_process`, `rngTurboMode`, `Verbose`), some feed a sheet this port
+ * does not have (`Rng_belopp12`, `Alt_p_age`, `Rng_compareTo` are Mikrosim's),
+ * some are not ported (`Wealth` and the respektavstånd box, `rng_Syntetisk`,
+ * `Scenario`), and the remainder are policy experiments -- pinning a year's
+ * tax rules, removing the rounding from the rule system -- that want a more
+ * careful UI than a number box. Adding any of them is a row in the table
+ * below.
  *
  * **The labels are written here, in both languages, and that is a deliberate
  * departure from form.ts's "none of it is retyped here".** options.json does
@@ -41,7 +74,7 @@ import { defaultContext } from "@typfallsmodellen/engine";
 import type { ModelContext } from "@typfallsmodellen/engine";
 
 import { fieldSet } from "./controls.js";
-import type { Relabel } from "./controls.js";
+import type { FieldSet, Relabel } from "./controls.js";
 import type { Lang } from "./i18n.js";
 import {
   BURIAL_ONLY_RATE,
@@ -120,119 +153,64 @@ const WITHDRAWAL_SHARE: readonly Choice[] = [
 
 export const GROUPS: readonly Group[] = [
   {
-    key: "saving",
-    section: "3.2",
-    title: text("Privat sparande och tjänstepension", "Private saving and occupational pension"),
+    // Manual 3.7's own example: "Partiellt uttag av inkomstpensionen och
+    // premiepensionen kan läggas in här, för att till exempel simulera ett
+    // typfall som är jobbonär under en viss period" -- take out a reduced
+    // share of the public pension for a few years while still working
+    // part-time, then retire in full. `withdrawalShare` (packages/engine/
+    // src/income/wages.ts) ties Lön to whichever share is drawn by default,
+    // so these three fields are the whole feature -- nothing else has to
+    // move for "jobbonär" to show up in Table 2 as a reduced salary
+    // alongside a reduced pension.
+    //
+    // Manual 3.7's other half, "Barnår" (`childBirthYears`), lives in
+    // pgb.ts instead, alongside the sheet's other three pension-qualifying-
+    // amount sources -- see that file's own comment on why.
+    key: "partialWithdrawal",
+    section: "3.7",
+    title: text("Allmän pension", "Public pension"),
     settings: [
       {
-        // row 11 "Privat pensionssparande belopp" / "kronor per månad, sedan 2026"
-        key: "ipsMonthly",
-        row: 11,
-        control: kr(0, MONEY),
-        label: text("Privat pensionssparande", "Private pension saving"),
-        hint: text("kronor per månad", "kronor per month"),
-        get: (c) => c.ipsMonthly,
-        set: (ipsMonthly) => ({ ipsMonthly }),
-      },
-      {
-        // row 12 "Privat pensionssparande sedan när"
-        key: "ipsStart",
-        row: 12,
-        control: years(1960, 2100),
-        label: text("Sparandet börjar år", "Saving starts in"),
-        get: (c) => c.ipsStart,
-        set: (ipsStart) => ({ ipsStart }),
-      },
-      {
-        // row 13 "Typ av privat pensionssparande, (0) IPS, (1) KF, (2) ISK"
-        key: "privateSavingKind",
-        row: 13,
-        control: {
-          kind: "select",
-          choices: [
-            { value: 0, label: text("IPS / pensionsförsäkring", "IPS / pension insurance") },
-            { value: 1, label: text("Kapitalförsäkring", "Endowment insurance") },
-            { value: 2, label: text("ISK", "Investment savings account") },
-          ],
-        },
-        label: text("Typ av sparande", "Kind of saving"),
+        // row 82 "Partiellt uttag IP" / "... vid 66 med 100 % uttag"
+        key: "uttagIp",
+        row: 82,
+        control: { kind: "select", choices: WITHDRAWAL_SHARE },
+        label: text("Andel uttag, inkomstpension", "Income pension withdrawn"),
         hint: text(
-          "IPS ger avdrag under spartiden och beskattas som inkomst; KF och ISK gör tvärtom",
-          "IPS is deductible while saving and taxed as income; KF and ISK are the other way round",
+          "mellan pensionsåldern och \"Definitivt vid\" nedan",
+          "between the retirement age and \"Final at\" below",
         ),
-        get: (c) => c.privateSavingKind,
-        set: (privateSavingKind) => ({ privateSavingKind }),
+        get: (c) => c.uttagIp,
+        set: (uttagIp) => ({ uttagIp }),
       },
       {
-        // row 14 "Uttagsålder för tjänstepension (och ev. IPS eller pensionsförsäkring)"
-        key: "tjpPar",
-        row: 14,
+        // row 83 "Partiellt uttag PP" / "... vid 66 med 100 % uttag"
+        key: "uttagPp",
+        row: 83,
+        control: { kind: "select", choices: WITHDRAWAL_SHARE },
+        label: text("Andel uttag, premiepension", "Premium pension withdrawn"),
+        get: (c) => c.uttagPp,
+        set: (uttagPp) => ({ uttagPp }),
+      },
+      {
+        // row 81 "Definitivt vid" / "års ålder"
+        key: "defAr",
+        row: 81,
         control: years(0, 100),
-        label: text("Uttagsålder för tjänstepension", "Occupational pension drawn from age"),
-        hint: text("0 = samma som den allmänna pensionen", "0 = the same as the public pension"),
-        get: (c) => c.tjpPar,
-        set: (tjpPar) => ({ tjpPar }),
-      },
-      {
-        // row 17 "Temporärt uttag av tjänstepensionen (ange antal år)" / "Livsvarigt"
-        key: "tempTjpUttag",
-        row: 17,
-        control: years(0, 40),
-        label: text("Temporärt uttag av tjänstepension", "Occupational pension drawn over"),
-        hint: text("antal år, 0 = livsvarigt", "number of years, 0 = lifelong"),
-        get: (c) => c.tempTjpUttag,
-        set: (tempTjpUttag) => ({ tempTjpUttag }),
-      },
-      {
-        // row 18 "Temporärt uttag av privatsparande (ange antal år)" / "Livsvarigt"
-        key: "tempIpsUttag",
-        row: 18,
-        control: years(0, 40),
-        label: text("Temporärt uttag av privat sparande", "Private saving drawn over"),
-        hint: text("antal år, 0 = livsvarigt", "number of years, 0 = lifelong"),
-        get: (c) => c.tempIpsUttag,
-        set: (tempIpsUttag) => ({ tempIpsUttag }),
-      },
-      {
-        // row 15 "Arvsvinster tjänstepension". Manual 3.2: with återbetalnings-
-        // skydd the capital goes to survivors, so no inheritance gains accrue.
-        key: "occupationalInheritanceGains",
-        row: 15,
-        control: flag,
-        label: text("Arvsvinster på tjänstepensionen", "Inheritance gains on occupational pension"),
+        label: text("Definitivt uttag vid ålder", "Withdrawal becomes final at age"),
         hint: text(
-          "Avmarkera för återbetalningsskydd, som avstår arvsvinsterna",
-          "Clear it for survivor cover, which forgoes the inheritance gains",
+          "0 eller pensionsåldern = fullt uttag direkt, som idag",
+          "0 or the retirement age = full withdrawal right away, as today",
         ),
-        get: (c) => c.occupationalInheritanceGains,
-        set: (occupationalInheritanceGains) => ({ occupationalInheritanceGains }),
-      },
-    ],
-  },
-  {
-    key: "insurance",
-    section: "3.3",
-    title: text("Försäkringstid", "Insurance time"),
-    settings: [
-      {
-        // row 21 "Försäkringstid (bosättningsår fram till 65 års ålder)"
-        key: "insuranceYears",
-        row: 21,
-        control: years(0, 40),
-        label: text("Bosättningsår i Sverige fram till 65", "Years resident in Sweden up to 65"),
-        hint: text(
-          "Färre än 40 år sänker garantipensionen",
-          "Fewer than 40 years reduces the guarantee pension",
-        ),
-        get: (c) => c.insuranceYears,
-        set: (insuranceYears) => ({ insuranceYears }),
+        get: (c) => c.defAr,
+        set: (defAr) => ({ defAr }),
       },
     ],
   },
   {
     key: "housing",
     section: "3.4",
-    title: text("Underlag för bostadstillägg", "Housing supplement basis"),
+    title: text("Bostadstillägg", "Housing supplement"),
     settings: [
       {
         // row 29 "Ansöker (=1)" / "Ansöker om bostadsstöd"
@@ -285,9 +263,29 @@ export const GROUPS: readonly Group[] = [
     ],
   },
   {
+    key: "insurance",
+    section: "3.3",
+    title: text("Garantipension", "Guarantee pension"),
+    settings: [
+      {
+        // row 21 "Försäkringstid (bosättningsår fram till 65 års ålder)"
+        key: "insuranceYears",
+        row: 21,
+        control: years(0, 40),
+        label: text("Bosättningsår i Sverige fram till 65", "Years resident in Sweden up to 65"),
+        hint: text(
+          "Färre än 40 år sänker garantipensionen",
+          "Fewer than 40 years reduces the guarantee pension",
+        ),
+        get: (c) => c.insuranceYears,
+        set: (insuranceYears) => ({ insuranceYears }),
+      },
+    ],
+  },
+  {
     key: "tax",
     section: "3.5",
-    title: text("Underlag för inkomstskatt", "Income tax basis"),
+    title: text("Inkomstskatt", "Income tax"),
     settings: [
       {
         // row 39 "Kommunalskatten är antagen till, utelämnas (0) om historiska
@@ -339,67 +337,16 @@ export const GROUPS: readonly Group[] = [
     ],
   },
   {
-    // Manual 3.7's own example: "Partiellt uttag av inkomstpensionen och
-    // premiepensionen kan läggas in här, för att till exempel simulera ett
-    // typfall som är jobbonär under en viss period" -- take out a reduced
-    // share of the public pension for a few years while still working
-    // part-time, then retire in full. `withdrawalShare` (packages/engine/
-    // src/income/wages.ts) ties Lön to whichever share is drawn by default,
-    // so these three fields are the whole feature -- nothing else has to
-    // move for "jobbonär" to show up in Table 2 as a reduced salary
-    // alongside a reduced pension.
-    key: "partialWithdrawal",
-    section: "3.7",
-    title: text("Partiellt uttag", "Partial withdrawal"),
-    settings: [
-      {
-        // row 82 "Partiellt uttag IP" / "... vid 66 med 100 % uttag"
-        key: "uttagIp",
-        row: 82,
-        control: { kind: "select", choices: WITHDRAWAL_SHARE },
-        label: text("Andel uttag, inkomstpension", "Income pension withdrawn"),
-        hint: text(
-          "mellan pensionsåldern och \"Definitivt vid\" nedan",
-          "between the retirement age and \"Final at\" below",
-        ),
-        get: (c) => c.uttagIp,
-        set: (uttagIp) => ({ uttagIp }),
-      },
-      {
-        // row 83 "Partiellt uttag PP" / "... vid 66 med 100 % uttag"
-        key: "uttagPp",
-        row: 83,
-        control: { kind: "select", choices: WITHDRAWAL_SHARE },
-        label: text("Andel uttag, premiepension", "Premium pension withdrawn"),
-        get: (c) => c.uttagPp,
-        set: (uttagPp) => ({ uttagPp }),
-      },
-      {
-        // row 81 "Definitivt vid" / "års ålder"
-        key: "defAr",
-        row: 81,
-        control: years(0, 100),
-        label: text("Definitivt uttag vid ålder", "Withdrawal becomes final at age"),
-        hint: text(
-          "0 eller pensionsåldern = fullt uttag direkt, som idag",
-          "0 or the retirement age = full withdrawal right away, as today",
-        ),
-        get: (c) => c.defAr,
-        set: (defAr) => ({ defAr }),
-      },
-    ],
-  },
-  {
     key: "capital",
     section: "3.8",
-    title: text("Känt pensionskapital och avkastning", "Known pension capital and return"),
+    title: text("Kapital och avkastning", "Capital and return"),
     settings: [
       {
         // row 87 "Ange Inkomstår"
         key: "pbhYear",
         row: 87,
         control: years(0, 2100),
-        label: text("Inkomstår som behållningen avser", "Income year the balances apply to"),
+        label: text("Inkomstår som kapitalvärdet avser", "Income year the balances apply to"),
         hint: text("0 = inget känt kapital", "0 = no known capital"),
         get: (c) => c.pbhYear,
         set: (pbhYear) => ({ pbhYear }),
@@ -409,7 +356,7 @@ export const GROUPS: readonly Group[] = [
         key: "pbhIp",
         row: 88,
         control: kr(0, MONEY),
-        label: text("Behållning inkomstpension", "Income pension balance"),
+        label: text("Kapitalvärde inkomstpension", "Income pension balance"),
         get: (c) => c.pbhIp,
         set: (pbhIp) => ({ pbhIp }),
       },
@@ -418,7 +365,7 @@ export const GROUPS: readonly Group[] = [
         key: "pbhPp",
         row: 89,
         control: kr(0, MONEY),
-        label: text("Behållning premiepension", "Premium pension balance"),
+        label: text("Kapitalvärde premiepension", "Premium pension balance"),
         get: (c) => c.pbhPp,
         set: (pbhPp) => ({ pbhPp }),
       },
@@ -427,7 +374,7 @@ export const GROUPS: readonly Group[] = [
         key: "pbhTjp",
         row: 90,
         control: kr(0, MONEY),
-        label: text("Behållning tjänstepension", "Occupational pension balance"),
+        label: text("Kapitalvärde tjänstepension", "Occupational pension balance"),
         get: (c) => c.pbhTjp,
         set: (pbhTjp) => ({ pbhTjp }),
       },
@@ -436,7 +383,7 @@ export const GROUPS: readonly Group[] = [
         key: "pbhIps",
         row: 91,
         control: kr(0, MONEY),
-        label: text("Behållning privat sparande", "Private saving balance"),
+        label: text("Kapitalvärde privat sparande", "Private saving balance"),
         get: (c) => c.pbhIps,
         set: (pbhIps) => ({ pbhIps }),
       },
@@ -473,35 +420,189 @@ export const GROUPS: readonly Group[] = [
     ],
   },
   {
-    key: "other",
-    section: "3.6",
-    title: text("Övrigt", "Other"),
+    key: "privateSaving",
+    section: "3.2",
+    title: text("Privat sparande", "Private savings"),
     settings: [
       {
-        // row 103 "Slutlön: Medel av de senaste angivna årens inkomster"
-        key: "finalSalaryYears",
-        row: 103,
-        control: years(1, 40),
-        label: text("Slutlönen är medel av de senaste", "The final salary averages the last"),
-        hint: text("årens inkomster, och används i Pensionsinkomst", "years, and is used in Pension income"),
-        get: (c) => c.finalSalaryYears,
-        set: (finalSalaryYears) => ({ finalSalaryYears }),
+        // row 11 "Privat pensionssparande belopp" / "kronor per månad, sedan 2026"
+        key: "ipsMonthly",
+        row: 11,
+        control: kr(0, MONEY),
+        label: text("Privat pensionssparande", "Private pension saving"),
+        get: (c) => c.ipsMonthly,
+        set: (ipsMonthly) => ({ ipsMonthly }),
       },
       {
-        // row 43 "(1)-> Pensioneringen sker samma år som slutlönen"
-        key: "pensionSameYearAsFinalSalary",
-        row: 43,
+        // row 12 "Privat pensionssparande sedan när"
+        key: "ipsStart",
+        row: 12,
+        control: years(1960, 2100),
+        label: text("Sparandet börjar år", "Saving starts in"),
+        get: (c) => c.ipsStart,
+        set: (ipsStart) => ({ ipsStart }),
+      },
+      {
+        // row 13 "Typ av privat pensionssparande, (0) IPS, (1) KF, (2) ISK"
+        key: "privateSavingKind",
+        row: 13,
+        control: {
+          kind: "select",
+          choices: [
+            { value: 0, label: text("IPS / pensionsförsäkring", "IPS / pension insurance") },
+            { value: 1, label: text("Kapitalförsäkring", "Endowment insurance") },
+            { value: 2, label: text("ISK", "Investment savings account") },
+          ],
+        },
+        label: text("Typ av sparande", "Kind of saving"),
+        hint: text(
+          "IPS ger avdrag under spartiden och beskattas som inkomst; KF och ISK gör tvärtom",
+          "IPS is deductible while saving and taxed as income; KF and ISK are the other way round",
+        ),
+        get: (c) => c.privateSavingKind,
+        set: (privateSavingKind) => ({ privateSavingKind }),
+      },
+      {
+        // row 18 "Temporärt uttag av privatsparande (ange antal år)" / "Livsvarigt"
+        key: "tempIpsUttag",
+        row: 18,
+        control: years(0, 40),
+        label: text("Temporärt uttag av privat sparande", "Private saving drawn over"),
+        hint: text("antal år, 0 = livsvarigt", "number of years, 0 = lifelong"),
+        get: (c) => c.tempIpsUttag,
+        set: (tempIpsUttag) => ({ tempIpsUttag }),
+      },
+    ],
+  },
+  {
+    key: "occupational",
+    section: "3.2",
+    title: text("Tjänstepension", "Occupational pension"),
+    settings: [
+      {
+        // row 14 "Uttagsålder för tjänstepension (och ev. IPS eller pensionsförsäkring)"
+        key: "tjpPar",
+        row: 14,
+        control: years(0, 100),
+        label: text("Uttagsålder för tjänstepension", "Occupational pension drawn from age"),
+        hint: text("0 = samma som den allmänna pensionen", "0 = the same as the public pension"),
+        get: (c) => c.tjpPar,
+        set: (tjpPar) => ({ tjpPar }),
+      },
+      {
+        // row 17 "Temporärt uttag av tjänstepensionen (ange antal år)" / "Livsvarigt"
+        key: "tempTjpUttag",
+        row: 17,
+        control: years(0, 40),
+        label: text("Temporärt uttag av tjänstepension", "Occupational pension drawn over"),
+        hint: text("antal år, 0 = livsvarigt", "number of years, 0 = lifelong"),
+        get: (c) => c.tempTjpUttag,
+        set: (tempTjpUttag) => ({ tempTjpUttag }),
+      },
+      {
+        // row 15 "Arvsvinster tjänstepension". Manual 3.2: with återbetalnings-
+        // skydd the capital goes to survivors, so no inheritance gains accrue.
+        key: "occupationalInheritanceGains",
+        row: 15,
         control: flag,
-        label: text("Pensionering samma år som slutlönen", "Retire in the same year as the final salary"),
-        get: (c) => c.pensionSameYearAsFinalSalary,
-        set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
+        label: text("Arvsvinster på tjänstepensionen", "Inheritance gains on occupational pension"),
+        hint: text(
+          "Avmarkera för återbetalningsskydd, som avstår arvsvinsterna",
+          "Clear it for survivor cover, which forgoes the inheritance gains",
+        ),
+        get: (c) => c.occupationalInheritanceGains,
+        set: (occupationalInheritanceGains) => ({ occupationalInheritanceGains }),
+      },
+      {
+        // row 46 "Flexpension för ITP 1 och SAF-LO från och med 2014". Manual
+        // 3.6: "lägger till en extra premie till de ovan nämnda
+        // tjänstepensionsavtalen från 2014 och framåt. Anges 0 läggs ingen
+        // premie till, om större procentsats än 0 läggs den angivna premien
+        // till" -- already wired into itp.ts/safLo.ts (`flexPension`, added
+        // straight onto both agreements' own premium rates for `year > 2013`).
+        // Grouped here rather than under its own manual section: it is an
+        // occupational-scheme premium, on request.
+        key: "flexPension",
+        row: 46,
+        control: percent,
+        label: text("Flexpension, ITP 1 och SAF-LO", "Flex pension, ITP 1 and SAF-LO"),
+        hint: text(
+          "Extra premie i %, från och med 2014. 0 = ingen premie",
+          "Extra premium in %, from 2014 onward. 0 = no premium",
+        ),
+        get: (c) => c.flexPension,
+        set: (flexPension) => ({ flexPension }),
       },
     ],
   },
 ];
 
-/** Every exposed setting, flattened -- what the tests walk. */
-export const SETTINGS: readonly Setting[] = GROUPS.flatMap((g) => g.settings);
+/**
+ * Manual 3.6's "Slutlön" pair -- moved out of `GROUPS` entirely, on request,
+ * since the now-empty "Övrigt" group they used to share with `flexPension`
+ * (moved into "occupational" above) had nothing else left in it. Both settings
+ * describe the derived final-salary figure a typed wage path (`salaryPath.ts`)
+ * also feeds, so they render inside that file's own "Salary" section instead
+ * of getting a `<details>` of their own here -- `salaryPath.ts` imports these
+ * two consts directly and renders them with the same `fieldSet` builders this
+ * file's own loop below uses for a plain number setting.
+ */
+export const FINAL_SALARY_YEARS: Setting = {
+  // row 103 "Slutlön: Medel av de senaste angivna årens inkomster"
+  key: "finalSalaryYears",
+  row: 103,
+  control: years(1, 40),
+  label: text("Slutlönen är medel av de senaste", "The final salary averages the last"),
+  hint: text("årens inkomster, och används i Pensionsinkomst", "years, and is used in Pension income"),
+  get: (c) => c.finalSalaryYears,
+  set: (finalSalaryYears) => ({ finalSalaryYears }),
+};
+
+export const PENSION_SAME_YEAR_AS_FINAL_SALARY: Setting = {
+  // row 43 "(1)-> Pensioneringen sker samma år som slutlönen" -- the row's
+  // own "(1)->" shorthand reads like a flag, but manual 3.6 is explicit that
+  // it is not one: "Om 0 anges sker pensionering samma år som slutlön. Om
+  // större siffra än 0 anges sker pensionering så många år efter slutlönen.
+  // [Detta] påverkar resultatet som skrivs ut i Tabell 1." (0 = same year as
+  // the final salary, any larger number = that many years after it; the
+  // manual's own last sentence scopes the whole effect to Table 1.)
+  // `adjustmentFactors` (packages/engine/src/model/result.ts) reads it as
+  // `timeLag`, added into the price-index lookup that feeds
+  // `beforeRetirement` -- which only rescales the *price-adjusted* ("Fasta
+  // priser") column of Table 1's Slutlön/Lön efter skatt/Disponibel inkomst
+  // rows. It does not move `par` (the retirement age) or anything in Table 2:
+  // raising this to 5 does NOT delay when Income/Premium/Occupational pension
+  // start being paid by five years, confirmed against a user's own test after
+  // this control first shipped -- only Table 1's own real-terms Slutlön
+  // figure moves. A genuine "stop working before the pension starts" scenario
+  // is modeled today by setting "Går i pension vid ålder" to the later age
+  // and zeroing the gap years in the own salary-path grid instead; this
+  // setting is a narrower price-basis knob the manual itself scopes to Table
+  // 1, not a withdrawal-timing control. A checkbox here (writing only 0 or 1)
+  // could still only ever reach a one-year shift, which is why it is a plain
+  // year count now -- that part of the fix stands regardless of the
+  // setting's own narrow real-world scope.
+  key: "pensionSameYearAsFinalSalary",
+  row: 43,
+  control: years(0, 40),
+  label: text("Slutlönens referensår efter pensioneringen", "Final salary's reference year after retiring"),
+  hint: text(
+    "Justerar bara Slutlönens belopp i Tabell 1 (Fasta priser) -- flyttar inte när pensionen betalas ut",
+    "Only adjusts the Slutlön figure in Table 1 (Fasta priser) -- does not move when the pension itself starts",
+  ),
+  get: (c) => c.pensionSameYearAsFinalSalary,
+  set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
+};
+
+/** Every exposed setting, flattened -- what the tests walk. Includes
+ * `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`, which render in
+ * `salaryPath.ts` rather than in a `GROUPS`-driven `<details>` here, but are
+ * exposed settings all the same. */
+export const SETTINGS: readonly Setting[] = [
+  ...GROUPS.flatMap((g) => g.settings),
+  FINAL_SALARY_YEARS,
+  PENSION_SAME_YEAR_AS_FINAL_SALARY,
+];
 
 /**
  * A companion `<select>` beside a Setting's own percent field -- not through
@@ -647,8 +748,145 @@ function churchBurialSelect(
   return { element: wrap, relabel, select };
 }
 
+/**
+ * "Privat pensionssparande" (row 11): `ipsMonthly` means two different things
+ * depending on its own size -- `earnPrivateSaving` (packages/engine/src/
+ * model/mcalc.ts) reads a value over 1 as kronor per month and a value at or
+ * below 1 as a share of income instead, one cell's dual meaning inherited
+ * from the workbook. `options.json`'s own `IPS_start` entry carries a
+ * giveaway hint straight off `Adv_settings!C12` in the real sheet, "0 procent
+ * av årsinkomsten, sedan 2026" -- sitting on row 12's own line there, whether
+ * by design or by how the original sheet happens to be laid out, rather than
+ * on row 11's where the setting it explains actually lives. Neither this
+ * project's own extractor nor this file ever carried that hint into either
+ * field's own UI before now, so the second meaning was reachable only by
+ * already knowing to type a fraction into a box labelled "kronor per månad".
+ *
+ * This toggle makes both meanings their own labelled choice, each with its
+ * own kind of field (kronor, percent) rather than one box whose meaning
+ * silently depends on how big the number typed into it happens to be.
+ * Switching resets the value to 0 rather than converting between them: a
+ * kronor figure and a share of a still-varying income have no single right
+ * conversion, and 0 means "nothing set" the same way under either reading.
+ *
+ * The underlying landmine survives on purpose, faithfully: typing exactly
+ * "1" into the kronor field is still 1 kr/month by the field's own label,
+ * but `ipsMonthly > 1` reads it as the *share* branch instead (100% of
+ * income) -- the workbook's own off-by-one, not smoothed over here, and
+ * vanishingly unlikely in practice since every real kronor figure in this
+ * app is a multiple of 100.
+ */
+function savingAmountOrShare(
+  lang: Lang,
+  initial: number,
+  percentControl: FieldSet["percent"],
+  onChange: (v: number) => void,
+): { element: HTMLElement; relabel: Relabel; setValue: (v: number) => void } {
+  const wrap = document.createElement("div");
+  wrap.className = "adv-ips";
+  wrap.dataset.setting = "ipsMonthly";
+
+  const toggle = document.createElement("div");
+  toggle.className = "panel-toggle";
+  toggle.setAttribute("role", "group");
+  const amountBtn = document.createElement("button");
+  amountBtn.type = "button";
+  amountBtn.dataset.mode = "amount";
+  const shareBtn = document.createElement("button");
+  shareBtn.type = "button";
+  shareBtn.dataset.mode = "share";
+  toggle.append(amountBtn, shareBtn);
+
+  const amountInput = document.createElement("input");
+  amountInput.type = "number";
+  amountInput.inputMode = "numeric";
+  amountInput.min = "0";
+  amountInput.max = String(MONEY);
+  amountInput.step = "100";
+  amountInput.dataset.setting = "ipsMonthly-amount";
+
+  // Reuses the same control every other percent field in this app does --
+  // reported as showing "1.7" instead of "1,7" for another percent field, a
+  // bug this one would otherwise have repeated with its own hand-rolled input.
+  const share = percentControl(0, onChange);
+  share.element.dataset.setting = "ipsMonthly-share";
+
+  // The one thing a bare number can't say for itself: which of the two this
+  // is. "kr" is not spelled out the same way for the amount field, matching
+  // every other kronor field in this app, none of which do either. Its own
+  // row, not `field()`'s usual hint slot below the label -- that slot is one
+  // line for the whole widget and can't toggle with the mode the way this
+  // one, sitting right beside the share input itself, does.
+  const shareRow = document.createElement("div");
+  shareRow.className = "adv-ips-share";
+  const hint = document.createElement("span");
+  hint.className = "field-hint";
+  hint.textContent = "%";
+  shareRow.append(share.element, hint);
+
+  // A value at or below 1 already means "share" to the engine; use the same
+  // rule here to decide which mode a freshly loaded or reset value opens in.
+  let mode: "amount" | "share" = initial > 0 && initial <= 1 ? "share" : "amount";
+
+  const applyMode = () => {
+    amountBtn.className = mode === "amount" ? "panel-btn active" : "panel-btn";
+    shareBtn.className = mode === "share" ? "panel-btn active" : "panel-btn";
+    amountInput.hidden = mode !== "amount";
+    shareRow.hidden = mode !== "share";
+  };
+
+  const setValue = (v: number) => {
+    mode = v > 0 && v <= 1 ? "share" : "amount";
+    amountInput.value = String(mode === "amount" ? Math.round(v) : 0);
+    share.setValue(mode === "share" ? v : 0);
+    applyMode();
+  };
+  setValue(initial);
+
+  const switchTo = (next: "amount" | "share") => {
+    if (mode === next) return;
+    mode = next;
+    amountInput.value = "0";
+    share.setValue(0);
+    applyMode();
+    onChange(0);
+  };
+  amountBtn.addEventListener("click", () => switchTo("amount"));
+  shareBtn.addEventListener("click", () => switchTo("share"));
+
+  amountInput.addEventListener("change", () => {
+    const typed = Number(amountInput.value);
+    if (!Number.isFinite(typed) || amountInput.value.trim() === "") {
+      amountInput.value = "0";
+      return;
+    }
+    const clamped = Math.min(Math.max(Math.round(typed), 0), MONEY);
+    amountInput.value = String(clamped);
+    onChange(clamped);
+  });
+
+  const relabel = (l: Lang) => {
+    amountBtn.textContent = l === "sv" ? "Belopp" : "Amount";
+    shareBtn.textContent = l === "sv" ? "Andel av inkomst" : "Share of income";
+    share.relabel(l);
+  };
+  relabel(lang);
+
+  wrap.append(toggle, amountInput, shareRow);
+  return { element: wrap, relabel, setValue };
+}
+
 export interface AdvancedHandle {
-  readonly element: HTMLElement;
+  /**
+   * Each group's own `<details>`, keyed by `Group.key`, not wrapped in a
+   * container element of their own -- `main.ts` arranges them itself,
+   * alongside `salaryPath.ts`'s and `pgb.ts`'s own sections, in the
+   * alphabetical order this file's own header comment describes. There is
+   * no `.advanced` div any more: it never carried any styling of its own
+   * (only `.advanced-box`, `main.ts`'s wrapper, does), so dropping it costs
+   * nothing and lets these elements be placed individually.
+   */
+  readonly groups: ReadonlyMap<string, HTMLElement>;
   relabel(lang: Lang): void;
   /** `Använd normala inställningar`: every control back to the workbook's own. */
   reset(): void;
@@ -664,8 +902,7 @@ export function createAdvancedPanel(
   lang: Lang,
   onChange: (patch: Partial<ModelContext>) => void,
 ): AdvancedHandle {
-  const element = document.createElement("div");
-  element.className = "advanced";
+  const groups = new Map<string, HTMLElement>();
 
   const relabels: Relabel[] = [];
   const restores: (() => void)[] = [];
@@ -702,7 +939,14 @@ export function createAdvancedPanel(
         ...(setting.hint ? { hint: setting.hint(l) } : {}),
       });
 
-      if (setting.control.kind === "number") {
+      if (setting.control.kind === "number" && setting.key === "ipsMonthly") {
+        // field-wide: a toggle plus a number needs a whole row, not the
+        // 104px second column every other field's control gets.
+        const widget = savingAmountOrShare(lang, initial, percentControl, (v) => onChange(setting.set(v)));
+        relabels.push(widget.relabel);
+        field(widget.element, label, "field field-wide");
+        restores.push(() => widget.setValue(initial));
+      } else if (setting.control.kind === "number") {
         const { min, max, step } = setting.control;
         const control = number(initial, { min, max, step }, (v) => onChange(setting.set(v)));
         control.element.dataset.setting = setting.key;
@@ -725,6 +969,7 @@ export function createAdvancedPanel(
           precise ? { maxDecimals: 3 } : undefined,
         );
         control.element.dataset.setting = setting.key;
+        relabels.push(control.relabel);
 
         if (setting.key === "kommunalskatt") {
           // Picking a municipality flips `historicalTaxRate` off in setup.ts,
@@ -788,11 +1033,11 @@ export function createAdvancedPanel(
     }
 
     box.append(summary, body);
-    element.append(box);
+    groups.set(group.key, box);
   }
 
   return {
-    element,
+    groups,
     relabel(l) {
       for (const r of relabels) r(l);
     },

@@ -11,14 +11,14 @@
  * run against four scenarios than one.
  *
  * A variant is not a diff against the baseline in the sense of "undefined
- * means inherit" -- it is a plain copy of the baseline's salary, start-of-work
- * age, retirement age and occupational scheme, taken the moment the variant
- * is added, that the four controls below then edit independently. That is
- * simpler than an inherit/override state machine and reads the same way to
- * whoever is using it: a new scenario starts out identical to the baseline,
- * and diverges only where it is typed into. Every other field -- birth year,
- * inflation, any advanced setting, a typed salary vector -- keeps coming from
- * the live baseline on every run, so only these four are ever "frozen" per
+ * means inherit" -- it is a plain copy of the baseline's birth year, salary,
+ * start-of-work age, retirement age and occupational scheme, taken the moment
+ * the variant is added, that the five controls below then edit independently.
+ * That is simpler than an inherit/override state machine and reads the same
+ * way to whoever is using it: a new scenario starts out identical to the
+ * baseline, and diverges only where it is typed into. Every other field --
+ * inflation, any advanced setting, a typed salary path -- keeps coming from
+ * the live baseline on every run, so only these five are ever "frozen" per
  * scenario.
  *
  * Results used to live inside each scenario's own card (a KPI row plus a full
@@ -28,7 +28,7 @@
  * live in one shared section below the cards, which are input-only.
  */
 import { options } from "@typfallsmodellen/data";
-import { RETIREMENT_AGES, run } from "@typfallsmodellen/engine";
+import { BIRTH_YEARS, RETIREMENT_AGES, run } from "@typfallsmodellen/engine";
 import type {
   DeathProbabilities,
   ModelContext,
@@ -46,6 +46,7 @@ import { retirementAge } from "./kpis.js";
 import { compareTableToCsv, compareTableToXlsxRows, renderCompareTable } from "./tables.js";
 import type { ScenarioColumn } from "./tables.js";
 
+const BORN = span(BIRTH_YEARS);
 const RETIREMENT = span(RETIREMENT_AGES);
 // `Börjar arbeta vid ålder` has no extracted list; the sheet offers 15 to 40 --
 // the same bound form.ts's own field uses, duplicated rather than imported
@@ -67,16 +68,18 @@ const SCENARIO_COLOURS = ["--fig-scenario-0", "--fig-scenario-1", "--fig-scenari
 export interface ScenarioOverride {
   readonly id: string;
   label: string;
+  born: number;
   monthlySalary: number;
   retirementAge: number;
   startWorkAge: number;
   scheme: SchemeId;
 }
 
-/** The baseline, with just a variant's four fields laid over it. */
+/** The baseline, with just a variant's five fields laid over it. */
 export function applyScenario(baseline: TypfallInput, s: ScenarioOverride): TypfallInput {
   return {
     ...baseline,
+    born: s.born,
     monthlySalary: s.monthlySalary,
     retirementAge: s.retirementAge,
     startWorkAge: s.startWorkAge,
@@ -88,6 +91,7 @@ function newVariant(id: string, label: string, baseline: TypfallInput): Scenario
   return {
     id,
     label,
+    born: baseline.born,
     monthlySalary: Math.round(baseline.monthlySalary),
     retirementAge: baseline.retirementAge,
     startWorkAge: baseline.startWorkAge,
@@ -106,6 +110,12 @@ export interface CompareHandle {
     lang: Lang,
     perMonth: boolean,
   ): void;
+  /** Every current scenario's own resolved `TypfallInput` -- the baseline
+   * first, then each variant via `applyScenario` -- against whichever
+   * baseline is passed in (not necessarily the one `renderResults` was last
+   * called with). Used by Mikrosim's own "Hämta från Jämför scenarier"
+   * button; nothing else in this panel needs a snapshot like this one. */
+  scenarioInputs(baseline: TypfallInput): readonly TypfallInput[];
 }
 
 const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
@@ -198,6 +208,13 @@ export function createComparePanel(
     const { field, number } = fieldSet(controls, relabels, currentLang);
 
     field(
+      number(variant.born, { ...BORN, step: 1 }, (v) => {
+        variant.born = v;
+        onChange();
+      }).element,
+      (l) => ({ label: t("birthYear", l), hint: rangeHint(BORN) }),
+    );
+    field(
       number(variant.monthlySalary, { min: 0, max: 1_000_000, step: 100 }, (v) => {
         variant.monthlySalary = v;
         onChange();
@@ -271,11 +288,11 @@ export function createComparePanel(
     intro.textContent = say(
       l,
       "Jämför upp till tre alternativa scenarier mot utgångsläget till vänster -- var och ett " +
-        "med sin egen månadslön, pensionsålder, ålder vid arbetslivets start och tjänstepension, " +
-        "allt annat oförändrat.",
+        "med sitt eget födelseår, månadslön, pensionsålder, ålder vid arbetslivets start och " +
+        "tjänstepension, allt annat oförändrat.",
       "Compare up to three alternative scenarios against the baseline on the left -- each with " +
-        "its own monthly salary, retirement age, start-of-work age and occupational pension, " +
-        "everything else unchanged.",
+        "its own birth year, monthly salary, retirement age, start-of-work age and occupational " +
+        "pension, everything else unchanged.",
     );
     addButton.textContent = say(l, "+ Lägg till scenario", "+ Add scenario");
   };
@@ -287,6 +304,9 @@ export function createComparePanel(
       currentLang = l;
       applyText(l);
       build();
+    },
+    scenarioInputs(baseline) {
+      return [baseline, ...variants.map((v) => applyScenario(baseline, v))];
     },
     renderResults(baseline, context, deaths, runLang, perMonth) {
       lastBaseline = baseline;

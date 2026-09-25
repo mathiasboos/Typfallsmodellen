@@ -104,7 +104,7 @@ export function conscriptionDaysByYear(period: ConscriptionPeriod): ReadonlyMap<
 }
 
 /** `wsPGB!F`: conscription only ever earned PGB 1995-2010, and again from 2018. */
-function conscriptionEligible(year: number): boolean {
+export function conscriptionEligible(year: number): boolean {
   return (year >= 1995 && year <= 2010) || year >= 2018;
 }
 
