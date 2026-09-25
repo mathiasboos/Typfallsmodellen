@@ -460,6 +460,43 @@ if (advGroupTitles.includes("Övrigt")) {
   problems.push('the "Övrigt" group is still shown, expected it removed');
 }
 
+// Five groups renamed on request -- confirm the new titles exist and the old
+// ones are gone.
+const oldTitles = [
+  "Partiellt uttag",
+  "Underlag för bostadstillägg",
+  "Försäkringstid",
+  "Underlag för inkomstskatt",
+  "Känt pensionskapital och avkastning",
+];
+for (const old of oldTitles) {
+  if (advGroupTitles.includes(old)) {
+    problems.push(`the old group title "${old}" is still shown, expected it renamed`);
+  }
+}
+
+// The nine sections now render in plain Swedish alphabetical order by their
+// own displayed title, spanning this file's own seven `.adv-group`s plus
+// salary-path's "Lön" and pgb's "Pensionsgrundande belopp (PGB)" interleaved
+// among them -- see advanced.ts's own header comment and main.ts's
+// `advancedBox.append` call.
+const expectedAdvOrder = [
+  "Allmän pension",
+  "Bostadstillägg",
+  "Garantipension",
+  "Inkomstskatt",
+  "Kapital och avkastning",
+  "Lön",
+  "Pensionsgrundande belopp (PGB)",
+  "Privat sparande",
+  "Tjänstepension",
+];
+if (JSON.stringify(advGroupTitles) !== JSON.stringify(expectedAdvOrder)) {
+  problems.push(
+    `advanced-mode sections are ordered ${JSON.stringify(advGroupTitles)}, expected ${JSON.stringify(expectedAdvOrder)}`,
+  );
+}
+
 /** Opens the group holding a setting and returns its control. */
 async function setting(key) {
   const control = tab.locator(`[data-setting="${key}"]`);

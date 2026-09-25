@@ -8,27 +8,50 @@
  * first alone, which is why `main.ts` could get this far passing an empty
  * settings map. This panel is the second.
  *
- * Thirty of the sheet's seventy-six rows are here, mostly grouped as sections
- * 3.2 to 3.8 of the user manual group them (plus 3.7's own "Partiellt uttag"
- * half -- its "Barnår" half, `rng_Född_Barn1..4`, lives in pgb.ts instead,
- * alongside the sheet's other three pension-qualifying-amount sources). Two
- * departures from the manual's own grouping, both on request: section 3.2's
- * own combined group split into "Privat sparande" (the private-saving half)
- * and "Tjänstepension" (the occupational half, which also picked up row 46's
- * flexpension setting -- the manual files that one under 3.6, but it is an
- * occupational-scheme premium through and through); and row 103/43 (the
- * "Slutlön" settings, manual 3.6's other two rows) moved out of a now-empty
- * "Övrigt" group entirely, into `salaryPath.ts`'s own "Salary" section
- * instead, alongside the wage path they describe -- see `FINAL_SALARY_YEARS`/
- * `PENSION_SAME_YEAR_AS_FINAL_SALARY` below and that file's own comment on
- * why. The rest are
- * are Excel's own business (`Visa_process`, `rngTurboMode`, `Verbose`), some
- * feed a sheet this port does not have (`Rng_belopp12`, `Alt_p_age`,
- * `Rng_compareTo` are Mikrosim's), some are not ported (`Wealth` and the
- * respektavstånd box, `rng_Syntetisk`, `Scenario`), and the remainder are
- * policy experiments -- pinning a year's tax rules, removing the rounding from
- * the rule system -- that want a more careful UI than a number box. Adding any
- * of them is a row in the table below.
+ * Thirty of the sheet's seventy-six rows are here (plus 3.7's own "Partiellt
+ * uttag" half -- its "Barnår" half, `rng_Född_Barn1..4`, lives in pgb.ts
+ * instead, alongside the sheet's other three pension-qualifying-amount
+ * sources). They no longer render in the manual's own 3.2-3.8 order: on
+ * request, the nine sections this file and `salaryPath.ts`/`pgb.ts` between
+ * them produce are arranged in plain Swedish alphabetical order by their own
+ * displayed title instead -- `main.ts` picks each group's own element out of
+ * `createAdvancedPanel`'s `groups` map by key and appends them in that order,
+ * with `salaryPath.ts`'s "Lön" and `pgb.ts`'s "Pensionsgrundande belopp
+ * (PGB)" interleaved among them (see `main.ts`'s own `advancedBox.append`
+ * call). `GROUPS` below is itself kept in that same order for the seven
+ * groups it owns, so the array and the screen agree without a second lookup
+ * table.
+ *
+ * Several groups were also renamed, shorter than the manual's own section
+ * headings, dropping "Underlag för"/"...basis" from two of them: "Partiellt
+ * uttag" is now "Allmän pension"/"Public pension", "Underlag för
+ * bostadstillägg" is "Bostadstillägg"/"Housing supplement", "Försäkringstid"
+ * is "Garantipension"/"Guarantee pension" (reusing the term this port already
+ * uses everywhere else for `Table1Key.GuaranteePension`, since insurance time
+ * only ever matters here for its effect on that one benefit), "Underlag för
+ * inkomstskatt" is "Inkomstskatt"/"Income tax", and "Känt pensionskapital och
+ * avkastning" is "Kapital och avkastning"/"Capital and return" -- whose own
+ * five balance settings (`pbhYear`/`pbhIp`/`pbhPp`/`pbhTjp`/`pbhIps`) were
+ * reworded to match, "behållning(en)" to "kapitalvärde(t)"; English stays
+ * "balance", since the rename request only named the Swedish wording.
+ *
+ * Two further departures from the manual's own grouping, both on request:
+ * section 3.2's own combined group split into "Privat sparande" (the
+ * private-saving half) and "Tjänstepension" (the occupational half, which
+ * also picked up row 46's flexpension setting -- the manual files that one
+ * under 3.6, but it is an occupational-scheme premium through and through);
+ * and row 103/43 (the "Slutlön" settings, manual 3.6's other two rows) moved
+ * out of a now-empty "Övrigt" group entirely, into `salaryPath.ts`'s own
+ * "Salary" section instead, alongside the wage path they describe -- see
+ * `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY` below and that
+ * file's own comment on why. The rest are Excel's own business
+ * (`Visa_process`, `rngTurboMode`, `Verbose`), some feed a sheet this port
+ * does not have (`Rng_belopp12`, `Alt_p_age`, `Rng_compareTo` are Mikrosim's),
+ * some are not ported (`Wealth` and the respektavstånd box, `rng_Syntetisk`,
+ * `Scenario`), and the remainder are policy experiments -- pinning a year's
+ * tax rules, removing the rounding from the rule system -- that want a more
+ * careful UI than a number box. Adding any of them is a row in the table
+ * below.
  *
  * **The labels are written here, in both languages, and that is a deliberate
  * departure from form.ts's "none of it is retyped here".** options.json does
@@ -129,6 +152,273 @@ const WITHDRAWAL_SHARE: readonly Choice[] = [
 ];
 
 export const GROUPS: readonly Group[] = [
+  {
+    // Manual 3.7's own example: "Partiellt uttag av inkomstpensionen och
+    // premiepensionen kan läggas in här, för att till exempel simulera ett
+    // typfall som är jobbonär under en viss period" -- take out a reduced
+    // share of the public pension for a few years while still working
+    // part-time, then retire in full. `withdrawalShare` (packages/engine/
+    // src/income/wages.ts) ties Lön to whichever share is drawn by default,
+    // so these three fields are the whole feature -- nothing else has to
+    // move for "jobbonär" to show up in Table 2 as a reduced salary
+    // alongside a reduced pension.
+    //
+    // Manual 3.7's other half, "Barnår" (`childBirthYears`), lives in
+    // pgb.ts instead, alongside the sheet's other three pension-qualifying-
+    // amount sources -- see that file's own comment on why.
+    key: "partialWithdrawal",
+    section: "3.7",
+    title: text("Allmän pension", "Public pension"),
+    settings: [
+      {
+        // row 82 "Partiellt uttag IP" / "... vid 66 med 100 % uttag"
+        key: "uttagIp",
+        row: 82,
+        control: { kind: "select", choices: WITHDRAWAL_SHARE },
+        label: text("Andel uttag, inkomstpension", "Income pension withdrawn"),
+        hint: text(
+          "mellan pensionsåldern och \"Definitivt vid\" nedan",
+          "between the retirement age and \"Final at\" below",
+        ),
+        get: (c) => c.uttagIp,
+        set: (uttagIp) => ({ uttagIp }),
+      },
+      {
+        // row 83 "Partiellt uttag PP" / "... vid 66 med 100 % uttag"
+        key: "uttagPp",
+        row: 83,
+        control: { kind: "select", choices: WITHDRAWAL_SHARE },
+        label: text("Andel uttag, premiepension", "Premium pension withdrawn"),
+        get: (c) => c.uttagPp,
+        set: (uttagPp) => ({ uttagPp }),
+      },
+      {
+        // row 81 "Definitivt vid" / "års ålder"
+        key: "defAr",
+        row: 81,
+        control: years(0, 100),
+        label: text("Definitivt uttag vid ålder", "Withdrawal becomes final at age"),
+        hint: text(
+          "0 eller pensionsåldern = fullt uttag direkt, som idag",
+          "0 or the retirement age = full withdrawal right away, as today",
+        ),
+        get: (c) => c.defAr,
+        set: (defAr) => ({ defAr }),
+      },
+    ],
+  },
+  {
+    key: "housing",
+    section: "3.4",
+    title: text("Bostadstillägg", "Housing supplement"),
+    settings: [
+      {
+        // row 29 "Ansöker (=1)" / "Ansöker om bostadsstöd"
+        key: "ansokt",
+        row: 29,
+        control: flag,
+        label: text("Ansöker om bostadstillägg", "Applies for housing supplement"),
+        get: (c) => c.ansokt,
+        set: (ansokt) => ({ ansokt }),
+      },
+      {
+        // row 30 "Boendekostnad per månad för 2025" / "Påverkar BT och ÄFS"
+        key: "hyra",
+        row: 30,
+        control: kr(0, MONEY),
+        label: text("Boendekostnad per månad", "Housing cost per month"),
+        hint: text("i referensårets priser", "in the reference year's prices"),
+        get: (c) => c.hyra,
+        set: (hyra) => ({ hyra }),
+      },
+      {
+        // row 31 "Makens / makas årsinkomst"
+        key: "makensInkomst",
+        row: 31,
+        control: kr(0, MONEY),
+        label: text("Makens/makans årsinkomst", "Spouse's annual income"),
+        hint: text("räknas bara om Gift är ikryssat", "counted only when Married is ticked"),
+        get: (c) => c.makensInkomst,
+        set: (makensInkomst) => ({ makensInkomst }),
+      },
+      {
+        // row 32 "Förmögenhet (utöver vistelsebostaden)" / "obs: nominellt låst"
+        key: "formogenhet",
+        row: 32,
+        control: kr(0, MONEY),
+        label: text("Förmögenhet utöver bostaden", "Wealth beyond the home"),
+        get: (c) => c.formogenhet,
+        set: (formogenhet) => ({ formogenhet }),
+      },
+      {
+        // row 34 "Kapitalinkomster brutto"
+        key: "kapital",
+        row: 34,
+        control: kr(0, MONEY),
+        label: text("Kapitalinkomster brutto per år", "Gross capital income per year"),
+        hint: text("antas börja vid pensioneringen", "assumed to start at retirement"),
+        get: (c) => c.kapital,
+        set: (kapital) => ({ kapital }),
+      },
+    ],
+  },
+  {
+    key: "insurance",
+    section: "3.3",
+    title: text("Garantipension", "Guarantee pension"),
+    settings: [
+      {
+        // row 21 "Försäkringstid (bosättningsår fram till 65 års ålder)"
+        key: "insuranceYears",
+        row: 21,
+        control: years(0, 40),
+        label: text("Bosättningsår i Sverige fram till 65", "Years resident in Sweden up to 65"),
+        hint: text(
+          "Färre än 40 år sänker garantipensionen",
+          "Fewer than 40 years reduces the guarantee pension",
+        ),
+        get: (c) => c.insuranceYears,
+        set: (insuranceYears) => ({ insuranceYears }),
+      },
+    ],
+  },
+  {
+    key: "tax",
+    section: "3.5",
+    title: text("Inkomstskatt", "Income tax"),
+    settings: [
+      {
+        // row 39 "Kommunalskatten är antagen till, utelämnas (0) om historiska
+        // genomsnitt ska användas"
+        key: "kommunalskatt",
+        row: 39,
+        control: percent,
+        label: text("Kommunalskatt", "Municipal tax rate"),
+        hint: text(
+          "0 använder det historiska genomsnittet",
+          "0 uses the historical average",
+        ),
+        get: (c) => c.kommunalskatt,
+        set: (kommunalskatt) => ({ kommunalskatt }),
+      },
+      {
+        // row 40 "Begravningsavgiften samt avgiften till kyrkan/trossamfundet"
+        key: "begravningsavgift",
+        row: 40,
+        control: percent,
+        label: text("Begravningsavgift och samfundsavgift", "Burial fee and religious community fee"),
+        hint: text(
+          `medlem ~${pct(CHURCH_MEMBER_RATE.rate)} %, ej medlem ~${pct(BURIAL_ONLY_RATE.rate)} % (${CHURCH_MEMBER_RATE.year})`,
+          `member ~${pct(CHURCH_MEMBER_RATE.rate)}%, non-member ~${pct(BURIAL_ONLY_RATE.rate)}% (${CHURCH_MEMBER_RATE.year})`,
+        ),
+        get: (c) => c.begravningsavgift,
+        set: (begravningsavgift) => ({ begravningsavgift }),
+      },
+      {
+        // row 60 "Fackföreningsavgift"
+        key: "fack",
+        row: 60,
+        control: kr(0, MONEY),
+        label: text("Fackföreningsavgift", "Union fee"),
+        hint: text("kronor per månad", "kronor per month"),
+        get: (c) => c.fack,
+        set: (fack) => ({ fack }),
+      },
+      {
+        // row 61 "Avgift -akassa"
+        key: "akasseavg",
+        row: 61,
+        control: kr(0, MONEY),
+        label: text("A-kasseavgift", "Unemployment insurance fee"),
+        hint: text("kronor per månad", "kronor per month"),
+        get: (c) => c.akasseavg,
+        set: (akasseavg) => ({ akasseavg }),
+      },
+    ],
+  },
+  {
+    key: "capital",
+    section: "3.8",
+    title: text("Kapital och avkastning", "Capital and return"),
+    settings: [
+      {
+        // row 87 "Ange Inkomstår"
+        key: "pbhYear",
+        row: 87,
+        control: years(0, 2100),
+        label: text("Inkomstår som kapitalvärdet avser", "Income year the balances apply to"),
+        hint: text("0 = inget känt kapital", "0 = no known capital"),
+        get: (c) => c.pbhYear,
+        set: (pbhYear) => ({ pbhYear }),
+      },
+      {
+        // row 88 "Behållningen för inkomstpensionen"
+        key: "pbhIp",
+        row: 88,
+        control: kr(0, MONEY),
+        label: text("Kapitalvärde inkomstpension", "Income pension balance"),
+        get: (c) => c.pbhIp,
+        set: (pbhIp) => ({ pbhIp }),
+      },
+      {
+        // row 89 "Behållningen för premiepensionen"
+        key: "pbhPp",
+        row: 89,
+        control: kr(0, MONEY),
+        label: text("Kapitalvärde premiepension", "Premium pension balance"),
+        get: (c) => c.pbhPp,
+        set: (pbhPp) => ({ pbhPp }),
+      },
+      {
+        // row 90 "Eventuell behållning för tjänstepensionen"
+        key: "pbhTjp",
+        row: 90,
+        control: kr(0, MONEY),
+        label: text("Kapitalvärde tjänstepension", "Occupational pension balance"),
+        get: (c) => c.pbhTjp,
+        set: (pbhTjp) => ({ pbhTjp }),
+      },
+      {
+        // row 91 "Eventuellt eget sparande med avdragsrätt (IPS eller p-försäkring)"
+        key: "pbhIps",
+        row: 91,
+        control: kr(0, MONEY),
+        label: text("Kapitalvärde privat sparande", "Private saving balance"),
+        get: (c) => c.pbhIps,
+        set: (pbhIps) => ({ pbhIps }),
+      },
+      {
+        // row 94 "1: Angiven real avkastning även historiskt, 2: Historiskt PPM,
+        // 3: Historiskt SÅFan"
+        key: "returnBasis",
+        row: 94,
+        control: {
+          kind: "select",
+          choices: [
+            { value: 1, label: text("Angiven real avkastning", "The stated real return") },
+            { value: 2, label: text("Historiskt PPM", "Premium pension history") },
+            { value: 3, label: text("Historiskt AP7 Såfa", "AP7 Såfa history") },
+          ],
+        },
+        label: text("Historisk avkastning", "Historical return"),
+        hint: text(
+          "framtiden följer alltid den reala avkastningen på startsidan",
+          "the future always follows the real return set above",
+        ),
+        get: (c) => c.returnBasis,
+        set: (returnBasis) => ({ returnBasis }),
+      },
+      {
+        // row 96 "Avkastningen avser efter fondavgifter (1) eller före (0)"
+        key: "returnsNetOfFees",
+        row: 96,
+        control: flag,
+        label: text("Avkastningen är efter fondavgifter", "The return is net of fund fees"),
+        get: (c) => (c.returnsNetOfFees ? 1 : 0),
+        set: (v) => ({ returnsNetOfFees: v === 1 }),
+      },
+    ],
+  },
   {
     key: "privateSaving",
     section: "3.2",
@@ -242,273 +532,6 @@ export const GROUPS: readonly Group[] = [
         ),
         get: (c) => c.flexPension,
         set: (flexPension) => ({ flexPension }),
-      },
-    ],
-  },
-  {
-    key: "insurance",
-    section: "3.3",
-    title: text("Försäkringstid", "Insurance time"),
-    settings: [
-      {
-        // row 21 "Försäkringstid (bosättningsår fram till 65 års ålder)"
-        key: "insuranceYears",
-        row: 21,
-        control: years(0, 40),
-        label: text("Bosättningsår i Sverige fram till 65", "Years resident in Sweden up to 65"),
-        hint: text(
-          "Färre än 40 år sänker garantipensionen",
-          "Fewer than 40 years reduces the guarantee pension",
-        ),
-        get: (c) => c.insuranceYears,
-        set: (insuranceYears) => ({ insuranceYears }),
-      },
-    ],
-  },
-  {
-    key: "housing",
-    section: "3.4",
-    title: text("Underlag för bostadstillägg", "Housing supplement basis"),
-    settings: [
-      {
-        // row 29 "Ansöker (=1)" / "Ansöker om bostadsstöd"
-        key: "ansokt",
-        row: 29,
-        control: flag,
-        label: text("Ansöker om bostadstillägg", "Applies for housing supplement"),
-        get: (c) => c.ansokt,
-        set: (ansokt) => ({ ansokt }),
-      },
-      {
-        // row 30 "Boendekostnad per månad för 2025" / "Påverkar BT och ÄFS"
-        key: "hyra",
-        row: 30,
-        control: kr(0, MONEY),
-        label: text("Boendekostnad per månad", "Housing cost per month"),
-        hint: text("i referensårets priser", "in the reference year's prices"),
-        get: (c) => c.hyra,
-        set: (hyra) => ({ hyra }),
-      },
-      {
-        // row 31 "Makens / makas årsinkomst"
-        key: "makensInkomst",
-        row: 31,
-        control: kr(0, MONEY),
-        label: text("Makens/makans årsinkomst", "Spouse's annual income"),
-        hint: text("räknas bara om Gift är ikryssat", "counted only when Married is ticked"),
-        get: (c) => c.makensInkomst,
-        set: (makensInkomst) => ({ makensInkomst }),
-      },
-      {
-        // row 32 "Förmögenhet (utöver vistelsebostaden)" / "obs: nominellt låst"
-        key: "formogenhet",
-        row: 32,
-        control: kr(0, MONEY),
-        label: text("Förmögenhet utöver bostaden", "Wealth beyond the home"),
-        get: (c) => c.formogenhet,
-        set: (formogenhet) => ({ formogenhet }),
-      },
-      {
-        // row 34 "Kapitalinkomster brutto"
-        key: "kapital",
-        row: 34,
-        control: kr(0, MONEY),
-        label: text("Kapitalinkomster brutto per år", "Gross capital income per year"),
-        hint: text("antas börja vid pensioneringen", "assumed to start at retirement"),
-        get: (c) => c.kapital,
-        set: (kapital) => ({ kapital }),
-      },
-    ],
-  },
-  {
-    key: "tax",
-    section: "3.5",
-    title: text("Underlag för inkomstskatt", "Income tax basis"),
-    settings: [
-      {
-        // row 39 "Kommunalskatten är antagen till, utelämnas (0) om historiska
-        // genomsnitt ska användas"
-        key: "kommunalskatt",
-        row: 39,
-        control: percent,
-        label: text("Kommunalskatt", "Municipal tax rate"),
-        hint: text(
-          "0 använder det historiska genomsnittet",
-          "0 uses the historical average",
-        ),
-        get: (c) => c.kommunalskatt,
-        set: (kommunalskatt) => ({ kommunalskatt }),
-      },
-      {
-        // row 40 "Begravningsavgiften samt avgiften till kyrkan/trossamfundet"
-        key: "begravningsavgift",
-        row: 40,
-        control: percent,
-        label: text("Begravningsavgift och samfundsavgift", "Burial fee and religious community fee"),
-        hint: text(
-          `medlem ~${pct(CHURCH_MEMBER_RATE.rate)} %, ej medlem ~${pct(BURIAL_ONLY_RATE.rate)} % (${CHURCH_MEMBER_RATE.year})`,
-          `member ~${pct(CHURCH_MEMBER_RATE.rate)}%, non-member ~${pct(BURIAL_ONLY_RATE.rate)}% (${CHURCH_MEMBER_RATE.year})`,
-        ),
-        get: (c) => c.begravningsavgift,
-        set: (begravningsavgift) => ({ begravningsavgift }),
-      },
-      {
-        // row 60 "Fackföreningsavgift"
-        key: "fack",
-        row: 60,
-        control: kr(0, MONEY),
-        label: text("Fackföreningsavgift", "Union fee"),
-        hint: text("kronor per månad", "kronor per month"),
-        get: (c) => c.fack,
-        set: (fack) => ({ fack }),
-      },
-      {
-        // row 61 "Avgift -akassa"
-        key: "akasseavg",
-        row: 61,
-        control: kr(0, MONEY),
-        label: text("A-kasseavgift", "Unemployment insurance fee"),
-        hint: text("kronor per månad", "kronor per month"),
-        get: (c) => c.akasseavg,
-        set: (akasseavg) => ({ akasseavg }),
-      },
-    ],
-  },
-  {
-    // Manual 3.7's own example: "Partiellt uttag av inkomstpensionen och
-    // premiepensionen kan läggas in här, för att till exempel simulera ett
-    // typfall som är jobbonär under en viss period" -- take out a reduced
-    // share of the public pension for a few years while still working
-    // part-time, then retire in full. `withdrawalShare` (packages/engine/
-    // src/income/wages.ts) ties Lön to whichever share is drawn by default,
-    // so these three fields are the whole feature -- nothing else has to
-    // move for "jobbonär" to show up in Table 2 as a reduced salary
-    // alongside a reduced pension.
-    //
-    // Manual 3.7's other half, "Barnår" (`childBirthYears`), lives in
-    // pgb.ts instead, alongside the sheet's other three pension-qualifying-
-    // amount sources -- see that file's own comment on why.
-    key: "partialWithdrawal",
-    section: "3.7",
-    title: text("Partiellt uttag", "Partial withdrawal"),
-    settings: [
-      {
-        // row 82 "Partiellt uttag IP" / "... vid 66 med 100 % uttag"
-        key: "uttagIp",
-        row: 82,
-        control: { kind: "select", choices: WITHDRAWAL_SHARE },
-        label: text("Andel uttag, inkomstpension", "Income pension withdrawn"),
-        hint: text(
-          "mellan pensionsåldern och \"Definitivt vid\" nedan",
-          "between the retirement age and \"Final at\" below",
-        ),
-        get: (c) => c.uttagIp,
-        set: (uttagIp) => ({ uttagIp }),
-      },
-      {
-        // row 83 "Partiellt uttag PP" / "... vid 66 med 100 % uttag"
-        key: "uttagPp",
-        row: 83,
-        control: { kind: "select", choices: WITHDRAWAL_SHARE },
-        label: text("Andel uttag, premiepension", "Premium pension withdrawn"),
-        get: (c) => c.uttagPp,
-        set: (uttagPp) => ({ uttagPp }),
-      },
-      {
-        // row 81 "Definitivt vid" / "års ålder"
-        key: "defAr",
-        row: 81,
-        control: years(0, 100),
-        label: text("Definitivt uttag vid ålder", "Withdrawal becomes final at age"),
-        hint: text(
-          "0 eller pensionsåldern = fullt uttag direkt, som idag",
-          "0 or the retirement age = full withdrawal right away, as today",
-        ),
-        get: (c) => c.defAr,
-        set: (defAr) => ({ defAr }),
-      },
-    ],
-  },
-  {
-    key: "capital",
-    section: "3.8",
-    title: text("Känt pensionskapital och avkastning", "Known pension capital and return"),
-    settings: [
-      {
-        // row 87 "Ange Inkomstår"
-        key: "pbhYear",
-        row: 87,
-        control: years(0, 2100),
-        label: text("Inkomstår som behållningen avser", "Income year the balances apply to"),
-        hint: text("0 = inget känt kapital", "0 = no known capital"),
-        get: (c) => c.pbhYear,
-        set: (pbhYear) => ({ pbhYear }),
-      },
-      {
-        // row 88 "Behållningen för inkomstpensionen"
-        key: "pbhIp",
-        row: 88,
-        control: kr(0, MONEY),
-        label: text("Behållning inkomstpension", "Income pension balance"),
-        get: (c) => c.pbhIp,
-        set: (pbhIp) => ({ pbhIp }),
-      },
-      {
-        // row 89 "Behållningen för premiepensionen"
-        key: "pbhPp",
-        row: 89,
-        control: kr(0, MONEY),
-        label: text("Behållning premiepension", "Premium pension balance"),
-        get: (c) => c.pbhPp,
-        set: (pbhPp) => ({ pbhPp }),
-      },
-      {
-        // row 90 "Eventuell behållning för tjänstepensionen"
-        key: "pbhTjp",
-        row: 90,
-        control: kr(0, MONEY),
-        label: text("Behållning tjänstepension", "Occupational pension balance"),
-        get: (c) => c.pbhTjp,
-        set: (pbhTjp) => ({ pbhTjp }),
-      },
-      {
-        // row 91 "Eventuellt eget sparande med avdragsrätt (IPS eller p-försäkring)"
-        key: "pbhIps",
-        row: 91,
-        control: kr(0, MONEY),
-        label: text("Behållning privat sparande", "Private saving balance"),
-        get: (c) => c.pbhIps,
-        set: (pbhIps) => ({ pbhIps }),
-      },
-      {
-        // row 94 "1: Angiven real avkastning även historiskt, 2: Historiskt PPM,
-        // 3: Historiskt SÅFan"
-        key: "returnBasis",
-        row: 94,
-        control: {
-          kind: "select",
-          choices: [
-            { value: 1, label: text("Angiven real avkastning", "The stated real return") },
-            { value: 2, label: text("Historiskt PPM", "Premium pension history") },
-            { value: 3, label: text("Historiskt AP7 Såfa", "AP7 Såfa history") },
-          ],
-        },
-        label: text("Historisk avkastning", "Historical return"),
-        hint: text(
-          "framtiden följer alltid den reala avkastningen på startsidan",
-          "the future always follows the real return set above",
-        ),
-        get: (c) => c.returnBasis,
-        set: (returnBasis) => ({ returnBasis }),
-      },
-      {
-        // row 96 "Avkastningen avser efter fondavgifter (1) eller före (0)"
-        key: "returnsNetOfFees",
-        row: 96,
-        control: flag,
-        label: text("Avkastningen är efter fondavgifter", "The return is net of fund fees"),
-        get: (c) => (c.returnsNetOfFees ? 1 : 0),
-        set: (v) => ({ returnsNetOfFees: v === 1 }),
       },
     ],
   },
@@ -854,7 +877,16 @@ function savingAmountOrShare(
 }
 
 export interface AdvancedHandle {
-  readonly element: HTMLElement;
+  /**
+   * Each group's own `<details>`, keyed by `Group.key`, not wrapped in a
+   * container element of their own -- `main.ts` arranges them itself,
+   * alongside `salaryPath.ts`'s and `pgb.ts`'s own sections, in the
+   * alphabetical order this file's own header comment describes. There is
+   * no `.advanced` div any more: it never carried any styling of its own
+   * (only `.advanced-box`, `main.ts`'s wrapper, does), so dropping it costs
+   * nothing and lets these elements be placed individually.
+   */
+  readonly groups: ReadonlyMap<string, HTMLElement>;
   relabel(lang: Lang): void;
   /** `Använd normala inställningar`: every control back to the workbook's own. */
   reset(): void;
@@ -870,8 +902,7 @@ export function createAdvancedPanel(
   lang: Lang,
   onChange: (patch: Partial<ModelContext>) => void,
 ): AdvancedHandle {
-  const element = document.createElement("div");
-  element.className = "advanced";
+  const groups = new Map<string, HTMLElement>();
 
   const relabels: Relabel[] = [];
   const restores: (() => void)[] = [];
@@ -1002,11 +1033,11 @@ export function createAdvancedPanel(
     }
 
     box.append(summary, body);
-    element.append(box);
+    groups.set(group.key, box);
   }
 
   return {
-    element,
+    groups,
     relabel(l) {
       for (const r of relabels) r(l);
     },

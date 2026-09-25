@@ -332,6 +332,36 @@ than left empty. `advanced.ts` still exports both settings, as `FINAL_SALARY_YEA
 PENSION_SAME_YEAR_AS_FINAL_SALARY]` rather than purely from `GROUPS`, so moving where a setting renders
 never has to also mean losing its own generic round-trip/label/bounds test coverage.
 
+**Five groups were renamed, and all nine Advanced-mode sections reordered, both on request.** "Partiellt
+uttag" is now "Allmän pension"/"Public pension" (see the section by that name below); "Underlag för
+bostadstillägg" is "Bostadstillägg"/"Housing supplement"; "Försäkringstid" is "Garantipension"/"Guarantee
+pension" — reusing the term this port already uses everywhere else for `Table1Key.GuaranteePension`,
+since insurance time only ever matters here through its effect on that one benefit, rather than inventing
+a second English rendering of the same concept; "Underlag för inkomstskatt" is "Inkomstskatt"/"Income
+tax"; and "Känt pensionskapital och avkastning" is "Kapital och avkastning"/"Capital and return" — whose
+own five balance settings (`pbhYear`, `pbhIp`, `pbhPp`, `pbhTjp`, `pbhIps`) were reworded to match,
+"behållningen"/"behållning" to "kapitalvärdet"/"kapitalvärde"; the English labels stay "balance", since
+the rename request named only the Swedish wording. None of the five renames touch a `Group.key` (still
+`partialWithdrawal`, `housing`, `insurance`, `tax`, `capital`) or a `Setting.key`, so nothing that reads
+either — `verify-offline.mjs`'s own group-membership checks, `advanced.test.ts`'s generic coverage —
+needed to change on account of the renames themselves.
+
+The nine sections (`GROUPS`' own seven plus `salaryPath.ts`'s "Lön" and `pgb.ts`'s "Pensionsgrundande
+belopp (PGB)") no longer follow the manual's own 3.2-3.8 section order; they render in plain Swedish
+alphabetical order by their own displayed title instead: Allmän pension, Bostadstillägg, Garantipension,
+Inkomstskatt, Kapital och avkastning, Lön, Pensionsgrundande belopp (PGB), Privat sparande,
+Tjänstepension. `GROUPS` itself is kept in that same order for the seven groups it owns, so the array and
+the screen agree — but achieving the full order needed more than reordering the array, since two of the
+nine sections live outside it. `createAdvancedPanel` used to wrap all seven of its own `<details>` in one
+`<div class="advanced">` and hand that single element back as `AdvancedHandle.element`; `main.ts` then
+appended it, `salaryPath.element` and `pgbGrid.element` as three siblings, in that fixed order, which
+could never interleave "Lön" and "Pensionsgrundande belopp (PGB)" in between five of the seven groups.
+`AdvancedHandle` now exposes `groups: ReadonlyMap<string, HTMLElement>` (each group's own `<details>`,
+keyed by `Group.key`) instead of one wrapping `element` — the wrapper carried no styling of its own (only
+`.advanced-box`, `main.ts`'s own wrapper, does, confirmed by grepping `styles.css`), so dropping it cost
+nothing. `main.ts` now picks each group out of that map by key and appends all nine elements itself, in
+the exact order above, interleaving `salaryPath.element`/`pgbGrid.element` between them.
+
 **"Slutlönens referensår efter pensioneringen" (row 43) was exposed as a checkbox, which was a real
 bug — but it is a narrower setting than its own name suggests, and does not do what its first read
 implies.** The sheet's own row comment, "(1)-> Pensioneringen sker samma år som slutlönen", reads
@@ -553,11 +583,14 @@ The type-conditional visibility (`onTypeChange`) follows `advanced.ts`'s own IPS
 sits beside the shared Year/birth-year field, the same defensive `born > 0 ? ... : ""` guard the old
 grid's own year column used.
 
-### Partiellt uttag: a fourth field the extractor never saw
+### Allmän pension (formerly "Partiellt uttag"): a fourth field the extractor never saw
 
 `uttagIp`, `uttagPp` and `defAr` (manual §3.7's own example: simulate a "jobbonär" — someone combining
 part-time work with a partial pension for a few years, then retiring in full) join `advanced.ts` as a
-new group, requested on top of every earlier addition here. The engine has carried all three since
+new group, requested on top of every earlier addition here — first titled "Partiellt uttag"/"Partial
+withdrawal", later renamed to "Allmän pension"/"Public pension" (below), which is why the group's own
+`data-group` key is still `partialWithdrawal` while its displayed title has moved on. The engine has
+carried all three since
 early on — `mcalc.ts`'s per-age loop already gates `uttagIp`/`uttagPp` between the retirement age and
 `defAr`, and `wages.ts`'s `withdrawalShare` already ties Lön to whichever share is drawn — the same
 "wired in the engine, missing only a UI" situation PGB was in before Phase 6.

@@ -153,7 +153,27 @@ const mikrosimPanel = createMikrosimPanel(
 const advancedBox = document.createElement("div");
 advancedBox.className = "advanced-box";
 advancedBox.hidden = true;
-advancedBox.append(advancedPanel.element, salaryPath.element, pgbGrid.element);
+// The nine sections in plain Swedish alphabetical order by their own
+// displayed title (on request) -- see advanced.ts's own header comment.
+// `advancedPanel.groups` holds seven of them, keyed by `Group.key`;
+// `salaryPath`'s "Lön" and `pgbGrid`'s "Pensionsgrundande belopp (PGB)"
+// are the other two, interleaved here rather than appended after.
+const group = (key: string): HTMLElement => {
+  const element = advancedPanel.groups.get(key);
+  if (!element) throw new Error(`advanced.ts has no "${key}" group`);
+  return element;
+};
+advancedBox.append(
+  group("partialWithdrawal"), // Allmän pension
+  group("housing"), // Bostadstillägg
+  group("insurance"), // Garantipension
+  group("tax"), // Inkomstskatt
+  group("capital"), // Kapital och avkastning
+  salaryPath.element, // Lön
+  pgbGrid.element, // Pensionsgrundande belopp (PGB)
+  group("privateSaving"), // Privat sparande
+  group("occupational"), // Tjänstepension
+);
 
 /**
  * `Använd normala inställningar` -- the button the Adv_settings sheet carries.
