@@ -982,11 +982,28 @@ export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang, mo
     },
   ];
 
+  // Drawn as an overlay line, not another stacked band -- Disponibel inkomst
+  // is a downstream figure (post-tax, plus benefits), not one of the seven
+  // components summed into Bruttopension, so it does not belong in the same
+  // stack. `--text-primary` (black in light mode, white in dark) rather than
+  // a `--fig-*` categorical token, on request for a plain black line -- this
+  // is the same "always-legible ink" reasoning `.mikrosim-bar-value` already
+  // uses, not a new series colour needing its own palette validation.
+  const disposableLine: Series<MikrosimRow> = {
+    key: "disposable",
+    name: columnLabel(Table1Key.DisposableAtRetirement),
+    colour: "--text-primary",
+    mark: "line",
+    dashed: false,
+    get: (r) => valueOf(r, Table1Key.DisposableAtRetirement),
+  };
+
   const title = lang === "sv" ? "Pensionens sammansättning per rad" : "Pension breakdown by row";
   const svg = newSvg(title);
   const { centre, width } = columns(rows.length);
   const max = Math.max(
     ...rows.map((row) => bands.reduce((sum, s) => sum + Math.max(s.get(row), 0), 0)),
+    ...rows.map((row) => disposableLine.get(row)),
     1,
   );
   // A row's own Bruttopension label sits right above its bar; past 10 rows
@@ -998,6 +1015,19 @@ export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang, mo
 
   gridlines(svg, axis, lang);
   stack(svg, rows, bands, y, centre, width);
+
+  const disposablePoints = rows.map((row, i) => `${centre(i)},${y(disposableLine.get(row))}`).join(" ");
+  if (disposablePoints !== "") {
+    svg.append(
+      el("polyline", {
+        points: disposablePoints,
+        fill: "none",
+        stroke: `var(${disposableLine.colour})`,
+        class: "line mikrosim-disposable-line",
+      }),
+    );
+  }
+
   rows.forEach((row, i) => {
     svg.append(label(String(i + 1), centre(i), PLOT.bottom + 16, "tick tick-x"));
     if (showValues) {
@@ -1006,7 +1036,7 @@ export function renderMikrosimChart(rows: readonly MikrosimRow[], lang: Lang, mo
     }
   });
 
-  const legendSeries = visibleSeries(rows, bands);
+  const legendSeries = visibleSeries(rows, [...bands, disposableLine]);
   const note =
     lang === "sv"
       ? "En rad som inte kunnat beräknas visas som en tom kolumn."

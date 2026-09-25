@@ -910,6 +910,22 @@ clutter more than they inform; `vertical()`'s own multiplier is bumped an extra 
 will actually be drawn, reserving headroom for the tallest bar's own label without changing every
 other chart's shared vertical-scale headroom.
 
+**Disponibel inkomst as a black overlay line, on request.** A plain `Series<MikrosimRow>` with
+`mark: "line"`, drawn as its own `<polyline>` after `stack()` draws the seven bands — not an eighth
+band, since it is a downstream figure (post-tax, plus benefits) rather than one of the components
+summed into Bruttopension, and stacking it in would double-count. `colour: "--text-primary"` rather
+than a new `--fig-*` categorical token: this token is already black in light mode and white in dark
+(the same "always-legible ink" reasoning `.mikrosim-bar-value`'s own colour choice above already
+uses), which is exactly a literal black line in the common case while still staying visible against
+a dark background — a `--fig-*` token chosen for mutual distinguishability from the other six bands
+would miss the point of asking for black specifically, so this one skips the `dataviz` skill's
+palette validation on purpose (it is not a new categorical colour). The vertical scale's own `max`
+takes this line's values into account alongside the stacked bands', so a Disponibel inkomst that
+runs higher than the bands' own sum for a given row is never clipped. Drawn for every row regardless
+of the Bruttopension labels' own 10-row cap — one continuous line, not a label per row, so it never
+accumulates the same clutter — and given its own legend entry (`visibleSeries(rows, [...bands,
+disposableLine])`) alongside the bands.
+
 **"Hämta från Prognos"/"Hämta från Jämför scenarier", on request — a one-time pull, not a live
 link.** Two more `actions` buttons alongside "+ Lägg till rad": the first appends one row read from
 Prognos's own current baseline (whichever mode is actually driving it — `main.ts`'s `runInput()`, not

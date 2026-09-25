@@ -1753,8 +1753,24 @@ console.log(`mikrosim chart  : ${mikrosimBarsBeforeRemove} bar segments, ${mikro
 if (mikrosimBarsBeforeRemove === 0) {
   problems.push("the Mikrosim chart draws no bars at all");
 }
-if (mikrosimLegendItems === 0 || mikrosimLegendItems > 7) {
-  problems.push(`the Mikrosim chart legend has ${mikrosimLegendItems} entries, expected 1-7`);
+// Up to 7 stacked bands plus the Disponibel inkomst overlay line.
+if (mikrosimLegendItems === 0 || mikrosimLegendItems > 8) {
+  problems.push(`the Mikrosim chart legend has ${mikrosimLegendItems} entries, expected 1-8`);
+}
+
+// Disponibel inkomst is drawn as a black overlay line, not another stacked
+// band, with its own legend entry -- one point per row, so its own line
+// count tracks the row count the same way the bars already do.
+const mikrosimDisposableLines = await mikrosimChart.locator("svg .mikrosim-disposable-line").count();
+const mikrosimDisposableLegend = await mikrosimChart
+  .locator(".legend li", { hasText: "Disponibel inkomst" })
+  .count();
+console.log(`mikrosim chart  : ${mikrosimDisposableLines} disposable-income line(s), legend entry present: ${mikrosimDisposableLegend > 0}`);
+if (mikrosimDisposableLines !== 1) {
+  problems.push(`the Mikrosim chart draws ${mikrosimDisposableLines} disposable-income line(s), expected 1`);
+}
+if (mikrosimDisposableLegend === 0) {
+  problems.push('the Mikrosim chart legend is missing a "Disponibel inkomst" entry for its overlay line');
 }
 
 // A row's own Bruttopension total is labelled above its bar -- annual by
@@ -2034,6 +2050,15 @@ if (mikrosimRowsOver10 <= 10) {
 }
 if (mikrosimBarValueLabelsOver10 !== 0) {
   problems.push(`the Mikrosim chart shows ${mikrosimBarValueLabelsOver10} Bruttopension label(s) with over 10 rows, expected 0`);
+}
+// Unlike the Bruttopension labels, the disposable-income line has no 10-row
+// cap -- it is one continuous polyline covering every row, not a label per
+// row that would start overlapping.
+const mikrosimDisposableLinesOver10 = await mikrosimChart.locator("svg .mikrosim-disposable-line").count();
+if (mikrosimDisposableLinesOver10 !== 1) {
+  problems.push(
+    `the Mikrosim chart draws ${mikrosimDisposableLinesOver10} disposable-income line(s) with over 10 rows, expected 1`,
+  );
 }
 
 // Back to the single-scenario view for the screenshots, and to leave the
