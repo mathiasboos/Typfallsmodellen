@@ -538,14 +538,15 @@ export const GROUPS: readonly Group[] = [
 ];
 
 /**
- * Manual 3.6's "Slutlön" pair -- moved out of `GROUPS` entirely, on request,
- * since the now-empty "Övrigt" group they used to share with `flexPension`
- * (moved into "occupational" above) had nothing else left in it. Both settings
- * describe the derived final-salary figure a typed wage path (`salaryPath.ts`)
- * also feeds, so they render inside that file's own "Salary" section instead
- * of getting a `<details>` of their own here -- `salaryPath.ts` imports these
- * two consts directly and renders them with the same `fieldSet` builders this
- * file's own loop below uses for a plain number setting.
+ * Manual 3.6's "Slutlön" pair, plus row 141's "Löneprofil" -- moved out of
+ * `GROUPS` entirely, on request, since the now-empty "Övrigt" group they used
+ * to share with `flexPension` (moved into "occupational" above) had nothing
+ * else left in it. All three describe the wage path a typed own path
+ * (`salaryPath.ts`) also feeds or overrides, so they render inside that
+ * file's own "Salary" section instead of getting a `<details>` of their own
+ * here -- `salaryPath.ts` imports these consts directly and renders them with
+ * the same `fieldSet` builders this file's own loop below uses for a plain
+ * number or select setting.
  */
 export const FINAL_SALARY_YEARS: Setting = {
   // row 103 "Slutlön: Medel av de senaste angivna årens inkomster"
@@ -594,14 +595,50 @@ export const PENSION_SAME_YEAR_AS_FINAL_SALARY: Setting = {
   set: (pensionSameYearAsFinalSalary) => ({ pensionSameYearAsFinalSalary }),
 };
 
+/**
+ * Row 141 "Löneprofil" -- a wage *shape*, not a typed path: `wages.ts`'s own
+ * `WAGE_PROFILES` bends the derived straight-line wage index into one of four
+ * fifth-degree curves fitted to Pensionsmyndigheten's 2017 regleringsbrev
+ * memorandum on observed earnings by age and sex, rather than replacing the
+ * path outright the way `salaryPath.ts`'s own typed grid does -- the two are
+ * independent (an own path, once switched on, ignores the derived wage
+ * entirely, profile included). Choice order and option 0's label follow the
+ * workbook's own dropdown (`options.json`'s `Wage_profil` row, hint "0 - Rak
+ * lönebana"); "löneutveckling" is translated "wage growth" throughout this
+ * port (see form.ts's own real-return hint) for consistency with option 0's
+ * English text.
+ */
+export const WAGE_PROFILE: Setting = {
+  key: "wageProfile",
+  row: 141,
+  control: {
+    kind: "select",
+    choices: [
+      { value: 0, label: text("Rak – följer den allmänna löneutvecklingen", "Straight – follows general wage growth") },
+      { value: 1, label: text("Låg inkomst, kvinna", "Low income, woman") },
+      { value: 2, label: text("Låg inkomst, man", "Low income, man") },
+      { value: 3, label: text("Normal inkomst, kvinna", "Normal income, woman") },
+      { value: 4, label: text("Normal inkomst, man", "Normal income, man") },
+    ],
+  },
+  label: text("Löneprofil", "Salary profile"),
+  hint: text(
+    "formar den beräknade lönebanan efter ålder -- en egen lönebana nedan följer inte detta val",
+    "shapes the derived wage path by age -- an own salary path below ignores this choice",
+  ),
+  get: (c) => c.wageProfile,
+  set: (wageProfile) => ({ wageProfile }),
+};
+
 /** Every exposed setting, flattened -- what the tests walk. Includes
- * `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`, which render in
- * `salaryPath.ts` rather than in a `GROUPS`-driven `<details>` here, but are
- * exposed settings all the same. */
+ * `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`/`WAGE_PROFILE`,
+ * which render in `salaryPath.ts` rather than in a `GROUPS`-driven `<details>`
+ * here, but are exposed settings all the same. */
 export const SETTINGS: readonly Setting[] = [
   ...GROUPS.flatMap((g) => g.settings),
   FINAL_SALARY_YEARS,
   PENSION_SAME_YEAR_AS_FINAL_SALARY,
+  WAGE_PROFILE,
 ];
 
 /**

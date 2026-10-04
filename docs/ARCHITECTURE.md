@@ -406,6 +406,34 @@ established for a `ModelContext` field living inside an otherwise `TypfallInput`
 same way `advanced.ts`'s own settings do — visually only; the actual state reset is `main.ts`'s own
 `advanced = {}`, unchanged.
 
+**"Löneprofil" (row 141) was fully wired in the engine already — it was just never exposed, one of the
+forty-some `ModelContext` fields this port's Advanced panel had not yet surfaced — and is now a
+dropdown, on request, not a typed path.** `wages.ts`'s own `WAGE_PROFILES` already held four
+fifth-degree polynomials (ages mapped to earnings, fitted to Pensionsmyndigheten's 2017 regleringsbrev
+memorandum on income by age and sex), applied as a multiplicative shape on top of the derived
+straight-line wage index whenever `context.wageProfile` is 1-4 rather than 0 — `buildContext` already
+read `Wage_profil` from `options.json` into `ModelContext.wageProfile`, and `setup.ts`/`mcalc.ts`
+already passed it into `wages()` on every run; nothing engine-side changed. `WAGE_PROFILE`, a new
+`Setting` exported from `advanced.ts` alongside `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`,
+is the first `select`-kind setting rendered inside `salaryPath.ts` rather than `advanced.ts`'s own
+`GROUPS` loop — `createSalaryPath` now also destructures `select` off its own `fieldSet(...)`, building
+the control the same way `advanced.ts`'s loop already builds `returnBasis`/`privateSavingKind`, just
+outside that file's single-setting-kind-per-loop-iteration loop (a `select` can't share the `number`
+branch the Slutlön pair's own loop already specializes on). It sits above the wage-path toggle,
+alongside the Slutlön pair, since it shapes the same derived path those two describe — and like
+`ownIncome`, a typed own salary path overrides it outright, which its own hint says. The five option
+labels are the workbook's own dropdown text for `Wage_profil` (read off a LibreOffice-converted copy of
+the `.xlsb` during development — the sheet itself reads "0 - Rak lönebana", "1 - låg löneinkomstprofil,
+kvinna", "2 - låg löneinkomstprofil, man", "3 - Normal inkomstprofil, kvinna", "4 - Normal
+inkomstprofil, man"); option 0's own UI text ("Rak – följer den allmänna löneutvecklingen"/"Straight –
+follows general wage growth") is this port's own fuller rendering rather than a literal transcription
+of the sheet's shorthand, matching how every other label in `advanced.ts` is hand-written rather than
+retyped from `options.json` — "löneutveckling" is translated "wage growth" throughout this port (see
+`form.ts`'s own real-return hint), kept consistent here. The workbook's own dropdown actually carries
+two further options (5/6, "Hög inkomstprofil") that `WAGE_PROFILES` never implemented when this port's
+engine was first built — not exposed here either, since there is no underlying curve behind them to
+select.
+
 **`Inkomst` and `Varav lön` are read independently, not one derived from the other, and neither is
 redundant with the other** — asked directly whether `Inkomst` could be dropped. `setup.ts:424` sets
 both straight from whatever a row gives it (`income.set(age, own?.income ?? 0)`, the same line for

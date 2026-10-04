@@ -1,13 +1,14 @@
 /**
  * "Salary" -- the Indata_lista sheet as a grid, renamed from "Own salary
  * path" and, on request, now also the home for manual 3.6's "Slutlön" pair
- * (`FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`, imported from
- * `advanced.ts`): both describe the derived final-salary figure this file's
- * own typed wage path also feeds, so they render here, above the path
- * toggle, using the same `fieldSet` builders `advanced.ts`'s own loop uses
- * for a plain number setting -- rather than in a `<details>` of their own
- * (that used to be `advanced.ts`'s "Övrigt"/"Other" group, now removed since
- * nothing was left in it once this and `flexPension` moved out). A second
+ * (`FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`) and row 141's
+ * "Löneprofil" (`WAGE_PROFILE`), all three imported from `advanced.ts`: each
+ * describes the derived wage path this file's own typed path also feeds or
+ * overrides, so they render here, above the path toggle, using the same
+ * `fieldSet` builders `advanced.ts`'s own loop uses for a plain number or
+ * select setting -- rather than in a `<details>` of their own (that used to
+ * be `advanced.ts`'s "Övrigt"/"Other" group, now removed since nothing was
+ * left in it once this and `flexPension` moved out). A second
  * `onSettingChange` callback carries their own `ModelContext` patches up to
  * `main.ts`'s `advanced` state, alongside the existing `onChange` for the
  * wage path itself (a `TypfallInput` field) -- the same two-callbacks-one-
@@ -48,7 +49,7 @@
 import { defaultContext } from "@typfallsmodellen/engine";
 import type { ModelContext, OwnIncomeYear } from "@typfallsmodellen/engine";
 
-import { FINAL_SALARY_YEARS, PENSION_SAME_YEAR_AS_FINAL_SALARY } from "./advanced.js";
+import { FINAL_SALARY_YEARS, PENSION_SAME_YEAR_AS_FINAL_SALARY, WAGE_PROFILE } from "./advanced.js";
 import { fieldSet } from "./controls.js";
 import type { Lang } from "./i18n.js";
 
@@ -96,7 +97,7 @@ export function createSalaryPath(
   // fields, rendered with the same builder `advanced.ts`'s own loop uses for
   // a setting of this `control.kind`, since neither needs that loop's other
   // branches (percent, select, check, the ipsMonthly special case).
-  const { field, number } = fieldSet(body, relabels, lang);
+  const { field, number, select } = fieldSet(body, relabels, lang);
   for (const setting of [FINAL_SALARY_YEARS, PENSION_SAME_YEAR_AS_FINAL_SALARY]) {
     if (setting.control.kind !== "number") continue; // both are; guards the destructure below
     const initial = setting.get(normal);
@@ -108,6 +109,26 @@ export function createSalaryPath(
       ...(setting.hint ? { hint: setting.hint(l) } : {}),
     }));
     restores.push(() => control.setValue(initial));
+  }
+
+  // "Löneprofil" -- a select, not a number, so it sits outside the loop
+  // above rather than widening that loop's own single-kind guard.
+  if (WAGE_PROFILE.control.kind === "select") {
+    const initial = WAGE_PROFILE.get(normal);
+    const control = select(WAGE_PROFILE.control.choices, initial, (v) => onSettingChange(WAGE_PROFILE.set(v)));
+    control.element.dataset.setting = WAGE_PROFILE.key;
+    relabels.push(control.relabel);
+    field(
+      control.element,
+      (l) => ({
+        label: WAGE_PROFILE.label(l),
+        ...(WAGE_PROFILE.hint ? { hint: WAGE_PROFILE.hint(l) } : {}),
+      }),
+      "field field-wide",
+    );
+    restores.push(() => {
+      control.element.value = String(initial);
+    });
   }
 
   const toggleWrap = document.createElement("label");

@@ -1370,6 +1370,47 @@ const salaryGroupTitle = await tab.locator('[data-group="salary-path"] summary')
 if (salaryGroupTitle !== "Lön") {
   problems.push(`the salary-path section is titled "${salaryGroupTitle}", expected "Lön"`);
 }
+
+// Row 141 "Löneprofil": bends the derived wage curve by age rather than
+// moving one figure directly, so this checks a lifetime-integrated figure
+// (income pension) rather than Slutlön, whose narrow look-back window a
+// particular profile's own shape could leave nearly unchanged by
+// coincidence. The five options are the workbook's own dropdown, read off
+// a LibreOffice-converted copy of the .xlsb during development -- option 0's
+// exact wording differs (this port's own shorter text, not retyped from the
+// sheet, matching every other label in advanced.ts), the four profiled ones
+// don't.
+const wageProfileField = await setting("wageProfile");
+const wageProfileGroup = await wageProfileField.locator("xpath=ancestor::details[1]").getAttribute("data-group");
+if (wageProfileGroup !== "salary-path") {
+  problems.push(`wageProfile sits in the "${wageProfileGroup}" group, expected "salary-path"`);
+}
+const wageProfileOptions = await wageProfileField.locator("option").allTextContents();
+const expectedWageProfiles = [
+  "Rak – följer den allmänna löneutvecklingen",
+  "Låg inkomst, kvinna",
+  "Låg inkomst, man",
+  "Normal inkomst, kvinna",
+  "Normal inkomst, man",
+];
+if (JSON.stringify(wageProfileOptions) !== JSON.stringify(expectedWageProfiles)) {
+  problems.push(
+    `the Löneprofil dropdown shows ${JSON.stringify(wageProfileOptions)}, expected ${JSON.stringify(expectedWageProfiles)}`,
+  );
+}
+const ipBeforeProfile = await shown("ip", "adjusted");
+await wageProfileField.selectOption("2"); // Låg inkomst, man
+await tab.waitForTimeout(80);
+const ipAfterProfile = await shown("ip", "adjusted");
+console.log(
+  `wage profile    : inkomstpension (fasta priser) ${ipBeforeProfile} -> ${ipAfterProfile} at "Låg inkomst, man"`,
+);
+if (ipAfterProfile === ipBeforeProfile) {
+  problems.push(
+    `picking a wage profile did not change the income-pension figure (${ipBeforeProfile} -> ${ipAfterProfile})`,
+  );
+}
+
 await pensionGapField.fill("5");
 await pensionGapField.dispatchEvent("change");
 await tab.waitForTimeout(80);
@@ -1389,6 +1430,10 @@ await tab.waitForTimeout(50);
 const pensionGapAfterReset = await pensionGapField.inputValue();
 if (pensionGapAfterReset !== "0") {
   problems.push(`the reset button left "Slutlönens referensår" at "${pensionGapAfterReset}", expected "0"`);
+}
+const wageProfileAfterReset = await wageProfileField.inputValue();
+if (wageProfileAfterReset !== "0") {
+  problems.push(`the reset button left Löneprofil at "${wageProfileAfterReset}", expected "0"`);
 }
 await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
 await tab.waitForTimeout(50);
