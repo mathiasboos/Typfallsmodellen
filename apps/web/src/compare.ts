@@ -328,6 +328,9 @@ export function createComparePanel(
         par: columns[0]!.par,
         perMonth,
         priceBasis: context.priceBasis,
+        // Unread by `renderCompareChart` -- this tab draws its own chart, never
+        // Figur 2 -- but part of the shared `FigureView` shape regardless.
+        figure2AfterTax: true,
       };
 
       const shared = {

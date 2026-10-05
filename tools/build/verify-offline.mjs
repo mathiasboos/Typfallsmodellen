@@ -303,6 +303,41 @@ if (!fig2Legend.some((text) => text.includes("Lön") || text.includes("Earnings"
   problems.push("Figur 2's legend is missing Lön, which is never zero before retirement");
 }
 
+// Figur 2's own after-tax/before-tax toggle, added on request -- the overlay
+// line switches between two totals (`netto`/`brutto`) already on every row,
+// so this checks the legend label, the active button and the line's own
+// drawn points all change together, not just one of the three.
+const fig2Figure = tab.locator("figure.figure").nth(1);
+const basisButtonCount = await fig2Figure.locator(".panel-toggle button").count();
+if (basisButtonCount !== 2) {
+  problems.push(`Figur 2's after-tax/before-tax toggle has ${basisButtonCount} button(s), expected 2`);
+}
+const afterTaxClass = await fig2Figure.locator('button[data-basis="after-tax"]').getAttribute("class");
+if (!afterTaxClass?.includes("active")) {
+  problems.push(`Figur 2 does not default to "after-tax" (class was "${afterTaxClass}")`);
+}
+const linePointsAfterTax = await fig2Figure.locator("svg polyline.line").getAttribute("points");
+await fig2Figure.locator('button[data-basis="before-tax"]').click();
+await tab.waitForTimeout(80);
+const fig2LegendBeforeTax = await fig2Figure.locator(".legend li").allTextContents();
+console.log(`Figur 2 basis   : ${fig2LegendBeforeTax.join(" | ")}`);
+if (!fig2LegendBeforeTax.some((text) => text.includes("Inkomst brutto") || text.includes("Income gross"))) {
+  problems.push(
+    `Figur 2's legend did not switch to "Inkomst brutto"/"Income gross" after picking before-tax (${fig2LegendBeforeTax.join(" | ")})`,
+  );
+}
+const beforeTaxClass = await fig2Figure.locator('button[data-basis="before-tax"]').getAttribute("class");
+if (!beforeTaxClass?.includes("active")) {
+  problems.push("Figur 2's before-tax button did not become active after it was clicked");
+}
+const linePointsBeforeTax = await fig2Figure.locator("svg polyline.line").getAttribute("points");
+if (linePointsBeforeTax === linePointsAfterTax) {
+  problems.push("Figur 2's overlay line did not move after switching to before-tax (brutto vs netto)");
+}
+// Back to the default, so the screenshots below show the usual view.
+await fig2Figure.locator('button[data-basis="after-tax"]').click();
+await tab.waitForTimeout(80);
+
 // Table 2 thins its own columns the same way: a column with no value
 // anywhere in this run gets no header. The default typfall has no
 // occupational pension and no private saving (no normal-mode input drives

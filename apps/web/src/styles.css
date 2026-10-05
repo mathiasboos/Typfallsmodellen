@@ -909,6 +909,11 @@ body {
 .figure svg { width: 100%; height: auto; display: block; touch-action: none; }
 .figure-subtitle { margin: -4px 0 6px; font-size: 0.82rem; color: var(--text-secondary); }
 .figure-note { margin: 2px 0 0; font-size: 0.75rem; color: var(--text-muted); }
+/* Figur 2's own after-tax/before-tax toggle -- the only figure with a control
+   of its own, so this rule is scoped to `.figure` rather than widening
+   `.panel-toggle` itself. Reuses `.panel-btn`'s plain styling exactly as
+   `modeToggle()`/`screenToggle()` already do outside a gold banner. */
+.figure > .panel-toggle { margin: 0 0 10px; }
 
 .plot { display: grid; gap: 10px; align-items: start; }
 @media (min-width: 900px) {

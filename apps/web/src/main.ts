@@ -47,6 +47,11 @@ interface View {
   readonly lang: Lang;
   /** The workbook's own month/year switch. */
   readonly monthly: boolean;
+  /** Figur 2's own toggle, added on request -- true shows its overlay line
+   * as "Inkomst efter skatt" (after tax, the default, matching every build
+   * before this toggle existed), false as "Inkomst brutto" (before tax). Not
+   * a workbook setting, so it lives here rather than in `ModelContext`. */
+  readonly figure2AfterTax: boolean;
 }
 
 /** The workbook's two radio circles: `Normalt` and `Avancerat`. */
@@ -86,7 +91,7 @@ function runInput(): TypfallInput {
 }
 
 let input: TypfallInput = defaultInput();
-let view: View = { lang: "sv", monthly: true };
+let view: View = { lang: "sv", monthly: true, figure2AfterTax: true };
 let mode: Mode = "normal";
 let screen: Screen = "single";
 /** Adv_settings, as overrides on top of the workbook's own normal values. */
@@ -441,6 +446,7 @@ function render(): void {
     par,
     perMonth: view.monthly,
     priceBasis: context.priceBasis,
+    figure2AfterTax: view.figure2AfterTax,
   };
 
   // The sheet's own heading, minus its "Tabell 2." numbering (dropped on
@@ -492,7 +498,10 @@ function render(): void {
   results.append(
     section(table1Title, wrapScroll(renderTable1(result, lang, table1View)), table1Actions),
     renderFigure1(result, figures),
-    renderFigure2(result, figures),
+    renderFigure2(result, figures, (afterTax) => {
+      view = { ...view, figure2AfterTax: afterTax };
+      render();
+    }),
     renderDisposable(result, figures),
     renderTaxChart(result, figures),
     section(table2Title, wrapScroll(renderTable2(result, lang)), table2Actions),

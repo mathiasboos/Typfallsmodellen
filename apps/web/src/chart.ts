@@ -65,6 +65,15 @@ export interface FigureView {
   readonly perMonth: boolean;
   /** `rng_Bara_fastapriser`: 1 fixed prices, 0 wage level, -1 nominal. */
   readonly priceBasis: number;
+  /**
+   * Figur 2's own choice of which total line to overlay on its stacked
+   * columns -- true "Inkomst efter skatt" (after tax, the only option before
+   * this toggle existed), false "Inkomst brutto" (before tax). Not read by
+   * any other figure: the disposable-income chart already draws both gross
+   * and net as its own bands, and Figur 1/the tax chart have no such line to
+   * begin with.
+   */
+  readonly figure2AfterTax: boolean;
 }
 
 /** What a series needs for its legend/tooltip key, regardless of what shape
@@ -284,6 +293,7 @@ function frame(
   svg: SVGSVGElement,
   key: HTMLElement,
   notes: readonly string[] = [],
+  actions?: HTMLElement,
 ): HTMLElement {
   const figure = document.createElement("figure");
   figure.className = "figure";
@@ -296,6 +306,12 @@ function frame(
     sub.textContent = subtitle;
     figure.append(sub);
   }
+  // Below the caption, not inside it -- the gold banner's own flex layout
+  // (see styles.css) stays scoped to the panel heading's CSV-export button,
+  // so a figure's own toggle (Figur 2's after-tax/before-tax choice) sits in
+  // the plain body instead, reusing `.panel-toggle`/`.panel-btn` exactly as
+  // `modeToggle()`/`screenToggle()` already do outside a gold banner too.
+  if (actions) figure.append(actions);
   const plot = document.createElement("div");
   plot.className = "plot";
   plot.append(svg, key);
@@ -646,8 +662,24 @@ function overlay(
  * "Lön vid fortsatt arbete" (`Data_till_Start!C`, the salary the run would
  * have paid had work continued) was drawn as a fourth overlay here; removed
  * on request, series and legend both.
+ *
+ * The overlay line was fixed to "Inkomst efter skatt" until a toggle was
+ * added, on request, to switch it to "Inkomst brutto" instead -- both already
+ * exist on every row (`MvaluesRow.netto`/`brutto`), so this reads either
+ * rather than computing a new figure. The bars themselves don't change: they
+ * are gross amounts either way (their stack already sums to `brutto`), so
+ * "before tax" means the line retraces the top of the stack, which is a
+ * correct, if visually redundant, reading -- not a bug. `onToggleBasis` is
+ * `main.ts`'s own click handler (it owns `view.figure2AfterTax` and calls
+ * `render()`), the same shape `scaleToggle()` closes over `render()` itself,
+ * just handed in here instead since this toggle's buttons live inside the
+ * figure `frame()` builds, not beside it.
  */
-export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElement {
+export function renderFigure2(
+  result: TypfallResult,
+  view: FigureView,
+  onToggleBasis: (afterTax: boolean) => void,
+): HTMLElement {
   const { lang } = view;
   const per = scale(view);
   const rows = aroundRetirement(result, view.par);
@@ -692,13 +724,21 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
     },
   ];
   const lines: readonly Series[] = [
-    {
-      key: "after-tax",
-      name: (l) => t("incomeAfterTax", l),
-      colour: "--fig-after-tax",
-      mark: "line",
-      get: (r) => r.netto / per,
-    },
+    view.figure2AfterTax
+      ? {
+          key: "after-tax",
+          name: (l) => t("incomeAfterTax", l),
+          colour: "--fig-after-tax",
+          mark: "line",
+          get: (r) => r.netto / per,
+        }
+      : {
+          key: "before-tax",
+          name: (l) => t("grossIncome", l),
+          colour: "--fig-after-tax",
+          mark: "line",
+          get: (r) => r.brutto / per,
+        },
   ];
 
   const first = rows[0]?.age ?? view.par;
@@ -709,6 +749,23 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
     `${first} - ${lastAge}`,
   );
   const subtitle = view.priceBasis === 1 ? t("fixedPrices", lang) : undefined;
+
+  const basisToggle = document.createElement("div");
+  basisToggle.className = "panel-toggle";
+  basisToggle.setAttribute("role", "group");
+  const basisChoices: readonly { afterTax: boolean; label: string }[] = [
+    { afterTax: true, label: t("incomeAfterTax", lang) },
+    { afterTax: false, label: t("grossIncome", lang) },
+  ];
+  for (const choice of basisChoices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = choice.label;
+    button.dataset.basis = choice.afterTax ? "after-tax" : "before-tax";
+    button.className = choice.afterTax === view.figure2AfterTax ? "panel-btn active" : "panel-btn";
+    button.addEventListener("click", () => onToggleBasis(choice.afterTax));
+    basisToggle.append(button);
+  }
 
   const svg = newSvg(title);
   const { centre, width, step } = columns(rows.length);
@@ -729,7 +786,7 @@ export function renderFigure2(result: TypfallResult, view: FigureView): HTMLElem
 
   const series = [...bands, ...lines];
   const legendSeries = visibleSeries(rows, [...bands].reverse().concat(lines));
-  const figure = frame(title, subtitle, svg, legend(legendSeries, lang));
+  const figure = frame(title, subtitle, svg, legend(legendSeries, lang), [], basisToggle);
   hover(
     svg,
     figure,

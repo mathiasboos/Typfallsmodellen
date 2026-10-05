@@ -161,6 +161,38 @@ seventeen. The split is computed identically for every age, working or retired, 
 it uniformly across the whole window rather than inventing a separate "salary tax" category for the
 working years the engine doesn't actually distinguish. Table 2 carries the same two columns.
 
+**Figur 2's own overlay line switches between "Inkomst efter skatt" and "Inkomst brutto", on
+request** — until this toggle existed it was fixed to the former. Both totals were already sitting
+on every row (`MvaluesRow.netto`/`brutto`), so `renderFigure2` (`apps/web/src/chart.ts`) just picks
+which one `lines` holds, keyed off a new `FigureView.figure2AfterTax` boolean (default `true`,
+matching every build before this toggle shipped) that `main.ts` owns the same way it owns
+`view.monthly`/`view.lang` — a plain `View` field, not a `ModelContext` one, since it is not a
+workbook setting. The toggle's two buttons live inside `renderFigure2` itself (it already has
+`t()`/the current `view` in scope to build them and pick their active state), and call back into
+`onToggleBasis`, a parameter `main.ts` passes in that mutates `view` and calls `render()` — the same
+shape `scaleToggle()` closes over `render()` with directly, just handed in rather than built beside
+the figure, since these buttons render *inside* the `<figure>` `frame()` builds. `frame()` itself
+grew a sixth, optional `actions` parameter for this: appended below the caption/subtitle rather than
+inside the gold-banner figcaption, whose own flex layout (`styles.css`) was deliberately scoped to
+the panel heading's CSV-export button alone — `.panel-toggle`/`.panel-btn` still render correctly
+there regardless, the same plain (non-gold) look `modeToggle()`/`screenToggle()` already use outside
+a banner. `renderCompareChart` shares the `FigureView` type but never reads this field (the compare
+tab draws its own chart, never Figur 2), so `compare.ts`'s own construction sets it to `true` with a
+comment saying so, the same way other `FigureView` fields already go unread by renderers that don't
+need them.
+
+**The "before tax" line can sit visibly above the stacked bars' own top, which is correct, not a
+rendering bug.** Figur 2's five bars were never meant to sum to `brutto` — they reproduce the
+original workbook's own five-band stack (Lön, Inkomstpension, Garantipension, Premiepension,
+Tjänstepension) exactly, which excludes private saving entirely (this file's own `--fig-private-
+saving` note above explains why Figur 2 never draws it as a band). `brutto` itself, however,
+*does* include it (`packages/engine/src/model/result.ts`'s `closeRetirementYear`:
+`income + ip + tp + pp + garp + tjp + ips + ptillagg`) — so whenever private saving is nonzero,
+"Inkomst brutto" genuinely exceeds the drawn stack's own top by that amount, the same way "Inkomst
+efter skatt" (which nets out `ips`'s own after-tax sibling, `pps`) already sat below the stack's top
+in every build before this toggle existed. Both lines are reading real, already-existing totals
+faithfully; neither was ever a promise that the line retraces the bars.
+
 Two of the form's fields are not the Start sheet's own, chosen this way on request rather than by
 following `mdlIndataInputOutput.bas` one-for-one:
 
