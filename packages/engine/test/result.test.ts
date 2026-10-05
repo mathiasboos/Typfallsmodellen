@@ -244,6 +244,30 @@ describe("life income", () => {
   });
 });
 
+describe("pgbBreakdown", () => {
+  it("includes a childcare credit even though it isn't a pgbManual entry", () => {
+    // childBirthYears drives a real per-age PGB credit (earnPgb's `diverse`),
+    // but it's never part of TypfallInput.pgbManual -- so a year whose only
+    // PGB source is a child credit has no buildPgbManual row at all. This is
+    // the case buildPgbBreakdown's age union exists for.
+    const r = compute({}, { childBirthYears: [1990, 0, 0, 0] });
+    const credited = r.pgbBreakdown.filter((x) => x.barn > 0);
+    expect(credited.length).toBeGreaterThan(0);
+    for (const x of credited) {
+      expect(x.sa).toBe(0);
+      expect(x.vpl).toBe(0);
+      expect(x.studier).toBe(0);
+    }
+  });
+
+  it("leaves barn at zero for years with only a manual entry", () => {
+    const r = compute({ pgbManual: [{ age: 30, sa: 50_000, studySemesters: 0 }] });
+    const row30 = r.pgbBreakdown.find((x) => x.age === 30)!;
+    expect(row30.sa).toBe(50_000);
+    expect(row30.barn).toBe(0);
+  });
+});
+
 describe("the municipal/state tax split", () => {
   it("sums to the same total tax netto already implies, at every age", () => {
     const r = compute();

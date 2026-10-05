@@ -50,6 +50,7 @@ function stubResult(overrides: {
     table2: [],
     rows: overrides.rows ?? [],
     wagePath: [],
+    pgbBreakdown: [],
     lifeIncome: { gross: 0, net: 0, disposable: 0, throughAge: overrides.throughAge ?? 0 },
     qualifyingYears: 40,
     warnings: [],

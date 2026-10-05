@@ -207,20 +207,17 @@ export function createForm(
   marriedBox.addEventListener("change", () => onChange({ married: marriedBox.checked }));
   field(marriedBox, (l) => ({ label: t("married", l) }), "field field-check");
 
-  field(
-    percent(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation })).element,
-    (l) => ({ label: t("inflation", l), hint: "%" }),
-  );
+  const inflationCtl = percent(initial.yearlyInflation, (yearlyInflation) => onChange({ yearlyInflation }));
+  field(inflationCtl.element, (l) => ({ label: t("inflation", l), hint: "%" }));
+  relabels.push(inflationCtl.relabel);
 
-  field(
-    percent(initial.realGrowth, (realGrowth) => onChange({ realGrowth })).element,
-    (l) => ({ label: t("realGrowth", l), hint: "%" }),
-  );
+  const realGrowthCtl = percent(initial.realGrowth, (realGrowth) => onChange({ realGrowth }));
+  field(realGrowthCtl.element, (l) => ({ label: t("realGrowth", l), hint: "%" }));
+  relabels.push(realGrowthCtl.relabel);
 
-  field(
-    percent(initial.realReturn, (realReturn) => onChange({ realReturn })).element,
-    (l) => ({ label: t("realReturn", l), hint: "%" }),
-  );
+  const realReturnCtl = percent(initial.realReturn, (realReturn) => onChange({ realReturn }));
+  field(realReturnCtl.element, (l) => ({ label: t("realReturn", l), hint: "%" }));
+  relabels.push(realReturnCtl.relabel);
 
   const assumptionsInfo = document.createElement("details");
   assumptionsInfo.className = "field-note";

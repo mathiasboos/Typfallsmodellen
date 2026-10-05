@@ -57,10 +57,16 @@ export interface Run {
   readonly pgbManual: ReadonlyMap<number, ResolvedPgbYear>;
 }
 
-/** `earnPgb`'s own view of one age's PGB sheet: everything already in kronor. */
-interface ResolvedPgbYear {
+/**
+ * `earnPgb`'s own view of one age's PGB sheet: everything already in kronor
+ * -- `vplDays` is the one exception, kept alongside `vpl` only because the
+ * web UI shows it as its own column next to the kronor it produced, the same
+ * way the sheet itself shows a day count and a PGB amount side by side.
+ */
+export interface ResolvedPgbYear {
   readonly sa: number;
   readonly vpl: number;
+  readonly vplDays: number;
   readonly studier: number;
 }
 
@@ -85,11 +91,14 @@ function buildPgbManual(
     ]),
   );
 
-  const vplByAge = new Map<number, number>();
+  const vplByAge = new Map<number, { vpl: number; vplDays: number }>();
   if (input.pgbConscription) {
     for (const [year, days] of conscriptionDaysByYear(input.pgbConscription)) {
       const age = year - vbaInt(born);
-      vplByAge.set(age, conscriptionPgb(year, days, v.mpgi.getOrZero(age), marginal));
+      vplByAge.set(age, {
+        vpl: conscriptionPgb(year, days, v.mpgi.getOrZero(age), marginal),
+        vplDays: days,
+      });
     }
   }
 
@@ -97,7 +106,13 @@ function buildPgbManual(
   const result = new Map<number, ResolvedPgbYear>();
   for (const age of ages) {
     const row = byAge.get(age);
-    result.set(age, { sa: row?.sa ?? 0, vpl: vplByAge.get(age) ?? 0, studier: row?.studier ?? 0 });
+    const vplEntry = vplByAge.get(age);
+    result.set(age, {
+      sa: row?.sa ?? 0,
+      vpl: vplEntry?.vpl ?? 0,
+      vplDays: vplEntry?.vplDays ?? 0,
+      studier: row?.studier ?? 0,
+    });
   }
   return result;
 }
@@ -227,6 +242,7 @@ export function earnPgb(run: Run, age: number, utgyear: number): void {
     }
   }
 
+  s.pgbBarn.set(age, diverse);
   s.pgb.set(age, s.pgb.get(age) + diverse);
 
   // Conscription -- `buildPgbManual` has already applied wsPGB!I's own
