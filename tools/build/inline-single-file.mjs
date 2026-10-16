@@ -44,7 +44,16 @@ html = html.replace(script, (_, href) => {
 html = html.replace(stylesheet, (_, href) => `<style>${read(href)}</style>`);
 if (inlineScript === "") throw new Error("no <script src> tag found to inline");
 if (!html.includes("</body>")) throw new Error("no </body> to place the inlined script before");
-html = html.replace("</body>", `${inlineScript}</body>`);
+// A replacer *function*, not a template string: `String.replace`'s string form
+// treats `$&`, `$$`, `` $` `` etc. in the replacement as special patterns, and a
+// minified bundle saying `$` for some identifier right next to a `&` (bitwise
+// AND, as common as the variable name itself in output this size) spells `$&`
+// by pure chance -- which is exactly what happened here once code elsewhere in
+// this change shifted the minifier's own name allocation onto it, silently
+// splicing the literal matched text ("</body>") into the middle of the script
+// instead of the script itself. A function's return value is inserted as-is,
+// with no such reinterpretation, whatever the bundle happens to contain.
+html = html.replace("</body>", () => `${inlineScript}</body>`);
 
 /**
  * What a leftover `src`/`href` is allowed to be.

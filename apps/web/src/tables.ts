@@ -114,7 +114,7 @@ const TABLE1_COLUMNS: readonly {
   },
 ];
 
-function cell(text: string, className?: string): HTMLTableCellElement {
+export function cell(text: string, className?: string): HTMLTableCellElement {
   const td = document.createElement("td");
   td.textContent = text;
   if (className) td.className = className;
@@ -128,7 +128,7 @@ function cell(text: string, className?: string): HTMLTableCellElement {
  * column, not a value that changes with the pointer's position, so the
  * browser's own mechanism already does the job.
  */
-function headCell(text: string, info?: string): HTMLTableCellElement {
+export function headCell(text: string, info?: string): HTMLTableCellElement {
   const th = document.createElement("th");
   if (info === undefined) {
     th.textContent = text;
@@ -560,14 +560,14 @@ export function renderTable2(result: TypfallResult, lang: Lang): HTMLElement {
  * A field for a delimited row: quoted, with internal quotes doubled, only when
  * it contains the delimiter, a quote or a newline -- the ordinary CSV rule.
  */
-function csvField(value: string, delimiter: string): string {
+export function csvField(value: string, delimiter: string): string {
   if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
 
-function csvLine(cells: readonly string[], delimiter: string): string {
+export function csvLine(cells: readonly string[], delimiter: string): string {
   return cells.map((c) => csvField(c, delimiter)).join(delimiter);
 }
 
@@ -576,8 +576,11 @@ function csvLine(cells: readonly string[], delimiter: string): string {
  * else's with `,` fields and a decimal point. Both tables are already
  * formatted in the chosen locale (`kronor`, `percent`), so the delimiter is
  * the one thing this has to choose for itself.
+ *
+ * Exported for `mikrosimCsv.ts`, which reuses the same per-language choice
+ * for its own CSV rather than duplicating it.
  */
-function delimiterFor(lang: Lang): string {
+export function delimiterFor(lang: Lang): string {
   return lang === "sv" ? ";" : ",";
 }
 

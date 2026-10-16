@@ -161,6 +161,38 @@ seventeen. The split is computed identically for every age, working or retired, 
 it uniformly across the whole window rather than inventing a separate "salary tax" category for the
 working years the engine doesn't actually distinguish. Table 2 carries the same two columns.
 
+**Figur 2's own overlay line switches between "Inkomst efter skatt" and "Inkomst brutto", on
+request** — until this toggle existed it was fixed to the former. Both totals were already sitting
+on every row (`MvaluesRow.netto`/`brutto`), so `renderFigure2` (`apps/web/src/chart.ts`) just picks
+which one `lines` holds, keyed off a new `FigureView.figure2AfterTax` boolean (default `true`,
+matching every build before this toggle shipped) that `main.ts` owns the same way it owns
+`view.monthly`/`view.lang` — a plain `View` field, not a `ModelContext` one, since it is not a
+workbook setting. The toggle's two buttons live inside `renderFigure2` itself (it already has
+`t()`/the current `view` in scope to build them and pick their active state), and call back into
+`onToggleBasis`, a parameter `main.ts` passes in that mutates `view` and calls `render()` — the same
+shape `scaleToggle()` closes over `render()` with directly, just handed in rather than built beside
+the figure, since these buttons render *inside* the `<figure>` `frame()` builds. `frame()` itself
+grew a sixth, optional `actions` parameter for this: appended below the caption/subtitle rather than
+inside the gold-banner figcaption, whose own flex layout (`styles.css`) was deliberately scoped to
+the panel heading's CSV-export button alone — `.panel-toggle`/`.panel-btn` still render correctly
+there regardless, the same plain (non-gold) look `modeToggle()`/`screenToggle()` already use outside
+a banner. `renderCompareChart` shares the `FigureView` type but never reads this field (the compare
+tab draws its own chart, never Figur 2), so `compare.ts`'s own construction sets it to `true` with a
+comment saying so, the same way other `FigureView` fields already go unread by renderers that don't
+need them.
+
+**The "before tax" line can sit visibly above the stacked bars' own top, which is correct, not a
+rendering bug.** Figur 2's five bars were never meant to sum to `brutto` — they reproduce the
+original workbook's own five-band stack (Lön, Inkomstpension, Garantipension, Premiepension,
+Tjänstepension) exactly, which excludes private saving entirely (this file's own `--fig-private-
+saving` note above explains why Figur 2 never draws it as a band). `brutto` itself, however,
+*does* include it (`packages/engine/src/model/result.ts`'s `closeRetirementYear`:
+`income + ip + tp + pp + garp + tjp + ips + ptillagg`) — so whenever private saving is nonzero,
+"Inkomst brutto" genuinely exceeds the drawn stack's own top by that amount, the same way "Inkomst
+efter skatt" (which nets out `ips`'s own after-tax sibling, `pps`) already sat below the stack's top
+in every build before this toggle existed. Both lines are reading real, already-existing totals
+faithfully; neither was ever a promise that the line retraces the bars.
+
 Two of the form's fields are not the Start sheet's own, chosen this way on request rather than by
 following `mdlIndataInputOutput.bas` one-for-one:
 
@@ -222,6 +254,15 @@ forecast under the assumptions entered, not a statement about anyone's pension. 
 beige surface rather than the red `.warnings` box on purpose; dressing it as an error would teach
 people to dismiss it.
 
+It is a `<details>`, collapsed by default, matching Ordlista's own disclosure — labeled "Om
+modellen" / "About the model" rather than left open under the subtitle, so it doesn't compete with
+the inputs for a first-time visitor while staying one click away. Built once at module scope rather
+than inside `renderHeading()` (which reruns on every input change anywhere on the page): a fresh
+`<details>` on every rerun would silently reset `.open` to closed the instant someone who had
+expanded it touched anything else, so the element is constructed once and only its text is
+rewritten — `applyNoticeText(lang)` — on a language switch, the same pattern `salaryPath`/
+`advancedPanel`/`comparePanel` already use for their own persistent, stateful elements.
+
 ### Print
 
 People take a pension forecast to a meeting, so paper is a real output. The print rules force a
@@ -265,35 +306,284 @@ workbook** — the workbook never translated that sheet (59 of its 90 rows have 
 string) and what Swedish it carries is maintainer shorthand. The *values* are still never retyped:
 every default comes from `defaultContext()`.
 
+**"Privat pensionssparande" (row 11) is a toggle, not a single kronor field, because `ipsMonthly`
+means two different things depending on its own size.** `earnPrivateSaving` (packages/engine/src/
+model/mcalc.ts) reads a value over 1 as kronor per month and a value at or below 1 as a share of
+income instead — one cell's dual meaning, inherited from the workbook. `options.json`'s own
+`IPS_start` entry (row 12, "Privat pensionssparande sedan när") happens to carry the giveaway hint,
+"0 procent av årsinkomsten, sedan 2026", read straight off `Adv_settings!C12` in the real sheet — on
+row 12's own line there, whether by the workbook's own design or its layout, rather than on row 11's
+where the setting it explains actually lives. Neither this port's own extractor nor `advanced.ts`
+ever carried that hint into either field's UI before this, so the share-of-income meaning was
+reachable only by already knowing to type a fraction into a box labelled "kronor per månad" — a real
+user asked directly whether the field could be simplified, which is what surfaced the gap.
+`savingAmountOrShare` gives each meaning its own labelled choice ("Belopp" / "Andel av inkomst") and
+its own kind of field (kronor, percent), still writing the same single `ipsMonthly` either way;
+switching resets the value to 0 rather than converting between them, since a kronor figure and a
+share of a still-varying income have no single right conversion and 0 means "nothing set" under
+either reading. The underlying landmine survives on purpose: typing exactly "1" into the kronor field
+is still 1 kr/month by its own label, but `ipsMonthly > 1` reads it as the share branch instead (100%
+of income) — the workbook's own off-by-one, not smoothed over here, and vanishingly unlikely in
+practice since every real kronor figure in this app is a multiple of 100.
+
+**Every percent field renders in the page's own language, not the browser's.** A native
+`<input type="number">` shows its own decimal mark using the *browser's* UI language, never the
+page's — a Swedish user on an English-language browser would see "1.7" for "Real avkastning" even
+with the page itself set to Swedish, since a number input has no way to be told to use a comma
+instead. `controls.ts`'s shared `percent` builder (`fieldSet`) uses `type="text"` with
+`inputMode="decimal"` instead, formatting its value with `Intl.NumberFormat(locale(lang), ...)` and
+re-rendering through a `relabel` hook every other stateful control already exposes (`select` did
+this first). Typing accepts either "," or "." as the decimal separator regardless of language, so a
+habit of typing a period still parses. `savingAmountOrShare`'s own share field reuses this same
+builder rather than the hand-rolled `<input type="number">` it had before — the same "1.7" bug would
+otherwise have shown up a second time in the one field a user explicitly flagged it in — and gets a
+"%" marker next to the input, shown only in share mode: `field()`'s own hint slot is one line for the
+whole toggle widget and cannot follow which of its two modes is active, so this one is its own small
+row (`.adv-ips-share`) instead.
+
+**"Flexpension för ITP 1 och SAF-LO" (row 46) needed no engine work, only a control** —
+`context.flexPension` (`rng_FlexPens`) was already read by `itp.ts` and `safLo.ts`, added straight
+onto both agreements' own premium rates for `year > 2013`, exactly the manual's own 3.6 description:
+"lägger till en extra premie till de ovan nämnda tjänstepensionsavtalen från 2014 och framåt. Anges 0
+läggs ingen premie till, om större procentsats än 0 läggs den angivna premien till." The setting simply
+did not have a row in `advanced.ts`'s own descriptor table yet. It originally sat in the "Övrigt" group
+(section 3.6, the manual's own table-of-contents placement); on request it later moved into
+"Tjänstepension"/"Occupational pension" instead (below) — an occupational-scheme premium fits that
+group better than the manual's own section number, even though row 46 itself is still section 3.6's.
+
+**The combined "Privat sparande och tjänstepension" group split in two, and "Övrigt" was removed, both
+on request.** Section 3.2's own settings used to share one group; it is now "Privat sparande"/"Private
+savings" (`ipsMonthly`, `ipsStart`, `privateSavingKind`, `tempIpsUttag`) and "Tjänstepension"/
+"Occupational pension" (`tjpPar`, `tempTjpUttag`, `occupationalInheritanceGains`, plus `flexPension`
+moved in from "Övrigt" — see above). `finalSalaryYears`/`pensionSameYearAsFinalSalary` — "Övrigt"'s
+other two settings — moved out at the same time, into `salaryPath.ts`'s own renamed "Salary" section
+(below), which left "Övrigt" with nothing in it, so the group itself was deleted from `GROUPS` rather
+than left empty. `advanced.ts` still exports both settings, as `FINAL_SALARY_YEARS`/
+`PENSION_SAME_YEAR_AS_FINAL_SALARY`, for `salaryPath.ts` to import and render — and `SETTINGS` (what
+`advanced.test.ts` walks) still includes them, assembled as `[...GROUPS.flatMap(...), FINAL_SALARY_YEARS,
+PENSION_SAME_YEAR_AS_FINAL_SALARY]` rather than purely from `GROUPS`, so moving where a setting renders
+never has to also mean losing its own generic round-trip/label/bounds test coverage.
+
+**Five groups were renamed, and all nine Advanced-mode sections reordered, both on request.** "Partiellt
+uttag" is now "Allmän pension"/"Public pension" (see the section by that name below); "Underlag för
+bostadstillägg" is "Bostadstillägg"/"Housing supplement"; "Försäkringstid" is "Garantipension"/"Guarantee
+pension" — reusing the term this port already uses everywhere else for `Table1Key.GuaranteePension`,
+since insurance time only ever matters here through its effect on that one benefit, rather than inventing
+a second English rendering of the same concept; "Underlag för inkomstskatt" is "Inkomstskatt"/"Income
+tax"; and "Känt pensionskapital och avkastning" is "Kapital och avkastning"/"Capital and return" — whose
+own five balance settings (`pbhYear`, `pbhIp`, `pbhPp`, `pbhTjp`, `pbhIps`) were reworded to match,
+"behållningen"/"behållning" to "kapitalvärdet"/"kapitalvärde"; the English labels stay "balance", since
+the rename request named only the Swedish wording. None of the five renames touch a `Group.key` (still
+`partialWithdrawal`, `housing`, `insurance`, `tax`, `capital`) or a `Setting.key`, so nothing that reads
+either — `verify-offline.mjs`'s own group-membership checks, `advanced.test.ts`'s generic coverage —
+needed to change on account of the renames themselves.
+
+The nine sections (`GROUPS`' own seven plus `salaryPath.ts`'s "Lön" and `pgb.ts`'s "Pensionsgrundande
+belopp (PGB)") no longer follow the manual's own 3.2-3.8 section order; they render in plain Swedish
+alphabetical order by their own displayed title instead: Allmän pension, Bostadstillägg, Garantipension,
+Inkomstskatt, Kapital och avkastning, Lön, Pensionsgrundande belopp (PGB), Privat sparande,
+Tjänstepension. `GROUPS` itself is kept in that same order for the seven groups it owns, so the array and
+the screen agree — but achieving the full order needed more than reordering the array, since two of the
+nine sections live outside it. `createAdvancedPanel` used to wrap all seven of its own `<details>` in one
+`<div class="advanced">` and hand that single element back as `AdvancedHandle.element`; `main.ts` then
+appended it, `salaryPath.element` and `pgbGrid.element` as three siblings, in that fixed order, which
+could never interleave "Lön" and "Pensionsgrundande belopp (PGB)" in between five of the seven groups.
+`AdvancedHandle` now exposes `groups: ReadonlyMap<string, HTMLElement>` (each group's own `<details>`,
+keyed by `Group.key`) instead of one wrapping `element` — the wrapper carried no styling of its own (only
+`.advanced-box`, `main.ts`'s own wrapper, does, confirmed by grepping `styles.css`), so dropping it cost
+nothing. `main.ts` now picks each group out of that map by key and appends all nine elements itself, in
+the exact order above, interleaving `salaryPath.element`/`pgbGrid.element` between them.
+
+**"Slutlönens referensår efter pensioneringen" (row 43) was exposed as a checkbox, which was a real
+bug — but it is a narrower setting than its own name suggests, and does not do what its first read
+implies.** The sheet's own row comment, "(1)-> Pensioneringen sker samma år som slutlönen", reads
+like a flag, and the field was wired as one (`check`, writing only 0 or 1). Manual 3.6's prose reads,
+at first glance, like a real deferred-retirement control: "Om 0 anges sker pensionering samma år som
+slutlön. Om större siffra än 0 anges sker pensionering så många år efter slutlönen" (0 = pension
+starts the same year as the final salary; any larger number = that many years after it) — but the
+manual's own next sentence scopes it: "[Detta] påverkar resultatet som skrivs ut i Tabell 1" (this
+affects the result printed in Table 1). `adjustmentFactors` (`packages/engine/src/model/result.ts`)
+reads it as `timeLag`, feeding only the price-index lookup behind `beforeRetirement` — which rescales
+the *price-adjusted* ("Fasta priser") column of Table 1's Slutlön/Lön efter skatt/Disponibel inkomst
+rows. **It does not move `par` (the retirement age) or anything in Table 2**: raising it to 5 does not
+delay Income/Premium/Occupational pension by five years, confirmed against a user's own test after
+this control first shipped with the "stop working in 2025, first pension payment in 2030" framing —
+that framing was wrong and has been corrected in the field's own label, hint and code comment. A
+checkbox here could still only ever write 0 or 1, so fixing it to a plain `years(0, 40)` control (the
+same kind `tempTjpUttag`/`tempIpsUttag` use) remains the right fix — this setting genuinely is a year
+count in the sheet, just a narrower one than "when does the pension start" — but a real
+stop-working-before-the-pension-starts scenario is modeled today by setting "Går i pension vid ålder"
+to the later age and zeroing the gap years in the own salary-path grid instead.
+
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for
 me". Amounts are rounded to whole kronor, shown and used, which costs 0.02 kr per month on the
 final salary and keeps the rule that the form never shows a number the run did not use. Once a
-vector is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from a
-second run with `ownIncome` removed.
+typed path is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from
+a second run with `ownIncome` removed.
+
+**Renamed "Salary", from "Own salary path" ("Egen löneutveckling"), and now also home to manual 3.6's
+"Slutlön" pair, both on request.** `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY` — plain
+number settings defined in `advanced.ts` (see above) — render here, above the wage-path toggle, with
+the same `fieldSet` builders `advanced.ts`'s own loop uses for a setting of that `control.kind`; neither
+needs that loop's other branches (percent, select, check, the `ipsMonthly` special case), so duplicating
+just the plain-number path rather than factoring out a shared renderer for two call sites was the
+smaller change. `createSalaryPath` takes a second callback, `onSettingChange: (patch: Partial
+<ModelContext>) => void`, alongside the existing `onChange` for the wage path itself (a `TypfallInput`
+field) — the same two-callbacks-one-component shape `pgb.ts`'s own `childBirthYears` patch already
+established for a `ModelContext` field living inside an otherwise `TypfallInput`-focused panel.
+`main.ts` wires it exactly like `advancedPanel`'s own `onChange`: merge the patch into `advanced`, then
+`render()`. Resetting ("Använd normala inställningar") restores both fields' own displayed values the
+same way `advanced.ts`'s own settings do — visually only; the actual state reset is `main.ts`'s own
+`advanced = {}`, unchanged.
+
+**"Löneprofil" (row 141) was fully wired in the engine already — it was just never exposed, one of the
+forty-some `ModelContext` fields this port's Advanced panel had not yet surfaced — and is now a
+dropdown, on request, not a typed path.** `wages.ts`'s own `WAGE_PROFILES` already held four
+fifth-degree polynomials (ages mapped to earnings, fitted to Pensionsmyndigheten's 2017 regleringsbrev
+memorandum on income by age and sex), applied as a multiplicative shape on top of the derived
+straight-line wage index whenever `context.wageProfile` is 1-4 rather than 0 — `buildContext` already
+read `Wage_profil` from `options.json` into `ModelContext.wageProfile`, and `setup.ts`/`mcalc.ts`
+already passed it into `wages()` on every run; nothing engine-side changed. `WAGE_PROFILE`, a new
+`Setting` exported from `advanced.ts` alongside `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY`,
+is the first `select`-kind setting rendered inside `salaryPath.ts` rather than `advanced.ts`'s own
+`GROUPS` loop — `createSalaryPath` now also destructures `select` off its own `fieldSet(...)`, building
+the control the same way `advanced.ts`'s loop already builds `returnBasis`/`privateSavingKind`, just
+outside that file's single-setting-kind-per-loop-iteration loop (a `select` can't share the `number`
+branch the Slutlön pair's own loop already specializes on). It sits above the wage-path toggle,
+alongside the Slutlön pair, since it shapes the same derived path those two describe — and like
+`ownIncome`, a typed own salary path overrides it outright, which its own hint says. The five option
+labels are the workbook's own dropdown text for `Wage_profil` (read off a LibreOffice-converted copy of
+the `.xlsb` during development — the sheet itself reads "0 - Rak lönebana", "1 - låg löneinkomstprofil,
+kvinna", "2 - låg löneinkomstprofil, man", "3 - Normal inkomstprofil, kvinna", "4 - Normal
+inkomstprofil, man"); option 0's own UI text ("Rak – följer den allmänna löneutvecklingen"/"Straight –
+follows general wage growth") is this port's own fuller rendering rather than a literal transcription
+of the sheet's shorthand, matching how every other label in `advanced.ts` is hand-written rather than
+retyped from `options.json` — "löneutveckling" is translated "wage growth" throughout this port (see
+`form.ts`'s own real-return hint), kept consistent here. The workbook's own dropdown actually carries
+two further options (5/6, "Hög inkomstprofil") that `WAGE_PROFILES` never implemented when this port's
+engine was first built — not exposed here either, since there is no underlying curve behind them to
+select.
+
+**`Inkomst` and `Varav lön` are read independently, not one derived from the other, and neither is
+redundant with the other** — asked directly whether `Inkomst` could be dropped. `setup.ts:424` sets
+both straight from whatever a row gives it (`income.set(age, own?.income ?? 0)`, the same line for
+`wage`), and each then feeds a disjoint set of calculations: `Inkomst` is what PGI (pension-qualifying
+income) is computed from, and PGI is what actually earns income-pension, premium-pension and
+guarantee-pension rights — `ipavgift`/`ppavgift`/`gpavgift` all read PGI, never `wage` directly.
+`Inkomst` is also the final salary Table 1 reports, private saving entered as a share of income, and
+the tax base `taxes()` reads. `Varav lön` is the narrower, employer-paid part of it: what an
+occupational scheme's own premium (`premiumFor`) and the employer-contribution reduction (`arbgiv`)
+are computed from, and what a benefit or tax calculation subtracts back out of gross income to
+isolate salary from everything else taxable. Dropping `Inkomst` would silently zero PGI (and so every
+public pension right) for anyone using this grid, while leaving `Varav lön` alone would silently zero
+occupational pension instead — neither column can stand in for the other.
+
+**"Nollställ alla värden"** zeroes every row's own `Inkomst` and `Varav lön` in one click, next to the
+existing `Återställ` button — asked for once the grid's own ~50-row length made a full year of leave
+tedious to type one row at a time. It reuses `rows.map` and the same `drawGrid`/`onChange` pair
+`Återställ` already calls, so there is no second code path to keep in step with the first.
 
 ### Pensionsgrundande belopp (PGB)
 
-`apps/web/src/pgb.ts` exposes `TypfallInput.pgbManual`/`pgbConscription` — the PGB sheet's sickness/
-activity compensation, conscription and study entries, credited as pension rights the same way
-childcare years already are. Unlike every setting in `advanced.ts`, these are not `Adv_settings`/
-`ModelContext` fields at all: they live on the Start-sheet side of the split, so they could not be one
-more row in that file's descriptor table. They are also not new to the *engine* the way the
-municipality table above is — `earnPgb` (`packages/engine/src/model/mcalc.ts`) has read manual PGB
-since the port's earliest phases, cross-checked against the workbook's own `Brutto` sheet; only the web
-UI for it was ever missing, and only sickness/activity compensation stayed a typed kronor figure once
-that UI arrived — see below.
+`apps/web/src/pgb.ts` exposes the PGB sheet's four sources of pension rights beyond ordinary income:
+childcare years (Barnår, a `ModelContext` field, `context.childBirthYears`), sickness/activity
+compensation, conscription and study (all three `TypfallInput.pgbManual`/`pgbConscription`, the
+Start-sheet side of the split). None of the three `TypfallInput` fields are new to the *engine* —
+`earnPgb` (`packages/engine/src/model/mcalc.ts`) has read manual PGB since the port's earliest phases,
+cross-checked against the workbook's own `Brutto` sheet — only the web UI for them, and childcare
+years' own engine *exposure* (below), were ever missing.
 
-The grid's shape follows `salaryPath.ts`'s, with one real difference: there is no computed path to
-open with, since a default run has none of this (`pgbManual`'s own comment: "the shipped workbook has
-none, so childcare years are the only PGB a default run earns"), so every cell starts at zero and only
-the nonzero rows are ever handed to the engine — an all-zero row and an absent one are the same thing
-to `earnPgb`. The row range is a fixed 16 through 70 rather than tied to a computed wage path: `earnPgb`
-only ever reads a manual entry for `age > 15 && age <= riktalder`, and `context.riktage` — the only
-riktålder this port has today — defaults to 66 for every cohort ("cohort table pending"), so a fixed
-range needs no per-cohort logic the workbook does not model yet, and never has to reconcile typed
-values against a row list that moved.
+**The panel was originally an always-visible 55-row grid (ages 16-70), mostly blank — replaced with a
+compact add-entry form plus a summary table that only ever shows years and categories that actually
+have data**, on request, after a hand-drawn mockup of exactly this shape. Pick a type (`pgbEntryType`
+— Barn/Värnplikt/Sjuk-/aktivitetsersättning/Studier, in that order) from a `select`, fill in that
+type's own fields, click "Lägg till". Child years, being a birth date, are logically identical to the
+other three (a source of pension-qualifying amounts) but structurally different (a `ModelContext`
+4-tuple, not a `TypfallInput` array), so they get their own type in the same form rather than a
+separate widget bolted on above it, and their own small always-visible "children" list beside the
+form (`.pgb-children`) instead of living in the summary table's own remove affordance — see below.
+
+**A real engine gap surfaced building this, not just a UI change.** `context.childBirthYears` already
+drove a real per-age PGB credit inside `earnPgb` (the `diverse` local, folded into `RunState.pgb`) —
+but nothing distinguished that credit from the other three sources once folded in, and
+`TypfallResult.pgbBreakdown` (built from `TypfallInput.pgbManual` alone, before the age loop runs) had
+no way to see a `ModelContext` field at all. Showing a "Barn-PGB, kr" column needed `RunState.pgbBarn`
+(a new `AgeArray`, `packages/engine/src/model/state.ts`, set alongside `RunState.pgb` in `earnPgb`) and
+`PgbBreakdownYear.barn` (`packages/engine/src/model/result.ts`) — `buildPgbBreakdown` now unions ages
+from *both* `run.pgbManual.keys()` and `run.s.pgbBarn`'s nonzero ages, since a year whose only PGB
+source is a childcare credit previously had no row at all. `packages/engine/test/result.test.ts`'s own
+`pgbBreakdown` tests pin exactly this case: a run with `childBirthYears` set and no other `pgbManual`
+entry for the credited years still gets rows with `barn > 0`.
+
+**A single child's credit can land in up to four consecutive calendar years** (the birth year and the
+three after — `pgbBarn`, `packages/engine/src/pension/incomePension.ts`), and if two children's
+four-year windows overlap the same year, only the higher-priority child's credit counts for that year
+— the other is silently dropped (`diverse` is a single scalar per age in `earnPgb`; child 1 is checked
+first, then 2, 3, 4). Original workbook behaviour, not something to fix, and invisible from the summary
+table alone (it shows a number either way) — so the "Barn-PGB, kr" column header carries a short info
+tooltip explaining it, the same `<abbr title>` mechanism `TABLE2_COLUMNS`'s own tooltips already use
+(`tables.ts`'s `headCell`, now exported for `pgb.ts` to reuse alongside `cell`). Because the four-year
+window and the priority order are real, visible behaviour, adding a child asks which of the four slots
+(1st-4th) explicitly, rather than picking one automatically — the same model the field always used.
+
+**Each category keeps its own identity for editing.** Sickness and study entries are keyed by (year,
+that type) in two local `Map<age, value>`s (`sicknessByAge`/`studyByAge`) — re-adding the same year
+replaces whatever was there, so "editing" is "type it again", and a small "×" per populated table cell
+(`data-action="pgb-remove"`, `data-category`/`data-year`) removes just that one figure, not the whole
+row: a row can hold both a sickness and a study figure for the same year (the mockup's own example),
+and removing one must leave the other. Conscription stays a single period (`wsPGB!H4`/`H5` is one date
+range, not a per-age entry), cleared by its own "Rensa" button; re-selecting the type pre-fills the
+date pair from whatever period already exists, so editing is retyping the dates directly, same as
+before. The summary table's own "Barn-PGB, kr" column stays read-only — attributing a given year's
+credit back to a specific child, for a per-cell remove, would mean duplicating `pgbBarn`'s own
+window/priority logic client-side just to target a click; removing or editing a child happens in the
+children list instead, each slot's own birth-year field always editable in place once it is filled.
+
+**The summary table's rows and columns are both a pure function of the latest run**, built from
+`TypfallResult.pgbBreakdown` on every `setBaseline` call, the same way conscription's own kronor
+already were before this — never from the local per-type stores directly, so a stale client-side
+guess can never disagree with what the engine actually credited. Year and Age always show; each of
+the four category columns (Barn, Studier, Värnplikt, Sjuk-/aktivitetsersättning) shows only if some
+row has a nonzero figure in it, and Total always shows last — the same "some row is nonzero" filter
+`tables.ts`'s own `visibleTable2Columns` already uses for Table 2. Because the table is sparse by
+construction, it needs none of the machinery the old fixed grid did to fit a sidebar: no `min-width`
+floor, no `<colgroup>`, and no `<dialog>` pop-out to escape the ~280px sidebar width — a handful of
+rows and up to four category columns fit `.table`'s own default layout inside the existing `.scroll`
+box Table 2 and the comparison table already use.
+
+`onChange → render() → pgbGrid.setBaseline()` is fully synchronous in the existing wiring (no `await`
+anywhere in that chain), so there is no staleness between clicking "Lägg till" and the table updating
+— confirmed the same way the rest of this app's "no debounce, rebuild everything" render loop already
+relies on `run()` being cheap.
+
+**"Visa alla kolumner" moves the same table (not a copy) into a floating panel, on request again once
+the panel stopped having one** — the old grid's modal `<dialog>` made the rest of the page inert by
+design, which is fine for a static table but defeats a form meant to be filled in while looking at the
+result. `.pgb-summary-drawer` is a plain `position: fixed` element instead: no `showModal()`, so the
+add-entry form just above keeps working exactly as before. A first draft floated full-width at every
+size, and was caught by hand (not by the 1280px or 375px checks flanking it, since neither happens to
+put the form under it) putting the panel directly over the sidebar's own add-entry form at a moderate
+900px width — the whole point defeated by the very thing meant to preserve it. Above `.layout`'s own
+860px breakpoint the panel docks to the right instead, narrow enough (`min(48vw, 640px)`) to stay clear
+of the sidebar's `minmax(0, 300px)` column plus its 20px gap regardless of scroll position, so the two
+cannot overlap there at all rather than merely being unlikely to; below it, sidebar and results already
+stack into one column, so it stays a full-width bottom sheet, the same tradeoff the 375px check already
+accepts for `.scroll`'s own sideways scroll. Checked at 900px (just above the breakpoint) by adding a
+second entry with the panel open and confirming the click reaches the button rather than the panel.
+
+**An entry that earns no pension rights says so, read back from the run itself rather than re-derived
+eligibility rules** — a year outside `earnPgb`'s own 16-70 gate is rejected outright for sickness and
+study (not silently moved to the nearest valid year, which would credit a different one than the one
+typed with no sign anything had changed); conscription's own eligible window (1995-2010, from 2018 on)
+and a child's own age-16 gate are checked from the live `pgbBreakdown` after the entry is added instead,
+since duplicating either rule's exact arithmetic client-side (the child gate especially: the first
+child's own asymmetric offset and CPI uprating, see the four-year-window paragraph above) would only
+ever be as trustworthy as the copy, where reading the real result back cannot disagree with it by
+construction. Conscription's own case doubles up deliberately: the eligible-window check also runs
+live in `.pgb-conscription-readout` (next to the existing "under 120 days" one), since a date range's
+own validity is knowable before "Lägg till" is even clicked, the same way the day-count one already is.
 
 **Conscription and study compute their own kronor, on request** — in the real sheet only
 sickness/activity compensation is "Ange manuellt"; conscription is a single date range (`PGB!H4`/`H5`)
@@ -302,7 +592,8 @@ model/pgb.ts` is the port of that arithmetic, read cell by cell off the source w
 guessed — `pyxlsb` only ever returns a formula's *cached* result, so getting the formula text itself
 needed the same LibreOffice `.xlsb` → `.xlsx` conversion `formulas.py` already uses for `extract_series.
 py`, read here by hand rather than through that module (a one-off lookup, not a recurring extraction).
-Three findings shaped the port:
+None of this changed with the panel's own redesign above — only how the two date inputs and the
+semester count reach it did. Three findings shaped the port:
 
 - **The 50%-of-average-income reference conscription pays out of (`PGB!G`, "50% medel efter 1995") needs
   no new data at all** — it is half of `medelPgi`, already extracted as `economic-series.json`'s own
@@ -333,42 +624,33 @@ Three findings shaped the port:
   and 15 unit tests in `packages/engine/test/pgb.test.ts` pin the day counts by hand for periods within
   one year, crossing one boundary, and crossing two.
 
-Three amount-shaped columns in the same sidebar width that fit two for `salaryPath.ts` measured out to
-~45px-wide inputs, clipping a sixth digit that the salary grid's own ~62px inputs do not — so the
-table gets a `min-width` wider than the sidebar, scrolling horizontally the same way the grid already
-scrolls vertically, keeping every column's proportions and just rendering them bigger. Its longest
-header, "Sjuk-/aktivitetsersättning", is also one unbroken compound word with no space to wrap at,
-which measured as overflowing its fixed-width cell into the next one — `overflow-wrap: break-word` on
-`.adv-grid th` lets it wrap mid-word instead, harmlessly, since none of `salaryPath.ts`'s own shorter
-headers were ever close to their column's width.
+**Where the form's own fields live now.** The conscription date pair (`pgbEntryConscriptionStart`/
+`pgbEntryConscriptionEnd`, `<input type="date">`) and its "Rensa" button (`data-action=
+"pgb-clear-conscription"`) show only when the type select reads "Värnplikt" — selecting that type
+pre-fills the dates from whatever period already exists, so editing is retyping them directly, and
+"Rensa" clears the whole period in one step rather than requiring "Använd normala inställningar" to
+clear every other advanced setting along with it. Their own short "under 120 days" readout
+(`.pgb-conscription-readout`) is the one thing the sparse table cannot show on its own: a period too
+short to earn anything has no touched-year row to display a zero in. Study's own semester count
+(`pgbEntryStudySemesters`, capped at 1-2) and sickness's own kronor field (`pgbEntryAmount`) show only
+under their own types, the same way; conscription's kronor and study's are both read back from
+`TypfallResult.pgbBreakdown` once added, rather than either being computed twice.
 
-**"Visa alla kolumner": a pop-out for the one grid that still scrolls sideways**, on request. The
-`min-width` above trades a legible column for a horizontal scrollbar confined to the sidebar's own
-~280px `.adv-grid-scroll` box — reported as having to scroll sideways just to see Värnplikt and
-Studier. `pgb.ts`'s `expandBtn` moves the same `scroll` div (the same `<table>`, same inputs, same
-`change` listeners — not a rebuilt copy that would need its own state to stay in sync) into a
-`<dialog>` opened with `showModal()`, and moves it back on the dialog's own `close` event, whichever
-of the three ways that fires: the dialog's close button, the browser's own Escape handling, or a click
-on the backdrop (`event.target === dialog`, the same test a click anywhere *inside* the dialog fails).
-Freed from the sidebar, the dialog alone (`width: min(94vw, 480px)`) is wider than the grid's 380px
-floor on any realistic screen, so `.pgb-dialog .pgb-grid { min-width: 0; }` lets the table settle back
-to a plain 100%-wide fixed layout and needs no horizontal scrollbar of its own — measured at three
-widths (1280px desktop, 390px, and 375px — an iPhone SE, the narrowest realistic phone) with
-`scrollWidth <= clientWidth` on `.adv-grid-scroll` before this shipped. Only the 375px case is checked
-on every push: at the suite's standard 1280px, the dialog's own cap already clears the 380px floor
-whether or not `min-width: 0` is even there, so that width alone would never catch a regression in the
-one rule this feature actually adds — the desktop check instead covers what the dialog itself moves
-and restores. `reset()` — "Använd normala inställningar" — cannot also close the dialog if it happens
-to be open: a modal `<dialog>` makes the rest of the page inert by design, intercepting every pointer
-event outside itself, so that button is never reachable while the dialog is open in the first place
-(confirmed the hard way — an earlier draft of the offline check tried exactly that and Playwright
-timed out with "dialog intercepts pointer events" rather than the click ever landing).
+The type-conditional visibility (`onTypeChange`) follows `advanced.ts`'s own IPS amount/share toggle
+(`savingAmountOrShare`) rather than introducing a second pattern for it: a `type` variable plus an
+`onTypeChange` that toggles `.hidden` on each field's own wrapper, driven by the type `select`'s
+`change` event instead of two buttons. A read-only age readout (`.pgb-year-age`, `age = year − born`)
+sits beside the shared Year/birth-year field, the same defensive `born > 0 ? ... : ""` guard the old
+grid's own year column used.
 
-### Partiellt uttag: a fourth field the extractor never saw
+### Allmän pension (formerly "Partiellt uttag"): a fourth field the extractor never saw
 
 `uttagIp`, `uttagPp` and `defAr` (manual §3.7's own example: simulate a "jobbonär" — someone combining
 part-time work with a partial pension for a few years, then retiring in full) join `advanced.ts` as a
-new group, requested on top of every earlier addition here. The engine has carried all three since
+new group, requested on top of every earlier addition here — first titled "Partiellt uttag"/"Partial
+withdrawal", later renamed to "Allmän pension"/"Public pension" (below), which is why the group's own
+`data-group` key is still `partialWithdrawal` while its displayed title has moved on. The engine has
+carried all three since
 early on — `mcalc.ts`'s per-age loop already gates `uttagIp`/`uttagPp` between the retirement age and
 `defAr`, and `wages.ts`'s `withdrawalShare` already ties Lön to whichever share is drawn — the same
 "wired in the engine, missing only a UI" situation PGB was in before Phase 6.
@@ -396,13 +678,31 @@ kr premiepension) — and age 70 itself is back to 0 kr salary and a pension hig
 figure, since the extra working years between 66 and 70 earned more pension rights on top of a now-full
 withdrawal. `rngLönPartUttag` (`workDuringPartialWithdrawal`), which would let work run at a *fixed*
 share independent of the withdrawal, and the sibling `tempTjpUttag`/`tempIpsUttag` bounds already
-exposed in the "saving" group (occupational pension and private saving's own withdrawal length) are left
-for later — not needed for the manual's own example to work end to end, and each wants its own look
-rather than riding in on this one.
+exposed in the "Tjänstepension"/"Occupational pension" and "Privat sparande"/"Private savings" groups
+respectively (occupational pension and private saving's own withdrawal length) are left for later — not
+needed for the manual's own example to work end to end, and each wants its own look rather than riding
+in on this one.
 
-Barnår, section 3.7's other half (`childBirthYears`, `rng_Född_Barn1..4`), stays unexposed: a real but
-separate concern this round did not touch, the same "left out, and why" honesty every other group here
-already practices.
+**Barnår, section 3.7's other half, is exposed too — as the "Barn" type in the PGB add-entry form
+(`apps/web/src/pgb.ts`), not in this file's own `GROUPS` table.** Writes into `context.childBirthYears`
+(`rng_Född_Barn1..4`), a real, already-wired feature: `earnPgb` (packages/engine/src/model/mcalc.ts)
+credits PGB for childcare years off it, and `benefits` (packages/engine/src/model/taxAndBenefits.ts)
+reads it for child allowance and housing benefit, both well before any panel had a row for it. The real
+workbook cell is a date (`Date` in VBA_go.bas), but every VBA consumer takes `Year(...)` off it
+immediately and never touches month or day, so a plain year field is faithful. It first shipped here,
+in this file's "partialWithdrawal" group, then moved to `pgb.ts` (as four always-visible birth-year
+fields) since Barnår is a pension-qualifying-amount source like the panel's other three, not a
+partial-withdrawal setting — and now lives inside `pgb.ts`'s own add-entry form as a fourth `type`, per
+the panel's own redesign further up. It still cannot be a `Setting` the way `advanced.ts`'s own fields
+are: all four children share one context field (a 4-tuple), and a `Setting.set` only ever owns the
+single field it is responsible for. `pgb.ts` holds its own local copy of the tuple instead, written one
+slot at a time — by the form's own "Barn" type (an explicit slot picker, since the child's own priority
+order is real behaviour, not cosmetic — see the "Pensionsgrundande belopp" section above) or by the
+children list's always-editable birth-year field once a slot is filled — and its `onChange` patch
+carries a `ModelContext` field (`childBirthYears`) alongside the two `TypfallInput` ones
+(`pgbManual`/`pgbConscription`); `main.ts` is what splits the patch, routing `childBirthYears` into
+`advanced` and the other two into `advancedInput`, the same per-field routing `createAdvancedPanel`'s
+own `onChange` already does for every other setting.
 
 ### Two ways of filling in `kommunalskatt` and `begravningsavgift`
 
@@ -445,15 +745,16 @@ which is exactly what the historical-average path it just left would have used a
 `apps/web/src/compare.ts` is a second top-level view, toggled by a third `.panel-toggle` beside
 Normalt/Avancerat, that runs the baseline typfall alongside up to three variants. It has no workbook
 equivalent — the same class of addition as the tax-per-year chart — but it adds almost no new
-machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` already calls it twice per
-render in Avancerat with no debounce), so running it up to four times per change costs nothing extra.
+machinery: `run()` is cheap (a few milliseconds; `main.ts` already calls it twice per render in
+Avancerat with no debounce), so running it up to four times per change still costs only a few tens of
+milliseconds.
 
 A variant is **not** an inherit/override state machine — `undefined` fields, a placeholder empty
 state, and so on. `newVariant` copies the baseline's salary, retirement age, start-of-work age and
 occupational scheme the moment a scenario is added; the four controls on that card then edit their own
 copy independently, and `applyScenario` lays those four fields over whatever the baseline currently is
 on every run. Everything else about the baseline — birth year, the economic assumptions, any advanced
-setting, a typed salary or PGB vector — keeps flowing into every scenario's run live, since only these
+setting, a typed salary path or PGB entry — keeps flowing into every scenario's run live, since only these
 four fields are ever "frozen" per card. This is simpler than a real inherit/override design and reads
 the same way to whoever is using it: a new scenario starts out identical to the baseline and diverges
 only where it is typed into.
@@ -508,6 +809,15 @@ input-only:
   scenario's own working life and lowers its accrued pension, independent of everything else on that
   card — `verify-offline.mjs` moves it on its own, holding salary and retirement age fixed, to prove
   that rather than only the salary control's already-covered path.
+- **Birth year** joined as a fifth override, on request, placed first among the card's own controls
+  (matching `form.ts`'s own field order, where Födelseår leads too) — `t("birthYear", l)` and `BORN`
+  (`span(BIRTH_YEARS)`, the same shared list `form.ts` and `mikrosim.ts` each already derive their own
+  copy of this bound from). Before this, birth year was one of the fields every scenario was documented
+  as sharing live with the baseline; it moves to the "frozen per card" side instead, since a different
+  cohort is exactly the kind of comparison this tab exists for (a different retirement-year cohort
+  changes ATP eligibility, riktålder, and several other cohort-keyed rules at once) —
+  `verify-offline.mjs` moves a scenario's own birth year on its own, holding the other three fixed, the
+  same pattern start-of-work age's own check above already established.
 
 Two CSS fixes came out of measuring the built page rather than assuming, both from the same cause: a
 flex item's or grid item's default `min-width: auto` lets its content's own width win over an intended
@@ -515,6 +825,451 @@ smaller size. `.compare-card { min-width: 0; }` keeps each input card at its int
 of a long select option; `.compare-results { min-width: 0; }` (and `> *`) gives the shared chart and
 table the same treatment `.results` already needed for the single-scenario view, so the wide table
 scrolls inside `.scroll` instead of widening the page.
+
+### Mikrosim
+
+`apps/web/src/mikrosim.ts` is a third top-level view, a fourth `.panel-toggle` entry after
+"Jämför scenarier", reproducing the workbook's own `Mikrosim` sheet — a batch runner where each row
+is an independent typfall and a "Beräkna" button fills in every row's output columns at once
+(`reference/golden/HOWTO.md` documents that sheet at length, since it is also what this project's
+own golden-file export drives). Unlike "Jämför scenarier", a Mikrosim row is **not** a diff against
+the baseline form on the left — it is a complete, standalone `TypfallInput`/`ModelContext` pair,
+seeded from `defaultInput()`'s own workbook defaults, never from whatever the form currently holds.
+That is what makes CSV import make sense here: a file doesn't carry a baseline to diff against, the
+same way the real sheet's own rows don't either.
+
+**One column dropped.** The real sheet's tenth input column, `Egen Lönelista` (a custom per-age
+income list — the same shape as the Advanced-mode salary path), is out of scope: it is a whole table,
+not a scalar, and does not fit one flat batch row or one CSV cell. Every Mikrosim row uses the
+standard wage-growth model. The other nine inputs and all twelve outputs are exposed.
+
+**Column mapping, verified against the real sheet's own header row.** `INPUT_COLUMNS`/
+`OUTPUT_COLUMNS` (`mikrosim.ts`) are the one canonical description of Mikrosim's columns — Swedish
+and English headers, bounds, and the mapping to/from `TypfallInput`/`ModelContext`/`Table1Key` —
+shared with `mikrosimCsv.ts` so the on-screen table and the CSV file can never drift apart. Most of
+the mapping is direct (`born`, `startWorkAge`, `retirementAge`, `scheme`, the three rate fields), with
+two real subtleties:
+
+- **Årslön is annual; `TypfallInput.monthlySalary` is always monthly** in this port (the same
+  conversion `form.ts` already documents). A `MikrosimRow` stores the annual figure and divides by 12
+  only at mapping time, so the on-screen cell, the CSV cell and the workbook's own column all show
+  literally the same number.
+- **Privat pensionssparande lives on `ModelContext.ipsMonthly`, not `TypfallInput`** — the dual-meaning
+  field `advanced.ts`'s own `savingAmountOrShare` already documents (a value `>1` is kronor/month, `≤1`
+  a share of income). Only `ipsMonthly` varies per row; `ipsStart`/`privateSavingKind` are not Mikrosim
+  columns, so every row shares whatever the app's current Advanced settings hold for those two.
+
+**`Eget sparande` is `Table1Key.PrivateSaving` ("ips"), not `PrivateSavingAfterTax` ("pps").** This
+was genuinely ambiguous from the column name alone — resolved by laying the real sheet's own header
+row (`reference/golden/golden-cases.csv:101`, its committed bytes ISO-8859-1 mojibake but the Swedish
+text unambiguous once decoded) against `tables.ts`'s `TABLE1_LINES` order: every one of Mikrosim's
+twelve columns matches a strictly increasing, adjacency-preserving walk through `TABLE1_LINES` with
+`TotalGross` pulled forward to the second position, and `PrivateSavingAfterTax` is not one of
+Mikrosim's twelve columns at all — `PrivateSaving` is the one immediately after `OccupationalPension`,
+exactly where "Eget sparande" sits after "Tjänstepension" in the real header row. The same walk gives
+`DisposableAtRetirement` ("dispEfterSkatt") for "Disponibel inkomst", not `DisposableBeforeRetirement`
+("dispInkomst", the year *before* retirement). (On request, both this output column's own label and
+the input column driving it were later renamed on screen to "Privat pensionsförsäkring" — the mapping
+above is about the real sheet's own header text, which the port's current display label has since
+diverged from.)
+
+**Mikrosim's own column headers are their own hardcoded table, not `apps/web/src/i18n.ts`'s `t()`.**
+Cross-checking the real header row against `t()` turns up genuine wording mismatches for the same
+concept — `t("realReturn")` is "Real avkastning", the sheet's own Mikrosim column is "Real
+fondavkastning"; `t("housingSupplement")` is "Bostadstillägg för pensionärer m.m.", the sheet's own
+column is "Bostadstillägg + ÄFS". Mixing sources would have silently mislabelled a column. English
+text is this port's own translation, the same situation every other new-UI string in this app is
+already in.
+
+**Live recompute, on request — there is no "Beräkna" button in this build.** The sheet's own explicit-
+calculate batch runner shipped first; the user then asked for live recompute instead, which this port
+honours outright — `run()` is confirmed cheap even for hundreds of rows, so there was never a
+performance reason to keep the button, and dropping it brings Mikrosim in line with every other view
+in this app (`main.ts`'s own stated philosophy: "no debounce, no incremental update — every change
+re-runs the model"). Editing a cell always attempts a fresh compute for that one row; adding a row,
+finishing a CSV import, and `setContext` receiving a new shared context each recompute every row that
+is not currently flagged. There is no `onChange` callback up to `main.ts` the way "Jämför scenarier"
+has one — nothing outside this panel depends on a Mikrosim row's contents, so there is nothing to
+notify; `setContext` both stashes the shared `ModelContext`/`DeathProbabilities` and triggers that
+recompute, with no check for whether the context actually changed — `main.ts`'s own `viewContext`
+builds a fresh `ModelContext` object on every render regardless, so there is no cheap way to tell
+"the settings actually changed" from "the page merely re-rendered," and this app's "an extra `run()`
+per keystroke is free" stance already covers the cost of recomputing every Mikrosim row on every
+keystroke anywhere on the page while this tab is the one showing.
+
+**Non-fatal, per-row validation — and one real bug that live recompute did not remove, just moved.**
+`validateMikrosimRow` runs before every compute; a failing row is skipped (flagged, not dropped)
+while every other row still runs — the real sheet's own `InputXGetY` aborts the *entire* batch on the
+first bad row (`Exit Sub` after a `MsgBox`), which does not fit a web batch tool well. The bug: a CSV
+row with an invalid scheme value gets `.error` set at parse time, but the field itself is left at its
+prior, individually valid value (a discrete column has nothing sensible to clamp an invalid value
+to) — so a bulk recompute that blindly re-validated such a row *as it now stands* would find nothing
+wrong and quietly compute it anyway, silently substituting a scheme the file never asked for. This
+was first found and fixed for the button (a click skipped any row already carrying `.error`); moving
+to live recompute could easily have reintroduced it on every keystroke instead of only on a click, so
+the same rule was carried over deliberately: **editing a row's own cell always clears `.error` first
+and tries a fresh compute** (an edit is a deliberate attempt to fix it), while **a bulk recompute —
+after an import, after `setContext` — skips any row that already carries `.error`**, leaving it
+flagged until an actual edit on that row clears it. `verify-offline.mjs` proves both halves: a fixed
+row's own dropdown edit recomputes it immediately, and the same bulk-recompute-leaves-it-flagged
+check from the button era still passes under live recompute.
+
+**A stacked-column chart under the table**, on request, one column per row, breaking each case's
+total pension into the same seven components as the table's own middle output columns above it
+(`chart.ts`'s new `renderMikrosimChart`) — Slutlön, Brutto-pension, Efter skatt, Bostadstillägg + ÄFS
+and Disponibel inkomst are all left out, each either a pre-retirement figure or downstream of the
+pension total itself, stacking either alongside its own components would double-count. Almost every
+piece already existed: `columns(count)` (`chart.ts`) computes column positions from a plain count, no
+age dependency at all, already exactly Mikrosim's own x-axis; `stack`/`visibleSeries` needed only a
+generic type parameter (they never read anything `MvaluesRow`-specific, only through `series[].get
+(row)`) to accept `MikrosimRow`s instead. Not reused: `ageTicks`/`retirementEdge`/`shadeRetirement`
+are genuinely age-specific and do not apply to a batch of unrelated cases — the chart draws its own
+plain row-number labels instead — and there is no hover tooltip in this first cut, since a Mikrosim
+column is one whole independent case rather than a point in an age-indexed series, and the table
+directly above already gives every exact number. Four of the seven bands reuse an existing `--fig-*`
+colour token from Figur 2 (income-pension, premium, guarantee, occupational); three are new
+(`--fig-supplementary`, `--fig-ipt`, `--fig-private-saving`, for the two components Figur 2 folds into
+combined bands and for private saving, which Figur 2 never shows at all), validated with the
+`dataviz` skill's `validate_palette.js` against the *actual adjacent pairs in the real stack order* —
+the same standard `--fig-scenario-*`'s own validation note already uses — rather than every possible
+pair: an all-pairs check surfaces a pre-existing, out-of-scope confusability between Figur 2's own
+tan and yellow steps (`--fig-occupational`/`--fig-guarantee`, normal-vision ΔE 12.6, below the 15
+floor) that predates this chart and was left alone, not "fixed" as part of adding three new colours.
+
+**CSV import is hand-rolled; there is no CSV or `.xlsx` *parsing* anywhere else in this codebase** (only
+writing, via `write-excel-file`, this app's one runtime dependency, added for exports). A real `.xlsx`
+parser would be a large new dependency against the app's tracked single-file budget (currently
+~1MB; `write-excel-file` itself added ~70kB) for a feature a plain-text format already serves.
+`mikrosimCsv.ts`'s `parseMikrosimCsv` matches the nine input columns **by header text**, in either
+language, not by position, so a hand-adapted real Excel export — one that dropped or reordered a
+column — still lines up; a missing required column refuses the whole file, naming it, while a bad cell
+or an invalid scheme flags only that row. Since the Privat pensionsförsäkring input and its own output
+column now share the exact same label, `findIndex` -- which returns the first match -- resolves the
+input column correctly only because inputs are always written before outputs in this app's own
+export; a file whose columns have been reordered so that the *output* Privat pensionsförsäkring
+column comes first would read that column's own (blank, for an uncalculated row) values into the
+input instead. Not guarded against: no existing export or import path produces that ordering, and the
+scrambled-order test/check only exercises the nine input headers on their own, never alongside the
+output ones. Every numeric cell, on both import and export, is a plain
+unformatted number (no thousands grouping, a decimal point) — a deliberate departure from
+`table1ToCsv`'s locale-formatted style, since that export is read once in Excel and never read back,
+while Mikrosim's file is a genuine round trip and a locale-formatted number would either need
+thousands-separator parsing or could collide with the chosen delimiter. Only the delimiter itself
+(`;` for Swedish, `,` for English) still comes from `tables.ts`'s existing `delimiterFor`, exported
+for this reuse. Import always **replaces** the table wholesale — this app has no native
+`confirm()`/`alert()` anywhere, so a predictable "load this file as the new batch" fits its other
+inline-correction conventions better than a merge would.
+
+`mikrosim.ts` and `mikrosimCsv.ts` import from each other — `mikrosimCsv.ts` needs `MikrosimRow`/
+`newMikrosimRow`/`validateMikrosimRow`/`INPUT_COLUMNS`/`OUTPUT_COLUMNS`/`headerName` from
+`mikrosim.ts`, and the panel calls `parseMikrosimCsv`/`mikrosimRowsToCsv` back. `mikrosim.ts` and
+`chart.ts` form the same shape of pair, for the same reason: `chart.ts` needs `OUTPUT_COLUMNS`/
+`headerName`/`MikrosimRow` from `mikrosim.ts` for `renderMikrosimChart`, and the panel's own
+`redraw()` calls that function back. Both circular imports are safe: every value either side uses
+from the other is read only inside a function body — a click handler, `parseMikrosimCsv` itself, a
+render call — never at module-evaluation time, so it does not matter which of the two finishes
+evaluating its own top level first.
+
+**Two independent tables, not one wide one, on request.** `mikrosim.ts` builds an Inputs table
+(row number, status, the nine `INPUT_COLUMNS` cells, remove — 12 columns) and a Results table (row
+number, the twelve `OUTPUT_COLUMNS` cells — 13 columns, no status or remove column, since that is
+where the thing needing a fix or a click lives), each with its own bold, left-aligned caption
+(`.mikrosim-table-label`, reusing the exact "Indata"/"Inputs" and "Resultat"/"Results" bilingual pair
+that used to head the single table's own grouped header row) and its own `.scroll` wrapper. Both
+tables carry the plain `.mikrosim-table` class, so `verify-offline.mjs` tells them apart by a
+`data-role` attribute (`mikrosim-inputs-table`/`mikrosim-results-table`) rather than by DOM order.
+`buildRowViews` builds both rows for one `MikrosimRow` together, sharing one `editAndRecompute` — an
+edit in the Inputs table's own cell still updates that row's own cells in the Results table and the
+chart below, all three in one call.
+
+**A real bug: the chart did not refresh on a plain edit, only on a structural change.** The original
+live-recompute build (below) called `chartBox.replaceChildren(renderMikrosimChart(...))` only from
+`redraw()` — add row, remove row, CSV import, `setContext`, a language switch. A single cell's own
+edit handler, `editAndRecompute()`, called `computeOneRow` then only `renderStatus()`/
+`renderOutputs()`, both of which update *that row's own* already-existing table cells directly but
+never touched `chartBox` — so editing a value correctly moved that row's own output cells but left
+the chart frozen on whatever it last looked like. The existing offline check only asserted the
+chart's bar *count* stayed nonzero after an edit, never that the bars' own *values* had moved, which
+is why it shipped unnoticed. Fixed by pulling the `chartBox.replaceChildren(...)` line out into its
+own `refreshChart()` and calling it from both `redraw()` and `editAndRecompute()` — cheap either way,
+since `renderMikrosimChart` rebuilds from `rows` fresh every time regardless of caller.
+`verify-offline.mjs` now snapshots the chart's own SVG markup immediately before and after a plain
+salary edit (no add/remove/import in between) and asserts it changed, proven to fail against a
+temporarily reverted build before the fix and pass after.
+
+**Privat pensionssparande can legitimately do nothing, depending on the row's own dates — not a
+bug.** `mcalc.ts`'s private-saving block only credits an age whose calendar year (`born + age`) is
+`>= context.ipsStart` (a shared `ModelContext` field, `workbookDefault("IPS_start", 2026)` by
+default) and before the occupational-pension retirement threshold. `newMikrosimRow` seeds every fresh
+row from `defaultInput()` (`born: 1959, retirementAge: 66`), which retires in 2025 — a year *before*
+the default `ipsStart` of 2026 — so no age in that row's working life or retirement satisfies the
+gate, and any IPS amount typed into it earns exactly nothing, by design. `ipsStart` lives in the
+Advanced-settings column, not on any Mikrosim column, so nothing in the table itself explained this
+until now: the Privat pensionssparande column's own `info` tooltip was reworded to name the gate
+("Har ingen effekt för år före inställningen \"Sparandet börjar år\" i Avancerat läge.") rather than
+changing any behaviour.
+
+**The Inputs/Results tables' own column headers read 8px bold, on request** — matching the body cells'
+own 8px (set on `.mikrosim-table` itself, Phase 12 above), but the headers needed their own override:
+`.table thead th` (the app-wide table style) sets `0.76rem`/`600` at the same selector specificity as
+a plain `.mikrosim-table thead th` would, so whichever rule happens to come later in the stylesheet
+wins regardless of which one "looks like" it should apply — accidental, not a deliberate choice.
+`.mikrosim-table.table thead th` (both classes, already both present on every Mikrosim `<table>`) has
+strictly higher specificity, so it wins independent of source order.
+
+**The chart's own Årsvis/Månadsvis toggle, and a Bruttopension label per bar, both on request.** A
+small `.panel-toggle` local to `mikrosim.ts` (`chartMonthly`, default `false`) sits above the chart —
+distinct from `main.ts`'s app-wide Årsvis/Månadsvis switch (`view.monthly`, which scales Table 2 and
+the three figures), since Mikrosim's own Results table always shows annual figures regardless of
+either toggle. `renderMikrosimChart` takes `monthly: boolean` and reads `Table1Row.monthly` (already
+`adjusted / 12`, `result.ts`) instead of `.adjusted` when it's set — a plain field choice, no new
+arithmetic. Each bar also gets its own Bruttopension figure (`Table1Key.TotalGross`) labelled directly
+above it, in the same annual/monthly unit as the toggle: `result.ts`'s `closeRetirementYear` builds
+`TotalGross` as exactly the sum of the seven bands stacked here (`v.income.get(par)` is zeroed just
+before that sum, so nothing outside the seven bands enters it), so the label lands right at each bar's
+own top by construction, not by a separate lookup that could disagree with the bar's own height. Past
+10 rows, no labels are drawn at all — not some of them — since they would start overlapping and
+clutter more than they inform; `vertical()`'s own multiplier is bumped an extra 15% only when labels
+will actually be drawn, reserving headroom for the tallest bar's own label without changing every
+other chart's shared vertical-scale headroom.
+
+**Disponibel inkomst as a black overlay line, on request.** A plain `Series<MikrosimRow>` with
+`mark: "line"`, drawn as its own `<polyline>` after `stack()` draws the seven bands — not an eighth
+band, since it is a downstream figure (post-tax, plus benefits) rather than one of the components
+summed into Bruttopension, and stacking it in would double-count. `colour: "--text-primary"` rather
+than a new `--fig-*` categorical token: this token is already black in light mode and white in dark
+(the same "always-legible ink" reasoning `.mikrosim-bar-value`'s own colour choice above already
+uses), which is exactly a literal black line in the common case while still staying visible against
+a dark background — a `--fig-*` token chosen for mutual distinguishability from the other six bands
+would miss the point of asking for black specifically, so this one skips the `dataviz` skill's
+palette validation on purpose (it is not a new categorical colour). The vertical scale's own `max`
+takes this line's values into account alongside the stacked bands', so a Disponibel inkomst that
+runs higher than the bands' own sum for a given row is never clipped. Drawn for every row regardless
+of the Bruttopension labels' own 10-row cap — one continuous line, not a label per row, so it never
+accumulates the same clutter — and given its own legend entry (`visibleSeries(rows, [...bands,
+disposableLine])`) alongside the bands.
+
+**"Hämta från Prognos"/"Hämta från Jämför scenarier", on request — a one-time pull, not a live
+link.** Two more `actions` buttons alongside "+ Lägg till rad": the first appends one row read from
+Prognos's own current baseline (whichever mode is actually driving it — `main.ts`'s `runInput()`, not
+the raw Normal-mode `input`, so an Avancerat-mode override is reflected too); the second appends one
+row per Jämför scenarier scenario (baseline first, then each variant via `applyScenario`). Both are a
+plain snapshot at the moment of the click — editing the form or a scenario afterwards does not change
+a row already imported from it, the same "frozen once added" relationship `compare.ts`'s own variants
+already have with their baseline. `mikrosimRowFromInput(id, input, ipsMonthly)` is the mirror image of
+the existing `mikrosimRowToInput`, mapping the same nine fields back from any full `TypfallInput` (plus
+the shared context's own current `ipsMonthly`, since IPS lives on `ModelContext` rather than
+`TypfallInput` — see the column-mapping notes above) and clamping each continuous field to Mikrosim's
+own bounds, the same way a typed or CSV-imported value already is.
+
+Wiring is a pull, not a push, unlike `compare.ts`'s own `onChange`: `main.ts` hands `createMikrosimPanel`
+two getters, `getForecastInput`/`getCompareInputs` (the latter `() => comparePanel.scenarioInputs(runInput())`,
+a new `CompareHandle` method that returns `[baseline, ...variants.map(applyScenario)]` against whichever
+baseline it is given), and Mikrosim calls them only when its own two buttons are clicked — it does not
+subscribe to either view's state the rest of the time. Importing from Jämför scenarier adds as many
+rows as fit under `MAX_ROWS` rather than refusing the whole import over the cap, matching CSV import's
+own best-effort stance on a partial problem.
+
+### Bästa pensionsålder
+
+A fourth top-level view, on request, that answers the one question a single forecast cannot: *which
+retirement age pays out the most over a lifetime?* Every year of delay raises the monthly pension
+and costs a year of payments, so which age wins depends on how long the person lives -- which the
+model deliberately does not know (its annuity divisors are population averages). The tab therefore
+answers with a table of "if you live to D" instead of one number. There is no such sheet in the
+workbook; it began as a static report on one typfall (born 1980, working from 25, 38 500 kr/month)
+and this is that report made interactive, with the collective agreements added.
+
+Five modules and one test file, split the way the other new tabs are:
+
+- `pensionAge.ts` -- everything that is arithmetic, with no DOM: the alternatives, the runs, the
+  sums, the winners, the break-evens, the final-salary inversion, the comparison of agreements
+  (`computeComparison` and what reads it) and the CSV/Excel rows.
+- `pensionAgeChart.ts` -- the line charts, in `chart.ts`'s own frame (its `frame`, `legend`,
+  `newSvg` and drawing helpers are exported for this one reuse). One chart, two kinds of series: one
+  line per retirement age, or one per agreement.
+- `pensionAgePanel.ts` -- the inputs, the switch between the two views, and the single-agreement
+  view: the short answer, the tables and the exports.
+- `pensionAgeCompare.ts` -- the second view, side by side across the agreements (below), with its own
+  controls.
+- `pensionAgeUi.ts` -- the small stateless pieces the two panels share (element and table builders,
+  number formats, the phrases that describe a study); a module of its own because the panels would
+  otherwise import each other.
+- `apps/web/test/pensionAge.test.ts` -- 56 tests, the same split `kpis.test.ts` and
+  `compare.test.ts` already make (the panels themselves are checked in the built page).
+
+**The method.** One `run()` per alternative retirement age -- the reference age and three years
+either side, ascending, clamped to the cohort's lowest permitted age (`lowestPensionAge`) and the
+sheet's highest (80). A run takes a couple of milliseconds, so seven of them per keystroke needs no
+worker or debounce, the stance `main.ts`'s own header comment already takes. (It took nine until the
+engine began to share the annuity factors between runs of one cohort; see `docs/VBA-MAPPING.md`.) The pension summed
+is the per-age matrix the tables and figures are drawn from (`result.rows`): income, supplementary and
+premium pension, guarantee pension and the income-pension supplement, plus occupational pension --
+before tax, or `netto` after it -- in whatever price basis the shared context asks for (fixed
+reference-year prices by default), **not discounted**: a krona at 90 counts as much as one at 70.
+
+**"Lever till D år" is D − retirement age whole years.** The model's row for age `a` is the year in
+which the person turns `a` (an integer birth year means 1 January, so a full year of payments), so
+`cumulative[x]` is the sum of rows `par … x−1`: pension is paid up to the year before the D-year
+birthday. The benefit itself does not depend on how long the person lives; the lifespan only decides
+how many years are added up, and there is no probability weighting. The model's own `lifeIncome` is a
+different thing -- a sum discounted at `discountRate` through the *expected* age at death -- and is
+left alone.
+
+**Break-even is exact, not searched.** Payments are monthly, so a running total is linear inside a
+year; the lifespan at which a later start has caught up with an earlier one is found by walking the
+integer ages to the first crossing and interpolating. Each alternative is compared with the
+reference, and each with the one a year earlier. "Practically equal" is the two best totals within
+1 % of each other (`NEAR_TIE`), marked ≈ in the short answer's boxes and the matrix.
+
+**Two shared-context settings are overridden on purpose.** `studyContext` forces `tjpPar: 0`
+(occupational pension follows each alternative's own retirement age) and `ipsMonthly`/`pbhIps: 0`
+(private saving is out of scope). An Avancerat "draw occupational pension from age X" would
+otherwise pay it before the public pension for some alternatives and not others -- and `netto`, which
+still contains salary before retirement, could not be summed from that age. Every other shared
+setting applies as in the other tabs: tax, wage profile, price basis, the temporary-withdrawal
+years. The engine itself never checks that an agreement fits the birth year (ITP-2 for someone born
+1980 runs without a warning), so neither does the tab; the select's own labels carry the cohort.
+
+**Its own inputs, a one-time pull from Prognos.** Like Mikrosim's rows, the tab is not a diff against
+the form on the left and does not follow it. "Hämta från Prognos" copies the form's birth year, start
+of work, salary, agreement and economic assumptions across once, at the click (`main.ts` hands the
+panel a `getForecastInput` getter); "Återställ" returns the report's typfall. The inputs are built
+once and never rebuilt -- only the results area is replaced on a change -- so a field being typed into
+keeps its focus. `setContext` stashes the shared context and redraws, as Mikrosim's does.
+
+**Salary as monthly salary or as final salary, on request.** The model's input is a monthly salary;
+the final salary (Table 1's "Slutlön") is what comes out. The "Ange lön som" switch lets either be
+typed. A typed final salary is turned into the monthly salary behind it by running the model
+(`monthlySalaryForFinalSalary`): final salary is linear in the monthly salary, so a couple of secant
+steps land within a krona (checked for 30 000 to 80 000). The figure is matched at the *reference*
+age; the other alternatives can end up with a slightly different final salary once wages grow, and
+the per-age table shows each one's own. Both numbers are shown beside the field.
+
+**Colours: a diverging scale around the reference age, not seven categorical hues.** Seven lines
+that differ only in *when they start* cannot be told apart by seven hues (the data-visualisation
+method caps a fixed categorical order well below that and says to fold or facet past it), and what the
+reader needs is the order -- how much earlier or later than the reference an alternative is. So
+warm steps (this palette's own red-orange, `--fig-wage-level`) are earlier, cool steps (its blue,
+`--fig-salary`) later, and the reference itself is plain ink (`--text-primary`, the same "always
+legible" choice the Mikrosim disposable-income line makes). Each arm is one hue stepped in OKLCH
+lightness (0.62 / 0.53 / 0.43 in light, 0.62 / 0.71 / 0.80 in dark), validated with the `dataviz`
+skill's `validate_palette.js` as an ordinal ramp per arm against this app's *own* chart surfaces
+(`#ffffff`, `#003824`): monotone lightness, every adjacent step at least 0.06 apart, the lightest
+step 3.61:1 (light) and 3.29:1 (dark) against its surface, one hue per arm. The unvalidated
+alternative -- stepping the documented blue ramp seven times -- fails the same check (adjacent
+steps only 0.047 apart). Distance from the reference reads as contrast against the surface in both
+themes, so the extremes stand out and the alternatives next to the reference recede; the `--fig-pa-on-*`
+tokens give each filled box its text colour (white or black, whichever contrasts more), and the print
+block resets the six steps so a dark-theme page still prints on a white ground.
+
+Identity does not rest on hue alone: every chart has a legend and a hover readout that names every
+value, the short answer and the matrix carry the winner's number in each box, and the two tables
+beside the charts hold every number plotted (the per-age CSV holds the rest). `pensionAgeChart.ts`
+has its own hover, because `chart.ts`'s `hover()` prints every series at every point and here a line
+has no value before its start; it also works from the keyboard (focus the chart, arrow keys, Escape).
+End labels (the retirement age) are spread apart with the least total movement; if that would move one
+more than a few pixels from its own line, only the two extremes and the reference are labelled
+instead, rather than nudging seven labels into a column no longer beside its lines.
+
+**Two presets for the economic assumptions, because the answer depends on them.** Under the model's
+own defaults (no inflation, no real wage growth -- "results in today's price and wage level") the
+income pension, indexed with the income index minus the 1.6 % norm, falls about 1.6 % a year in
+constant prices, and the guarantee pension, which follows prices, tops it up more and more in old
+age. For the report's typfall that moves the break-evens against the riktålder to 83.4-83.8 years
+(earlier starts) and 86.6-87.2 (later ones); with 2 % inflation and 1.8 % real wage growth the income
+pension keeps its value, no guarantee pension is paid, and the same break-evens are 79.5-80.2 and
+81.1-81.8 -- four to six years earlier. Without the guarantee pension the default case's break-evens
+would rise smoothly from 80.3 to 83.8; it is what makes the pattern uneven (the step from the
+riktålder to one year later needs a *longer* life than the next one does). The tab says so in its own
+notes and puts the two assumption sets one click apart rather than choosing for the user.
+
+**Table 1 and the yearly flow differ by up to about 2 %, and the tab says so.** Table 1 counts the
+final year's pension right at once; the per-age matrix picks it up from the second year (the model's
+own order). The short answer's one-line summary quotes Table 1 (so it matches Prognos); every sum and
+chart is built on the per-age flow, which is what a lifetime total has to be built on.
+
+**The second view: all the agreements side by side.** A switch below the inputs ("Ett avtalsområde" /
+"Jämför avtalsområden") chooses what the results are. The comparison (`pensionAgeCompare.ts`, over
+`pensionAge.ts`'s `computeComparison`) runs the same person and the same seven alternatives once per
+collective agreement, so the *only* thing that varies is the agreement -- not the retirement age,
+which every agreement shares. "Saknar tjänstepension" is the baseline, always present, and what an
+agreement adds is measured against it (`extra`: its total minus the baseline's at the same
+retirement age, or at each one's own best age): a figure that reads as "what this agreement is
+worth" and not as a level that mixes the public pension in. It shows
+
+- a short answer: who pays most and least at the lifespan being read, where the agreement chosen in
+  the inputs ranks, the best age per agreement at that lifespan and across the range, and which
+  agreements are "what if"s;
+- a grid of the best retirement age for every agreement and every lifespan, in the single view's own
+  diverging colours (≈ where the two best ages are within 1 %), the lifespan being read highlighted;
+- one chart of the total, or of what each agreement adds, per lifespan, at the best age for each
+  lifespan or at a chosen age; and a table at the lifespan being read (best age, total, addition in
+  kronor and per cent, monthly pension at the start, of which occupational before tax).
+
+It takes the person, the assumptions, the lifespan range and before/after tax from the tab's own
+inputs, so the two views always describe the same person. The agreement chosen there and "Räkna med
+tjänstepension" belong to the single view -- a comparison is *about* the agreements -- but the chosen
+agreement is shown until somebody picks, marked "ditt val".
+
+**Which agreements: the cohort's own, until somebody picks.** Some agreements are written for particular
+birth years -- the workbook's own labels say so (`SCHEME_COHORTS`: ITP-1 from 1979, ITP-2 before it,
+AKAP-KR from 1986, PA16 avd 2 before 1988, avd 1 from it; a test reads the labels and fails if the table
+drifts from them). The engine does not stop a 1980 cohort from being given ITP-2, and neither does the
+tab: such an agreement can be switched on, but it is dashed in the picker, tagged "vad om" everywhere
+it appears, named as one in the short answer, and left out of the default selection -- born 1980 starts
+with ITP-1, SAF-LO, KAP-KL and PA16 avd 2. Picking any chip freezes the selection as it stands; a
+changed birth year then no longer swaps it. The labels are a rule of thumb rather than a law (KAP-KL and
+AKAP-KR overlap for those who chose to switch), which is why they only ever mark, never remove.
+
+**Cost, and what is kept.** One study is seven runs, so all eight agreements are 56 runs -- about 60 ms
+once the engine shares the annuity factors (about 450 ms before; the engine change is what made a live
+comparison reasonable). They are only computed while the view is showing, and the studies are cached by
+`comparisonKey` (every input but the agreement) and the *identity* of the shared context: `main.ts` builds
+a fresh context object on every render, so anything outside the tab that could matter empties the cache,
+while picking an agreement, choosing a retirement age, moving the lifespan to read at and the chart
+toggle reuse it and are instant. The controls are built once, like the inputs, and only synchronised;
+the result panels are rebuilt.
+
+**Colours here are identity, so they are categorical.** One line per agreement, fixed per agreement and
+not per position (switching one off must not repaint the rest), "Saknar tjänstepension" in plain ink.
+The seven hues are the `dataviz` skill's documented categorical set -- light and dark steps -- and the
+assignment of hue to agreement was found by trying all 5 040 orders against the validator: the full list in
+the drop-down's order and each of the four lists a cohort shows by default (born before 1979,
+1979-85, 1986-87, 1988 or later) have to clear the hard gates in both themes against this app's own chart
+surfaces (`#ffffff`, `#003824`). The order used has worst adjacent colour-blind Delta E 9.2 (light) and
+9.4 (dark) against the 8 the method asks for, and normal-vision 24.0 and 19.7 against 15, and puts the
+two agreements every cohort has (SAF-LO, KAP-KL) on blue and green; the documented order itself fell to
+6.9 on a default list in dark. Four slots sit below 3:1 against their surface (aqua, magenta and yellow in
+light, green in dark), so the relief rule applies and is met: a legend, an end label on the lines that
+matter (the two extremes, the baseline and the agreement chosen above), a hover readout naming every value,
+and a table with every number. Where two lines lie within 1.5 % of the axis of each other everywhere --
+ITP-1 and KAP-KL differ by a few kronor a month -- the chart says so under itself, since an orange legend
+key with no orange line is a puzzle: the figure's note names the lines that hide each other.
+The warm/cool of the best-age boxes (earlier/later than the reference) and the hues of the agreement
+lines never share a legend, and the agreement is always named in text beside its key.
+
+**Left out on purpose:** married/unmarried (the report's typfall is single), private saving, discounting
+and a probability-weighted expected total. `tjpPar`-style early occupational pension is the one
+Avancerat setting the tab refuses (see above).
+
+**Checked** by the 56 unit tests -- the default study reproduces the static report to the krona
+(totals, winners, break-evens, near-ties), a collective agreement adds exactly its occupational
+pension and nothing else, the two overridden settings cannot be moved from outside, the after-tax
+view is the net income from retirement, the break-even maths is exact on hand-built options -- and,
+in the built page, by `verify-offline.mjs`'s own block: the report's numbers read back out of the
+matrix and the short answer, a chosen agreement, both presets, after tax, the reference age moved,
+clamped and re-locked to the riktålder, the riktålder following the birth year, a typed final
+salary, the linked lifespan range, reset and the one-time import from Prognos, the matrix's CSV and
+Excel downloads and the per-age CSV, the theme tokens, both languages, the hover and the arrow keys,
+and the page not widening at 375px. The comparison has tests of its own: which agreements fit which
+birth years (against the workbook's labels), every agreement's best age and total to the krona, the
+baseline equal to the single study, the cache reused rather than recomputed, the cache key, what an
+agreement adds, the spread of best ages, and the exports; and in the built page the switch, the
+default picks, the grid, the table, the lines and their colours in both themes, the hover, picking
+and un-picking, the retirement age, the lifespan to read at, the chart toggle, after tax, the
+chosen agreement marked, the cohort swapping the defaults, both downloads, both languages, reset and
+375px.
 
 ### Table 2's own column tooltips, and Ordlista
 
@@ -632,3 +1387,34 @@ document. Proven to fail first the ordinary way -- reverting just these two file
 reproduces the exact `<script type="module">` this check now catches, and (checked separately, by
 testing `<script defer>` against the same reverted build) `defer` alone does not fix the ordering
 problem for an inline script even though it looks like it should.
+
+### A "$&" that only sometimes breaks the build
+
+Adding the PGB grid's conscription columns (below) turned a clean build into one where the offline
+check's very first `waitForSelector` timed out -- the page never rendered at all. Chromium's own
+`pageerror` named it exactly: `Unexpected token '<'`, a JavaScript syntax error, in a file that had
+just built without complaint and passed `tsc --noEmit`. Bisecting the built HTML itself (not the
+source -- nothing in it was wrong) found two stray, literal `</body>` strings sitting in the *middle*
+of the minified script, in place of what unminified `fflate` (the zip library `xlsxExportButton`
+bundles) writes as `$&` -- a variable named `$`, immediately followed by a bitwise AND.
+
+The cause was `inline-single-file.mjs`'s own `html.replace("</body>", \`${inlineScript}</body>\`)`.
+`String.replace`'s *string* form treats a handful of `$`-prefixed sequences in the replacement
+specially -- `$&` above all, meaning "insert the matched substring", which here was the literal text
+`"</body>"` being searched for. A one-character variable name next to the AND operator is unremarkable
+in output this size, and the two had never landed adjacent to each other in a build before -- until
+code elsewhere in the same bundle (unrelated to `fflate` itself) shifted esbuild's own minified-name
+allocation just enough to produce that exact two-character `$&` somewhere inside it. Nothing about the
+PGB feature touches `fflate` or the inliner; it only changed how one identifier elsewhere in the same
+scope-hoisted bundle got named, which is enough to make a latent bug like this fire on one build and
+not the one before it.
+
+The fix is the standard one for this exact gotcha: a replacer *function* instead of a string --
+`html.replace("</body>", () => \`${inlineScript}</body>\`)`. A function's return value is spliced in
+literally, with no reinterpretation of anything it contains, whatever the bundle happens to say.
+Proven against the actual failure, not assumed: reverting just this one line and rebuilding reproduces
+the same `</body>`-for-`$&` corruption and the same blank-page `pageerror`, restoring it makes both
+disappear. Nothing catches this at the type or unit level -- it depends on what the minifier's own
+name allocation happens to produce for a given bundle -- so it is exactly the kind of thing
+`verify-offline.mjs`'s own "open the real built file in a real browser" check exists for, even though
+no new assertion was added for it specifically; the very first `waitForSelector` already covers it.

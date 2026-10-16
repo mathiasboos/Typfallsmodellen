@@ -136,6 +136,8 @@ export interface RunState {
   readonly egenAvg: AgeArray;
   /** `PGB_(age)` -- pensionsgrundande belopp for childcare, conscription, study. */
   readonly pgb: AgeArray;
+  /** The childcare (Barnår) share of `pgb`, broken out for the PGB summary table. */
+  readonly pgbBarn: AgeArray;
   /** `SAPGB_(age)` -- the same for sickness and activity compensation. */
   readonly saPgb: AgeArray;
   /** `arb_avg(age)` -- employer contributions, written out for study only. */
@@ -292,6 +294,7 @@ export function createRunState(startage: number, slutage = SLUTAGE): RunState {
     pgi: age(),
     egenAvg: age(),
     pgb: age(),
+    pgbBarn: age(),
     saPgb: age(),
     arbAvg: age(),
 

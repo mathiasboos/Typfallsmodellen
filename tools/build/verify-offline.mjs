@@ -159,6 +159,14 @@ tab.on("console", (message) => {
 await tab.goto(pathToFileURL(page).href);
 await tab.waitForSelector(".table1 tbody tr[data-key]", { timeout: 15000 });
 
+// The disclaimer is a disclosure now, not an always-open box -- proven closed
+// as loaded, before any other interaction could have opened it.
+const problems = [];
+const noticeAsLoaded = await tab.locator('[data-role="disclaimer"]').getAttribute("open");
+if (noticeAsLoaded !== null) {
+  problems.push("the disclaimer is open on load, expected collapsed by default");
+}
+
 /** One cell of a Table 1 row, found by the model's key and the column's name. */
 async function shown(key, col) {
   const text = await tab
@@ -169,8 +177,6 @@ async function shown(key, col) {
   // comma the percentage column uses.
   return Number(text.replace(/[^\d,-]/g, "").replace(",", "."));
 }
-
-const problems = [];
 
 /**
  * Clicks a download button and reads back what it actually produced --
@@ -296,6 +302,41 @@ if (fig2Legend.some((text) => text.includes("Tjänstepension") || text.includes(
 if (!fig2Legend.some((text) => text.includes("Lön") || text.includes("Earnings"))) {
   problems.push("Figur 2's legend is missing Lön, which is never zero before retirement");
 }
+
+// Figur 2's own after-tax/before-tax toggle, added on request -- the overlay
+// line switches between two totals (`netto`/`brutto`) already on every row,
+// so this checks the legend label, the active button and the line's own
+// drawn points all change together, not just one of the three.
+const fig2Figure = tab.locator("figure.figure").nth(1);
+const basisButtonCount = await fig2Figure.locator(".panel-toggle button").count();
+if (basisButtonCount !== 2) {
+  problems.push(`Figur 2's after-tax/before-tax toggle has ${basisButtonCount} button(s), expected 2`);
+}
+const afterTaxClass = await fig2Figure.locator('button[data-basis="after-tax"]').getAttribute("class");
+if (!afterTaxClass?.includes("active")) {
+  problems.push(`Figur 2 does not default to "after-tax" (class was "${afterTaxClass}")`);
+}
+const linePointsAfterTax = await fig2Figure.locator("svg polyline.line").getAttribute("points");
+await fig2Figure.locator('button[data-basis="before-tax"]').click();
+await tab.waitForTimeout(80);
+const fig2LegendBeforeTax = await fig2Figure.locator(".legend li").allTextContents();
+console.log(`Figur 2 basis   : ${fig2LegendBeforeTax.join(" | ")}`);
+if (!fig2LegendBeforeTax.some((text) => text.includes("Inkomst brutto") || text.includes("Income gross"))) {
+  problems.push(
+    `Figur 2's legend did not switch to "Inkomst brutto"/"Income gross" after picking before-tax (${fig2LegendBeforeTax.join(" | ")})`,
+  );
+}
+const beforeTaxClass = await fig2Figure.locator('button[data-basis="before-tax"]').getAttribute("class");
+if (!beforeTaxClass?.includes("active")) {
+  problems.push("Figur 2's before-tax button did not become active after it was clicked");
+}
+const linePointsBeforeTax = await fig2Figure.locator("svg polyline.line").getAttribute("points");
+if (linePointsBeforeTax === linePointsAfterTax) {
+  problems.push("Figur 2's overlay line did not move after switching to before-tax (brutto vs netto)");
+}
+// Back to the default, so the screenshots below show the usual view.
+await fig2Figure.locator('button[data-basis="after-tax"]').click();
+await tab.waitForTimeout(80);
 
 // Table 2 thins its own columns the same way: a column with no value
 // anywhere in this run gets no header. The default typfall has no
@@ -436,6 +477,61 @@ if (advGroups !== 9) {
   problems.push(`advanced mode shows ${advGroups} groups, expected 9`);
 }
 
+// The old combined "saving" group split into two, on request, and "Övrigt"/
+// "Other" was removed entirely once flexPension and the two Slutlön settings
+// moved out of it -- confirm the new titles exist and the old ones don't.
+const advGroupTitles = await tab.locator(".advanced-box .adv-group summary").allTextContents();
+console.log(`advanced titles : ${JSON.stringify(advGroupTitles)}`);
+if (!advGroupTitles.includes("Privat sparande")) {
+  problems.push('expected an advanced-mode group titled "Privat sparande"');
+}
+if (!advGroupTitles.includes("Tjänstepension")) {
+  problems.push('expected an advanced-mode group titled "Tjänstepension"');
+}
+if (advGroupTitles.includes("Privat sparande och tjänstepension")) {
+  problems.push('the old combined "Privat sparande och tjänstepension" group title is still shown');
+}
+if (advGroupTitles.includes("Övrigt")) {
+  problems.push('the "Övrigt" group is still shown, expected it removed');
+}
+
+// Five groups renamed on request -- confirm the new titles exist and the old
+// ones are gone.
+const oldTitles = [
+  "Partiellt uttag",
+  "Underlag för bostadstillägg",
+  "Försäkringstid",
+  "Underlag för inkomstskatt",
+  "Känt pensionskapital och avkastning",
+];
+for (const old of oldTitles) {
+  if (advGroupTitles.includes(old)) {
+    problems.push(`the old group title "${old}" is still shown, expected it renamed`);
+  }
+}
+
+// The nine sections now render in plain Swedish alphabetical order by their
+// own displayed title, spanning this file's own seven `.adv-group`s plus
+// salary-path's "Lön" and pgb's "Pensionsgrundande belopp (PGB)" interleaved
+// among them -- see advanced.ts's own header comment and main.ts's
+// `advancedBox.append` call.
+const expectedAdvOrder = [
+  "Allmän pension",
+  "Bostadstillägg",
+  "Garantipension",
+  "Inkomstskatt",
+  "Kapital och avkastning",
+  "Lön",
+  "Pensionsgrundande belopp (PGB)",
+  "Privat sparande",
+  "Tjänstepension",
+];
+if (JSON.stringify(advGroupTitles) !== JSON.stringify(expectedAdvOrder)) {
+  problems.push(
+    `advanced-mode sections are ordered ${JSON.stringify(advGroupTitles)}, expected ${JSON.stringify(expectedAdvOrder)}`,
+  );
+}
+
 /** Opens the group holding a setting and returns its control. */
 async function setting(key) {
   const control = tab.locator(`[data-setting="${key}"]`);
@@ -499,10 +595,13 @@ console.log(`kommun select   : Danderyd -> ${kommunalskattValue}%`);
 const kommunalskattSource = Number(
   readFileSync(join(repo, "apps/web/src/kommunalskatt.ts"), "utf8").match(/"Danderyd":\s*([\d.]+)/)?.[1],
 );
-if (kommunalskattValue !== String(kommunalskattSource)) {
+// Swedish decimal comma, not the source file's own JS-literal period -- the
+// field renders in the page's own language, which defaults to "sv" here.
+const kommunalskattExpected = String(kommunalskattSource).replace(".", ",");
+if (kommunalskattValue !== kommunalskattExpected) {
   problems.push(
     `picking Danderyd set kommunalskatt to "${kommunalskattValue}", expected the exact published ` +
-      `rate "${kommunalskattSource}"`,
+      `rate "${kommunalskattExpected}"`,
   );
 }
 const municipalAfterPick = await table2Cell(table2Rows - 1, municipalCol);
@@ -526,7 +625,7 @@ const autoChoice = await churchSelect.inputValue();
 // showing "1.3" next to a hint reading "~1,32 %"; the fix was giving the
 // field the same precision, and checking the exact string is what would
 // catch a regression back to the coarser one.
-const expectedBurialOnlyStr = String(Math.round(expectedBurialOnly * 100_000) / 1000);
+const expectedBurialOnlyStr = String(Math.round(expectedBurialOnly * 100_000) / 1000).replace(".", ",");
 console.log(`church/burial   : auto-filled to ${autoFilled}% (${autoChoice}), expected ${expectedBurialOnlyStr}%`);
 if (autoFilled === "0") {
   problems.push("picking a municipality left the church/burial field at 0 instead of auto-filling it");
@@ -547,7 +646,7 @@ if (autoChoice !== "rest") {
 await churchSelect.selectOption({ value: "member" });
 await tab.waitForTimeout(50);
 const memberFilled = await begravningsavgiftField.inputValue();
-const expectedChurchMemberStr = String(Math.round(expectedChurchMember * 100_000) / 1000);
+const expectedChurchMemberStr = String(Math.round(expectedChurchMember * 100_000) / 1000).replace(".", ",");
 console.log(`church member   : ${memberFilled}%, expected ${expectedChurchMemberStr}%`);
 if (memberFilled !== expectedChurchMemberStr) {
   problems.push(`picking "member" set the rate to "${memberFilled}", expected "${expectedChurchMemberStr}"`);
@@ -629,166 +728,523 @@ if (!(grossAfter < grossBefore)) {
   );
 }
 
-// PGB: sickness/activity compensation is still hand-typed kronor; conscription
-// (a single date range) and study (a per-age semester count) compute their
-// own kronor instead, the same way the real PGB sheet does. The shipped
-// workbook has none of the three (`pgbManual`'s own comment: "childcare years
-// are the only PGB a default run earns"), so an untouched grid must not
-// silently change anything, and a filled-in one must.
+
+// PGB: a compact add-entry form (pick a type, fill in that type's own
+// fields, click "Lägg till") plus a summary table that only shows years and
+// categories that actually have data -- replacing the old always-visible
+// 55-row grid. The shipped workbook has no manual PGB entries at all
+// (`pgbManual`'s own comment: "childcare years are the only PGB a default
+// run earns"), so an untouched panel must show nothing, and each add below
+// must move both the table and the pension.
 const pgbGroup = tab.locator('details[data-group="pgb"]');
 if (!(await pgbGroup.evaluate((node) => node.open))) {
   await pgbGroup.locator("summary").click();
 }
-const pgbGrid = pgbGroup.locator(".pgb-grid tbody tr");
-const pgbRows = await pgbGrid.count();
-console.log(`pgb grid rows   : ${pgbRows}`);
-// Ages 16 through 70 -- see pgb.ts's own comment on that range.
-if (pgbRows !== 55) {
-  problems.push(`the PGB grid has ${pgbRows} rows, expected 55 (ages 16-70)`);
+const PGB_TYPE = { child: "0", conscription: "1", sickness: "2", study: "3" };
+async function pgbType(type) {
+  await pgbGroup.locator('[data-setting="pgbEntryType"]').selectOption(PGB_TYPE[type]);
+  await tab.waitForTimeout(30);
+}
+async function pgbYear(year) {
+  const el = pgbGroup.locator('[data-setting="pgbEntryYear"]');
+  await el.fill(String(year));
+  await el.dispatchEvent("change");
+}
+async function pgbAdd() {
+  await pgbGroup.locator('[data-action="pgb-add-entry"]').click();
+  await tab.waitForTimeout(80);
+}
+// Scoped to the whole tab, not `pgbGroup`: "Visa alla kolumner" (below)
+// moves the table -- and the paragraph beside it -- out into a floating
+// panel appended to `document.body`, so a `pgbGroup`-scoped locator would
+// stop finding either while it's expanded.
+const pgbSummaryRows = tab.locator(".pgb-summary-table tbody tr");
+async function pgbHeads() {
+  return tab.locator(".pgb-summary-table thead th").allTextContents();
+}
+const pgbSummaryEmptyMsg = tab.locator(".pgb-summary-empty");
+
+// 1. Empty state: nothing typed yet.
+const pgbEmptyBefore = await pgbSummaryEmptyMsg.isVisible();
+const pgbRowsBefore = await pgbSummaryRows.count();
+console.log(`pgb empty state : empty message visible=${pgbEmptyBefore}, rows=${pgbRowsBefore}`);
+if (!pgbEmptyBefore || pgbRowsBefore !== 0) {
+  problems.push(
+    `the PGB panel shows ${pgbRowsBefore} row(s) with the empty message visible=${pgbEmptyBefore} before any ` +
+      "entry, expected 0 rows and the empty message",
+  );
 }
 
-// Värnplikt: wsPGB!H4/H5, a single date range rather than a row-per-age
-// entry -- the readout is the same year-by-year day split
-// conscriptionDaysByYear computes, so it has to name the year typed in
-// before the pension itself is checked to have moved from it.
-const pensionBeforeVpl = await kpiValue(0);
-await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').fill("1998-01-01");
-await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').dispatchEvent("change");
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').fill("1998-12-31");
-await pgbGroup.locator('[data-setting="pgbConscriptionEnd"]').dispatchEvent("change");
+// The form's own fields show and hide with the selected type -- "Barn" (the
+// default) shows the birth-year field and the child-slot select; switching
+// to sickness swaps in the kronor field instead.
+const pgbYearField = pgbGroup.locator('[data-setting="pgbEntryYear"]');
+const pgbSlotField = pgbGroup.locator('[data-setting="pgbEntryChildSlot"]');
+const pgbAmountField = pgbGroup.locator('[data-setting="pgbEntryAmount"]');
+const pgbSemesterField = pgbGroup.locator('[data-setting="pgbEntryStudySemesters"]');
+const pgbStartField = pgbGroup.locator('[data-setting="pgbEntryConscriptionStart"]');
+if (
+  !(await pgbYearField.isVisible()) ||
+  !(await pgbSlotField.isVisible()) ||
+  (await pgbAmountField.isVisible())
+) {
+  problems.push(
+    'the PGB form does not open on "Barn" with the birth-year field and child slot shown, amount hidden',
+  );
+}
+await pgbType("sickness");
+if (
+  (await pgbSlotField.isVisible()) ||
+  !(await pgbAmountField.isVisible()) ||
+  (await pgbStartField.isVisible())
+) {
+  problems.push(
+    'switching the PGB type to "Sjuk-/aktivitetsersättning" did not show the amount field and hide the ' +
+      "child slot and conscription dates",
+  );
+}
+
+// A year whose age falls outside 16-70 is rejected outright, not silently
+// moved to the nearest valid one -- 2030 is age 71 for this typfall's 1959
+// birth year, one past `earnPgb`'s own riktålder-based ceiling, so there is
+// visible feedback and no row rather than a different year quietly earning
+// the credit instead.
+const pgbAddFeedback = pgbGroup.locator(".pgb-add-feedback");
+await pgbYear(2030);
+await pgbAmountField.fill("50000");
+await pgbAmountField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterBadYear = await pgbSummaryRows.count();
+const pgbFeedbackBadYear = await pgbAddFeedback.textContent();
+console.log(`pgb bad sa year : rows=${pgbRowsAfterBadYear}, feedback="${pgbFeedbackBadYear}"`);
+if (pgbRowsAfterBadYear !== 0) {
+  problems.push(`adding a sickness entry for an out-of-range year created ${pgbRowsAfterBadYear} row(s), expected 0 (rejected)`);
+}
+if (!pgbFeedbackBadYear || !/16.*70|16-70/.test(pgbFeedbackBadYear)) {
+  problems.push(`adding a sickness entry for an out-of-range year shows feedback "${pgbFeedbackBadYear}", expected a message naming the 16-70 range`);
+}
+
+// 2. A sickness entry: one new row, the pension rises, and a category only
+// gets a column once something is actually in it.
+const pensionBeforeSa = await kpiValue(0);
+await pgbYear(2005); // age 46 for this typfall's 1959 birth year
+const pgbAgeReadout = await pgbGroup.locator(".pgb-year-age").textContent();
+if (pgbAgeReadout !== "46") {
+  problems.push(`typing year 2005 shows age readout "${pgbAgeReadout}", expected "46" (born 1959)`);
+}
+await pgbAmountField.fill("200000");
+await pgbAmountField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterSa = await pgbSummaryRows.count();
+const pgbHeadsAfterSa = await pgbHeads();
+console.log(`pgb rows w/ sa  : ${pgbRowsAfterSa}, heads: ${pgbHeadsAfterSa.join(" | ")}`);
+if (pgbRowsAfterSa !== 1) {
+  problems.push(`adding a sickness entry left ${pgbRowsAfterSa} summary row(s), expected 1`);
+}
+if (!pgbHeadsAfterSa.some((h) => /sjuk/i.test(h))) {
+  problems.push(`the summary table has no "Sjuk-" column after a sickness entry: ${pgbHeadsAfterSa.join(" | ")}`);
+}
+if (pgbHeadsAfterSa.some((h) => /studier|värnplikt|barn/i.test(h))) {
+  problems.push(`the summary table shows an unused column with only a sickness entry present: ${pgbHeadsAfterSa.join(" | ")}`);
+}
+const pensionAfterSa = await kpiValue(0);
+console.log(`pension w/ sa   : ${pensionBeforeSa} -> ${pensionAfterSa} kr after a sickness entry`);
+if (!(pensionAfterSa > pensionBeforeSa)) {
+  problems.push(`entering a sickness-compensation amount did not raise the pension (${pensionBeforeSa} -> ${pensionAfterSa})`);
+}
+
+// "Visa alla kolumner" moves the same live table (not a copy) into a
+// floating panel rather than a modal `<dialog>` -- nothing about the rest
+// of the page is made inert, so the add-entry form just above has to keep
+// working while it's open. Proven by doing check 3, below, with the panel
+// expanded the whole time, rather than as a separate step of its own.
+// Scoped to the whole tab: the button lives inside the same node that
+// moves into the floating panel, so it travels there with the table too --
+// still the way to collapse it again, just no longer under `pgbGroup`.
+const pgbExpandBtn = tab.locator('[data-action="pgb-expand"]');
+const pgbDrawer = tab.locator(".pgb-summary-drawer");
+await pgbExpandBtn.click();
 await tab.waitForTimeout(80);
-const vplReadout = await pgbGroup.locator(".pgb-vpl-readout").textContent();
-console.log(`vpl readout     : ${vplReadout}`);
-if (!vplReadout || !/1998/.test(vplReadout)) {
-  problems.push(`the conscription date range's own readout reads "${vplReadout}", expected it to name 1998`);
+if (!(await pgbDrawer.isVisible())) {
+  problems.push('"Visa alla kolumner" did not show the floating PGB summary panel');
+}
+if ((await pgbDrawer.locator(".pgb-summary-table").count()) !== 1) {
+  problems.push("the floating panel does not hold the PGB summary table -- expected the same live table, moved");
+}
+
+// 3. A study entry in a different year: its own column, a second row, a
+// further rise. 2005 and 2010 both postdate 1995, the year study-PGB
+// actually started. Added here with the table still expanded (see above).
+await pgbType("study");
+if (!(await pgbYearField.isVisible())) {
+  problems.push("the add-entry form's own Year field is not usable while the PGB table is expanded");
+}
+await pgbYear(2010); // age 51
+await pgbSemesterField.fill("1");
+await pgbSemesterField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterStudy = await pgbSummaryRows.count();
+const pgbHeadsAfterStudy = await pgbHeads();
+console.log(`pgb rows w/study: ${pgbRowsAfterStudy}, heads: ${pgbHeadsAfterStudy.join(" | ")}`);
+if (pgbRowsAfterStudy !== 2) {
+  problems.push(`adding a study entry in a new year left ${pgbRowsAfterStudy} summary row(s), expected 2`);
+}
+if (!pgbHeadsAfterStudy.some((h) => /studier/i.test(h))) {
+  problems.push(`the summary table has no "Studier" column after a study entry: ${pgbHeadsAfterStudy.join(" | ")}`);
+}
+const pensionAfterStudy = await kpiValue(0);
+console.log(`pension w/ study: ${pensionAfterSa} -> ${pensionAfterStudy} kr after a study entry`);
+if (!(pensionAfterStudy > pensionAfterSa)) {
+  problems.push(`entering a study semester did not raise the pension further (${pensionAfterSa} -> ${pensionAfterStudy})`);
+}
+
+// Collapsing puts the very same table (the row just added included) back
+// in its normal place in the sidebar, not a stale copy.
+await pgbExpandBtn.click();
+await tab.waitForTimeout(80);
+if (await pgbDrawer.isVisible()) {
+  problems.push('"Dölj tabellen" did not hide the floating PGB summary panel');
+}
+if ((await pgbGroup.locator(".pgb-summary-table").count()) !== 1) {
+  problems.push("collapsing the PGB summary panel did not put the table back under its own group");
+}
+if ((await pgbSummaryRows.count()) !== pgbRowsAfterStudy) {
+  problems.push("collapsing the PGB summary panel lost the row added while it was expanded");
+}
+
+// 4. A study entry in the SAME year as the sickness one: still one row for
+// 2005, now with two populated cells -- the mixed-category-row case.
+await pgbYear(2005);
+await pgbSemesterField.fill("1");
+await pgbSemesterField.dispatchEvent("change");
+await pgbAdd();
+const pgbRowsAfterMixed = await pgbSummaryRows.count();
+console.log(`pgb rows mixed  : ${pgbRowsAfterMixed}, expected still 2 (2005 gained a second figure, not a new row)`);
+if (pgbRowsAfterMixed !== 2) {
+  problems.push(`adding a study entry for 2005 (already a sickness year) left ${pgbRowsAfterMixed} rows, expected 2`);
+}
+const row2005 = tab.locator('.pgb-summary-table tbody tr[data-year="2005"]');
+const row2005Cells = await row2005.locator("td").allTextContents();
+console.log(`2005 row        : ${row2005Cells.join(" | ")}`);
+const row2005NonEmpty = row2005Cells.slice(2, -1).filter((c) => c.trim() !== "").length;
+if (row2005NonEmpty !== 2) {
+  problems.push(`the 2005 row has ${row2005NonEmpty} populated category cell(s), expected 2 (sickness and study)`);
+}
+
+// A per-cell remove clears just that one category, not the whole row.
+await row2005.locator('[data-action="pgb-remove"][data-category="studier"]').click();
+await tab.waitForTimeout(80);
+const row2005AfterRemove = await row2005.locator("td").allTextContents();
+const pgbRowsAfterRemove = await pgbSummaryRows.count();
+console.log(`2005 after x    : ${row2005AfterRemove.join(" | ")}, rows: ${pgbRowsAfterRemove}`);
+if (pgbRowsAfterRemove !== 2) {
+  problems.push(`removing 2005's study figure changed the row count to ${pgbRowsAfterRemove}, expected 2 (2005's sickness figure keeps the row)`);
+}
+const row2005NonEmptyAfter = row2005AfterRemove.slice(2, -1).filter((c) => c.trim() !== "").length;
+if (row2005NonEmptyAfter !== 1) {
+  problems.push(`removing 2005's study figure left ${row2005NonEmptyAfter} populated cell(s), expected 1 (sickness only)`);
+}
+
+// 5. A conscription period under 120 days adds no row -- the one case the
+// table cannot show a zero in on its own, so a standalone readout covers it.
+const pensionBeforeVpl = await kpiValue(0);
+await pgbType("conscription");
+await pgbStartField.fill("1998-01-01");
+await pgbStartField.dispatchEvent("change");
+const pgbEndField = pgbGroup.locator('[data-setting="pgbEntryConscriptionEnd"]');
+await pgbEndField.fill("1998-02-01"); // 31 days, under the 120 minimum
+await pgbEndField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplShortReadout = await pgbGroup.locator(".pgb-conscription-readout").textContent();
+console.log(`vpl short period: "${vplShortReadout}"`);
+if (!vplShortReadout || !/120/.test(vplShortReadout)) {
+  problems.push(`a conscription period under 120 days reads "${vplShortReadout}", expected the "under 120 days" warning`);
+}
+await pgbAdd();
+const pgbRowsAfterShortVpl = await pgbSummaryRows.count();
+const pensionAfterShortVpl = await kpiValue(0);
+if (pgbRowsAfterShortVpl !== 2 || pensionAfterShortVpl !== pensionBeforeVpl) {
+  problems.push(
+    `adding a conscription period under 120 days left ${pgbRowsAfterShortVpl} rows and pension ` +
+      `${pensionAfterShortVpl} (was ${pensionBeforeVpl}), expected no change`,
+  );
+}
+
+// A period long enough to matter is not the same as an eligible one --
+// `wsPGB!F`'s own window is 1995-2010 and from 2018 on, and 2012 falls in
+// neither. The readout catches this while typing, before "Lägg till" is
+// even clicked, the same way it already catches a too-short period.
+await pgbStartField.fill("2012-01-01");
+await pgbStartField.dispatchEvent("change");
+await pgbEndField.fill("2012-12-31"); // 366 days, well over 120 -- long enough, just not eligible
+await pgbEndField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplIneligibleReadout = await pgbGroup.locator(".pgb-conscription-readout").textContent();
+console.log(`vpl 2012 window : "${vplIneligibleReadout}"`);
+if (!vplIneligibleReadout || !/1995|2018/.test(vplIneligibleReadout)) {
+  problems.push(`a conscription period outside 1995-2010/2018+ reads "${vplIneligibleReadout}", expected a message naming the eligible window`);
+}
+await pgbAdd();
+const pgbRowsAfterIneligibleVpl = await pgbSummaryRows.count();
+const pensionAfterIneligibleVpl = await kpiValue(0);
+if (pgbRowsAfterIneligibleVpl !== 2 || pensionAfterIneligibleVpl !== pensionBeforeVpl) {
+  problems.push(
+    `adding a conscription period outside the eligible window left ${pgbRowsAfterIneligibleVpl} rows and pension ` +
+      `${pensionAfterIneligibleVpl} (was ${pensionBeforeVpl}), expected no change`,
+  );
+}
+
+// 6. A valid conscription period: its own column, its own row, a rise.
+await pgbType("conscription");
+await pgbStartField.fill("1998-01-01"); // back to the eligible period this suite carries forward
+await pgbStartField.dispatchEvent("change");
+await pgbEndField.fill("1998-12-31"); // now a full year, well over 120 days
+await pgbEndField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const vplReadout = await pgbGroup.locator(".pgb-conscription-readout").textContent();
+if (vplReadout !== "") {
+  problems.push(`the conscription readout reads "${vplReadout}" for a valid period, expected empty`);
+}
+await pgbAdd();
+const pgbRowsAfterVpl = await pgbSummaryRows.count();
+const pgbHeadsAfterVpl = await pgbHeads();
+console.log(`pgb rows w/ vpl : ${pgbRowsAfterVpl}, heads: ${pgbHeadsAfterVpl.join(" | ")}`);
+if (pgbRowsAfterVpl !== 3) {
+  problems.push(`adding a valid conscription period left ${pgbRowsAfterVpl} rows, expected 3`);
+}
+if (!pgbHeadsAfterVpl.some((h) => /värnplikt/i.test(h))) {
+  problems.push(`the summary table has no "Värnplikt" column after a conscription entry: ${pgbHeadsAfterVpl.join(" | ")}`);
 }
 const pensionAfterVpl = await kpiValue(0);
 console.log(`pension w/ vpl  : ${pensionBeforeVpl} -> ${pensionAfterVpl} kr after a conscription period`);
 if (!(pensionAfterVpl > pensionBeforeVpl)) {
-  problems.push(
-    `entering a conscription date range did not raise the pension (${pensionBeforeVpl} -> ${pensionAfterVpl})`,
-  );
+  problems.push(`entering a conscription date range did not raise the pension (${pensionBeforeVpl} -> ${pensionAfterVpl})`);
 }
 
-// Antal terminer: a per-age semester count, auto-computed into its own
-// kronor right there in the grid -- wsPGB!P shows the same figure beside
-// its own "Antal terminer" cell. 2005 (age 46 for this typfall's 1959 birth
-// year) is a year study-PGB actually existed (1995 on), distinct from the
-// conscription test's own 1998 so the two effects stay untangled.
-const pensionBeforeStudy = await kpiValue(0);
-const studyRow = pgbGrid.nth(2005 - 1959 - 16);
-const semesterInput = studyRow.locator("td").nth(3).locator("input");
-await semesterInput.fill("1");
-await semesterInput.dispatchEvent("change");
+// 7. Removing the conscription period: its row disappears (nothing else
+// populated 1998), the column disappears, the pension falls back.
+const vplClear = pgbGroup.locator('[data-action="pgb-clear-conscription"]');
+if (!(await vplClear.isVisible())) {
+  problems.push('the conscription "Rensa" button is not visible with a period entered');
+}
+await vplClear.click();
 await tab.waitForTimeout(80);
-const studyKr = await studyRow.locator("td").nth(4).textContent();
-console.log(`study kr readout: ${studyKr}`);
-if (!studyKr || !(Number(studyKr.replace(/[^\d]/g, "")) > 0)) {
-  problems.push(`entering 1 semester's own readout reads "${studyKr}", expected a positive kronor figure`);
+const pgbRowsAfterClear = await pgbSummaryRows.count();
+const pgbHeadsAfterClear = await pgbHeads();
+const pensionAfterClear = await kpiValue(0);
+console.log(`pgb after clear : rows=${pgbRowsAfterClear}, heads: ${pgbHeadsAfterClear.join(" | ")}, pension=${pensionAfterClear}`);
+if (pgbRowsAfterClear !== 2) {
+  problems.push(`clearing the conscription period left ${pgbRowsAfterClear} rows, expected 2 (1998 had nothing else)`);
 }
-const pensionAfterStudy = await kpiValue(0);
-console.log(`pension w/ study: ${pensionBeforeStudy} -> ${pensionAfterStudy} kr after 1 semester`);
-if (!(pensionAfterStudy > pensionBeforeStudy)) {
-  problems.push(`entering a semester count did not raise the pension (${pensionBeforeStudy} -> ${pensionAfterStudy})`);
+if (pgbHeadsAfterClear.some((h) => /värnplikt/i.test(h))) {
+  problems.push(`clearing the conscription period left a "Värnplikt" column: ${pgbHeadsAfterClear.join(" | ")}`);
+}
+if (pensionAfterClear !== pensionBeforeVpl) {
+  problems.push(`clearing the conscription period left the pension at ${pensionAfterClear}, expected it back at ${pensionBeforeVpl}`);
+}
+const vplStartAfterClear = await pgbStartField.inputValue();
+const vplEndAfterClear = await pgbEndField.inputValue();
+if (vplStartAfterClear !== "" || vplEndAfterClear !== "") {
+  problems.push(`clearing the conscription period left the dates at "${vplStartAfterClear}"/"${vplEndAfterClear}", expected both empty`);
+}
+if (await vplClear.isVisible()) {
+  problems.push('the conscription "Rensa" button is still visible after clearing, expected hidden');
 }
 
-const pensionBeforePgb = await kpiValue(0);
-const pgbSaInput = pgbGrid.first().locator("td").nth(2).locator("input");
-await pgbSaInput.fill("200000");
-await pgbSaInput.dispatchEvent("change");
+// "Privat pensionssparande": the same number means kronor/month or a share of
+// income depending on its own size -- exposed as an explicit toggle now,
+// rather than a single box whose meaning depended on how big the typed value
+// happened to be. Starts in "Belopp" (amount) mode with the share input
+// hidden; switching modes has to show the other input and hide this one, and
+// a percentage typed after switching has to reach the model the same way an
+// amount would. The default "Sparandet börjar år" (2026) is after this
+// typfall's own retirement, so nothing would ever accrue regardless of mode
+// unless it moves earlier first -- that part is unrelated to the toggle
+// itself, just what the eligibility window needs to actually open. Run here,
+// with the PGB checks above already done and the full reset below still to
+// come, so raising private saving cannot perturb any earlier assumption.
+const ipsStart = await setting("ipsStart");
+await ipsStart.fill("1990");
+await ipsStart.dispatchEvent("change");
+const ipsAmountInput = await setting("ipsMonthly-amount");
+const ipsShareInput = tab.locator('[data-setting="ipsMonthly-share"]');
+if (!(await ipsAmountInput.isVisible()) || (await ipsShareInput.isVisible())) {
+  problems.push("the private-saving toggle does not open in amount mode with the share input hidden");
+}
+const ipsBefore = await shown("ips", "monthly");
+await tab.locator('.adv-ips [data-mode="share"]').click();
+await tab.waitForTimeout(50);
+if ((await ipsAmountInput.isVisible()) || !(await ipsShareInput.isVisible())) {
+  problems.push('switching to "Andel av inkomst" did not hide the amount input and show the share input');
+}
+await ipsShareInput.fill("5");
+await ipsShareInput.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const ipsAfter = await shown("ips", "monthly");
+console.log(`private saving  : ${ipsBefore} -> ${ipsAfter} kr/month at 5% of income`);
+if (!(ipsAfter > ipsBefore)) {
+  problems.push(`setting private saving to 5% of income did not raise it (${ipsBefore} -> ${ipsAfter})`);
+}
+
+// A birth year too early for the parent to have been at least 16 earns
+// nothing (`pgbBarn`'s own gate) -- committed to the slot regardless (it is
+// still that child's own birth year, just an ineligible one), but with
+// visible feedback and no summary row, rather than the slot silently doing
+// nothing with no sign why. Removed again once checked, freeing slot 1 for
+// the real child below.
+const pgbRowsBeforeBadChild = await pgbSummaryRows.count();
+await pgbType("child");
+await pgbYear(1965); // age 6 for this typfall's 1959 birth year -- too young to be a parent
+await pgbAdd();
+const pgbRowsAfterBadChild = await pgbSummaryRows.count();
+const pgbFeedbackBadChild = await pgbAddFeedback.textContent();
+console.log(`pgb bad child yr: rows=${pgbRowsAfterBadChild}, feedback="${pgbFeedbackBadChild}"`);
+if (pgbRowsAfterBadChild !== pgbRowsBeforeBadChild) {
+  problems.push(`adding an ineligible child birth year changed the row count (${pgbRowsBeforeBadChild} -> ${pgbRowsAfterBadChild}), expected no change`);
+}
+if (!pgbFeedbackBadChild || !/16/.test(pgbFeedbackBadChild)) {
+  problems.push(`adding an ineligible child birth year shows feedback "${pgbFeedbackBadChild}", expected a message naming the age-16 rule`);
+}
+await pgbGroup.locator('.pgb-children-list [data-action="pgb-remove-child"][data-child-slot="1"]').click();
+await tab.waitForTimeout(50);
+// Freeing slot 1 does not by itself move the select back to it (only
+// filling the *selected* slot advances it) -- picked explicitly so the
+// real child below lands in slot 1, matching this check's own assertions.
+await pgbSlotField.selectOption("1");
+
+// 8. A child's birth year: the credit can land in up to four years, so this
+// can add up to four new rows, and needs a real engine change to show at all
+// -- `RunState.pgbBarn`/`PgbBreakdownYear.barn` are new for this panel; the
+// old grid folded the credit straight into `RunState.pgb` with no way to
+// tell it apart from the other three sources. Checked with a birth year old
+// enough that `pgbBarn`'s own gate (the parent's age at the birth, > 15) is
+// satisfied for the default typfall (born 1959). Run here, in the same
+// "last, right before the full reset" spot every other test that raises the
+// model's own pension figures runs in.
+const pensionBeforeChild = await kpiValue(0);
+const pgbRowsBeforeChild = await pgbSummaryRows.count();
+await pgbType("child");
+await pgbYear(1990);
+await pgbAdd();
+const pgbRowsAfterChild = await pgbSummaryRows.count();
+const pgbHeadsAfterChild = await pgbHeads();
+console.log(`pgb rows w/child: ${pgbRowsBeforeChild} -> ${pgbRowsAfterChild}, heads: ${pgbHeadsAfterChild.join(" | ")}`);
+if (!(pgbRowsAfterChild > pgbRowsBeforeChild)) {
+  problems.push(`adding a child's birth year added no summary row(s) (${pgbRowsBeforeChild} -> ${pgbRowsAfterChild})`);
+}
+if (!pgbHeadsAfterChild.some((h) => /barn/i.test(h))) {
+  problems.push(`the summary table has no "Barn" column after a child's birth year: ${pgbHeadsAfterChild.join(" | ")}`);
+}
+const pensionAfterChild = await kpiValue(0);
+console.log(`pension w/ child: ${pensionBeforeChild} -> ${pensionAfterChild} kr after a child's birth year`);
+if (!(pensionAfterChild > pensionBeforeChild)) {
+  problems.push(`adding a child's birth year did not raise the pension (${pensionBeforeChild} -> ${pensionAfterChild})`);
+}
+if (!(await pgbGroup.locator('.pgb-children-list > [data-child-slot="1"]').isVisible())) {
+  problems.push("adding a child's birth year did not show it in the children list");
+}
+
+// The slot select won't offer an already-filled slot, and Add gives up once
+// all four are taken.
+const pgbSlotOptions = await pgbSlotField
+  .locator("option")
+  .evaluateAll((opts) => opts.map((o) => ({ value: o.value, disabled: o.disabled })));
+if (pgbSlotOptions.find((o) => o.value === "1")?.disabled !== true) {
+  problems.push("the child-slot select still offers slot 1 after it was filled");
+}
+for (const year of [1993, 1996, 1999]) {
+  await pgbYear(year);
+  await pgbAdd();
+}
+const pgbAddButton = pgbGroup.locator('[data-action="pgb-add-entry"]');
+if (!(await pgbAddButton.isDisabled())) {
+  problems.push("the PGB Add button is not disabled with all four child slots filled");
+}
+
+// 9. Removing a child: back down to slot 1's own 1990, then remove that too
+// -- the rows it alone earned disappear, and the column with them.
+for (const slot of [4, 3, 2]) {
+  await pgbGroup.locator(`.pgb-children-list [data-action="pgb-remove-child"][data-child-slot="${slot}"]`).click();
+  await tab.waitForTimeout(50);
+}
+if (await pgbAddButton.isDisabled()) {
+  problems.push("the PGB Add button is still disabled after freeing three of the four child slots");
+}
+await pgbGroup.locator('.pgb-children-list [data-action="pgb-remove-child"][data-child-slot="1"]').click();
 await tab.waitForTimeout(80);
-const pensionAfterPgb = await kpiValue(0);
-console.log(`pension w/ pgb  : ${pensionBeforePgb} -> ${pensionAfterPgb} kr after a sickness-comp entry`);
-if (!(pensionAfterPgb > pensionBeforePgb)) {
-  problems.push(
-    `entering a PGB sickness-compensation amount did not raise the pension (${pensionBeforePgb} -> ${pensionAfterPgb})`,
-  );
+const pgbRowsAfterRemoveChild = await pgbSummaryRows.count();
+const pgbHeadsAfterRemoveChild = await pgbHeads();
+const pensionAfterRemoveChild = await kpiValue(0);
+console.log(
+  `pgb after remove child: rows=${pgbRowsAfterRemoveChild}, heads: ${pgbHeadsAfterRemoveChild.join(" | ")}, ` +
+    `pension=${pensionAfterRemoveChild}`,
+);
+if (pgbRowsAfterRemoveChild !== pgbRowsBeforeChild) {
+  problems.push(`removing the last child left ${pgbRowsAfterRemoveChild} rows, expected back to ${pgbRowsBeforeChild}`);
+}
+if (pgbHeadsAfterRemoveChild.some((h) => /barn/i.test(h))) {
+  problems.push(`removing the last child left a "Barn" column: ${pgbHeadsAfterRemoveChild.join(" | ")}`);
+}
+if (pensionAfterRemoveChild !== pensionBeforeChild) {
+  problems.push(`removing the last child left the pension at ${pensionAfterRemoveChild}, expected back at ${pensionBeforeChild}`);
+}
+if (await pgbGroup.locator(".pgb-children").isVisible()) {
+  problems.push("the children list is still visible after every slot was emptied");
 }
 
-// "Visa alla kolumner" moves the same table into a <dialog> -- reported as
-// having to scroll sideways to see the rest of it in the sidebar's own
-// ~280px-wide scroller. The point of each check below is that it is the same
-// table (the 200 000 typed above is still there, and a further edit still
-// reaches the model), not a copy, and that the dialog itself never needs that
-// horizontal scrollbar.
-await pgbGroup.locator('[data-action="pgb-expand"]').click();
-await tab.waitForTimeout(100);
-const pgbDialog = tab.locator(".pgb-dialog");
-const pgbDialogOpen = await pgbDialog.evaluate((node) => node.open);
-console.log(`pgb dialog open : ${pgbDialogOpen}`);
-if (!pgbDialogOpen) problems.push("clicking \"Visa alla kolumner\" did not open the PGB dialog");
-
-const pgbDialogScroll = pgbDialog.locator(".adv-grid-scroll");
-const pgbDialogMetrics = await pgbDialogScroll.evaluate((el) => ({
-  scrollWidth: el.scrollWidth,
-  clientWidth: el.clientWidth,
-}));
-console.log(`pgb dialog fit  : scrollWidth ${pgbDialogMetrics.scrollWidth} <= clientWidth ${pgbDialogMetrics.clientWidth}?`);
-if (pgbDialogMetrics.scrollWidth > pgbDialogMetrics.clientWidth) {
-  problems.push(
-    `the PGB dialog still needs horizontal scroll (scrollWidth ${pgbDialogMetrics.scrollWidth} > ` +
-      `clientWidth ${pgbDialogMetrics.clientWidth}) -- the whole point of "Visa alla kolumner" is to avoid that`,
-  );
+// 10. Column-hiding in general: only the categories with data show, in
+// whichever combination is currently present -- checked here against what
+// checks 2-9 above left behind (sickness and study, nothing else).
+const pgbHeadsFinal = await pgbHeads();
+console.log(`pgb heads final : ${pgbHeadsFinal.join(" | ")}`);
+if (!pgbHeadsFinal.some((h) => /sjuk/i.test(h)) || !pgbHeadsFinal.some((h) => /studier/i.test(h))) {
+  problems.push(`expected the sickness and study columns to remain: ${pgbHeadsFinal.join(" | ")}`);
+}
+if (pgbHeadsFinal.some((h) => /värnplikt|barn/i.test(h))) {
+  problems.push(`expected no conscription or child column with neither present: ${pgbHeadsFinal.join(" | ")}`);
 }
 
-const pgbDialogFirstSa = await pgbDialog.locator(".pgb-grid tbody tr").first().locator("td").nth(2).locator("input").inputValue();
-if (pgbDialogFirstSa !== "200000") {
-  problems.push(
-    `the PGB dialog shows "${pgbDialogFirstSa}" for the value typed before it opened, expected "200000" -- ` +
-      "it should be the same table, not a copy",
-  );
-}
-// A second edit, made from inside the dialog this time, still has to reach
-// the model -- the dialog is not a read-only preview.
-const pgbDialogSecondSa = pgbDialog.locator(".pgb-grid tbody tr").nth(1).locator("td").nth(2).locator("input");
-await pgbDialogSecondSa.fill("100000");
-await pgbDialogSecondSa.dispatchEvent("change");
+// "Nollställ alla värden": every row's own income and wage cell has to read
+// 0, not just the ten already zeroed above. Not a pension-direction check --
+// a whole working life at 0 kr leans on garantipension, whose own means-
+// tested taper can (correctly, faithfully) leave *more* total gross pension
+// than a life with some income in it does, so "lower" is not a safe
+// assumption here. Run last, right before the full reset below: every PGB
+// check above assumes a normal-income economic regime where more PGB is
+// strictly more pension, which a fully zeroed salary grid no longer is.
+await tab.locator('[data-group="salary-path"] [data-action="salary-zero"]').click();
 await tab.waitForTimeout(80);
-const pensionAfterDialogEdit = await kpiValue(0);
-console.log(`pension w/ dialog edit: ${pensionAfterPgb} -> ${pensionAfterDialogEdit}`);
-if (!(pensionAfterDialogEdit > pensionAfterPgb)) {
-  problems.push(
-    `entering a PGB amount from inside the dialog did not raise the pension further ` +
-      `(${pensionAfterPgb} -> ${pensionAfterDialogEdit})`,
-  );
+const nonZeroCells = await salaryGrid.locator("input").evaluateAll(
+  (inputs) => inputs.filter((el) => el.value !== "0").length,
+);
+console.log(`salary zero all : ${nonZeroCells} cell(s) left non-zero, expected 0`);
+if (nonZeroCells !== 0) {
+  problems.push(`"Nollställ alla värden" left ${nonZeroCells} salary-grid cell(s) not at 0`);
 }
 
-// A native modal <dialog> blocks pointer events on the rest of the page by
-// design (confirmed the hard way: a first draft of this check tried to click
-// "Använd normala inställningar" while the dialog was still open and Playwright
-// timed out with "dialog intercepts pointer events") -- so the only way out is
-// its own close button, same as a person has.
-await pgbDialog.locator(".dialog-close").click();
-await tab.waitForTimeout(80);
-const pgbDialogClosed = await pgbDialog.evaluate((node) => !node.open);
-const pgbBackInPanel = await pgbGrid.count();
-const pgbDialogSecondSaKept = await pgbGrid.nth(1).locator("td").nth(2).locator("input").inputValue();
-console.log(`pgb dialog closed: ${pgbDialogClosed}, rows back in panel: ${pgbBackInPanel}, edit kept: ${pgbDialogSecondSaKept}`);
-if (!pgbDialogClosed) problems.push("clicking the PGB dialog's own close button did not close it");
-if (pgbBackInPanel !== pgbRows) {
-  problems.push(
-    `after the dialog closed, the PGB grid shows ${pgbBackInPanel} rows back in its panel, expected ${pgbRows}`,
-  );
-}
-if (pgbDialogSecondSaKept !== "100000") {
-  problems.push(
-    `after the dialog closed, the panel shows "${pgbDialogSecondSaKept}" for the amount typed inside the ` +
-      'dialog, expected "100000" -- the grid moved back with the table it is, not a copy of it',
-  );
-}
-
-// Aterstall clears the grid, and the conscription dates, back to empty --
-// the same as every other advanced-mode field -- checked with the dialog
-// closed, since it is not reachable any other way (see above).
+// 11. Aterstall clears the summary table, the form and the children list
+// back to empty -- the same as every other advanced-mode field.
 await tab.locator('[data-action="reset-advanced"]').click();
 await tab.waitForTimeout(50);
-const pgbAfterReset = await pgbSaInput.inputValue();
-if (pgbAfterReset !== "0") {
-  problems.push(`the reset button left the PGB field at "${pgbAfterReset}", expected "0"`);
+const pgbRowsAfterReset = await pgbSummaryRows.count();
+const pgbEmptyAfterReset = await pgbSummaryEmptyMsg.isVisible();
+if (pgbRowsAfterReset !== 0 || !pgbEmptyAfterReset) {
+  problems.push(
+    `the reset button left ${pgbRowsAfterReset} PGB summary row(s) (empty message visible=${pgbEmptyAfterReset}), ` +
+      "expected 0 and the empty message",
+  );
 }
-const vplStartAfterReset = await pgbGroup.locator('[data-setting="pgbConscriptionStart"]').inputValue();
+const pgbYearAfterReset = await pgbYearField.inputValue();
+const pgbAmountAfterReset = await pgbAmountField.inputValue();
+if (pgbYearAfterReset !== "0" || pgbAmountAfterReset !== "0") {
+  problems.push(`the reset button left the PGB form at year "${pgbYearAfterReset}"/amount "${pgbAmountAfterReset}", expected both "0"`);
+}
+const vplStartAfterReset = await pgbStartField.inputValue();
 if (vplStartAfterReset !== "") {
   problems.push(`the reset button left the conscription start date at "${vplStartAfterReset}", expected empty`);
+}
+if (await pgbGroup.locator(".pgb-children").isVisible()) {
+  problems.push("the reset button left the children list visible, expected empty and hidden");
 }
 
 // Partiellt uttag: "Andel uttag, inkomstpension/premiepension" and
@@ -803,6 +1259,7 @@ const pwGroup = tab.locator('details[data-group="partialWithdrawal"]');
 if (!(await pwGroup.evaluate((node) => node.open))) {
   await pwGroup.locator("summary").click();
 }
+
 const pwHeaders = await tab.locator(".table2 thead th").allTextContents();
 const pwAlderCol = pwHeaders.findIndex((t) => t === "Ålder");
 const pwLonCol = pwHeaders.findIndex((t) => t === "Lön");
@@ -883,8 +1340,136 @@ if (defArAfterReset !== "0") {
   problems.push(`reset left "Definitivt uttag vid ålder" at "${defArAfterReset}", expected "0"`);
 }
 
+// "Flexpension för ITP 1 och SAF-LO från och med 2014": an extra premium
+// added to both agreements' own rates from 2014 onward -- already wired into
+// the engine (itp.ts/safLo.ts) before this panel exposed it, so the check is
+// that the field actually reaches `flexPension`, not that the maths is new.
+// The default typfall carries no occupational scheme ("Saknar
+// tjänstepension"), so this is the one place in the script that switches the
+// normal-mode scheme select, to SAF-LO, and switches it back after -- nothing
+// later may see it moved.
+await tab.getByLabel("Välj tjänstepension").selectOption("4");
+await tab.waitForTimeout(80);
+const tjpBeforeFlex = await shown("tjp", "monthly");
+const flexPensionField = await setting("flexPension");
+// Moved into "Tjänstepension"/"Occupational pension" from "Övrigt", on request.
+const flexPensionGroup = await flexPensionField
+  .locator("xpath=ancestor::details[1]")
+  .getAttribute("data-group");
+if (flexPensionGroup !== "occupational") {
+  problems.push(`flexPension sits in the "${flexPensionGroup}" group, expected "occupational"`);
+}
+await flexPensionField.fill("10");
+await flexPensionField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const tjpAfterFlex = await shown("tjp", "monthly");
+console.log(`flexpension     : tjp ${tjpBeforeFlex} -> ${tjpAfterFlex} kr/month at 10% (SAF-LO)`);
+if (!(tjpAfterFlex > tjpBeforeFlex)) {
+  problems.push(
+    `setting flexpension to 10% did not raise SAF-LO's occupational pension (${tjpBeforeFlex} -> ${tjpAfterFlex})`,
+  );
+}
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const flexPensionAfterReset = await flexPensionField.inputValue();
+if (flexPensionAfterReset !== "0") {
+  problems.push(`the reset button left flexpension at "${flexPensionAfterReset}", expected "0"`);
+}
+await tab.getByLabel("Välj tjänstepension").selectOption("1");
+await tab.waitForTimeout(50);
+
+// "Slutlönens referensår efter pensioneringen" (manual 3.6, row 43): a plain
+// year count, not a flag (advanced.ts's own comment on this setting explains
+// why the row's "(1)->" shorthand reads like one but isn't). It is a narrower
+// setting than its name suggests -- see advanced.ts's comment -- feeding only
+// `adjustmentFactors`'s `beforeRetirement` factor (packages/engine/src/model/
+// result.ts), which rescales the "Slutlön" row's own price-adjusted ("Fasta
+// priser") column in Table 1. It does not delay when the pension itself is
+// paid (Table 2), so this checks only the one figure it does move.
+const finalSalaryAdjustedBefore = await shown("slutlon", "adjusted");
+const pensionGapField = await setting("pensionSameYearAsFinalSalary");
+// Moved into the renamed "Salary" section (formerly "Own salary path") from
+// "Övrigt", on request -- alongside `finalSalaryYears`.
+const pensionGapGroup = await pensionGapField.locator("xpath=ancestor::details[1]").getAttribute("data-group");
+if (pensionGapGroup !== "salary-path") {
+  problems.push(`pensionSameYearAsFinalSalary sits in the "${pensionGapGroup}" group, expected "salary-path"`);
+}
+const finalSalaryYearsField = tab.locator('[data-setting="finalSalaryYears"]');
+const finalSalaryYearsGroup = await finalSalaryYearsField
+  .locator("xpath=ancestor::details[1]")
+  .getAttribute("data-group");
+if (finalSalaryYearsGroup !== "salary-path") {
+  problems.push(`finalSalaryYears sits in the "${finalSalaryYearsGroup}" group, expected "salary-path"`);
+}
+const salaryGroupTitle = await tab.locator('[data-group="salary-path"] summary').textContent();
+if (salaryGroupTitle !== "Lön") {
+  problems.push(`the salary-path section is titled "${salaryGroupTitle}", expected "Lön"`);
+}
+
+// Row 141 "Löneprofil": bends the derived wage curve by age rather than
+// moving one figure directly, so this checks a lifetime-integrated figure
+// (income pension) rather than Slutlön, whose narrow look-back window a
+// particular profile's own shape could leave nearly unchanged by
+// coincidence. The five options are the workbook's own dropdown, read off
+// a LibreOffice-converted copy of the .xlsb during development -- option 0's
+// exact wording differs (this port's own shorter text, not retyped from the
+// sheet, matching every other label in advanced.ts), the four profiled ones
+// don't.
+const wageProfileField = await setting("wageProfile");
+const wageProfileGroup = await wageProfileField.locator("xpath=ancestor::details[1]").getAttribute("data-group");
+if (wageProfileGroup !== "salary-path") {
+  problems.push(`wageProfile sits in the "${wageProfileGroup}" group, expected "salary-path"`);
+}
+const wageProfileOptions = await wageProfileField.locator("option").allTextContents();
+const expectedWageProfiles = [
+  "Rak – följer den allmänna löneutvecklingen",
+  "Låg inkomst, kvinna",
+  "Låg inkomst, man",
+  "Normal inkomst, kvinna",
+  "Normal inkomst, man",
+];
+if (JSON.stringify(wageProfileOptions) !== JSON.stringify(expectedWageProfiles)) {
+  problems.push(
+    `the Löneprofil dropdown shows ${JSON.stringify(wageProfileOptions)}, expected ${JSON.stringify(expectedWageProfiles)}`,
+  );
+}
+const ipBeforeProfile = await shown("ip", "adjusted");
+await wageProfileField.selectOption("2"); // Låg inkomst, man
+await tab.waitForTimeout(80);
+const ipAfterProfile = await shown("ip", "adjusted");
+console.log(
+  `wage profile    : inkomstpension (fasta priser) ${ipBeforeProfile} -> ${ipAfterProfile} at "Låg inkomst, man"`,
+);
+if (ipAfterProfile === ipBeforeProfile) {
+  problems.push(
+    `picking a wage profile did not change the income-pension figure (${ipBeforeProfile} -> ${ipAfterProfile})`,
+  );
+}
+
+await pensionGapField.fill("5");
+await pensionGapField.dispatchEvent("change");
+await tab.waitForTimeout(80);
+const finalSalaryAdjustedAfter = await shown("slutlon", "adjusted");
+console.log(
+  `slutlön ref year: slutlön (fasta priser) ${finalSalaryAdjustedBefore} -> ${finalSalaryAdjustedAfter} at 5 years`,
+);
+if (finalSalaryAdjustedAfter === finalSalaryAdjustedBefore) {
+  problems.push(
+    'setting the "Slutlönens referensår" gap to 5 years did not change the adjusted "Slutlön" figure',
+  );
+}
+
 // Back to normal mode for the screenshots, and to leave the page as found.
 await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const pensionGapAfterReset = await pensionGapField.inputValue();
+if (pensionGapAfterReset !== "0") {
+  problems.push(`the reset button left "Slutlönens referensår" at "${pensionGapAfterReset}", expected "0"`);
+}
+const wageProfileAfterReset = await wageProfileField.inputValue();
+if (wageProfileAfterReset !== "0") {
+  problems.push(`the reset button left Löneprofil at "${wageProfileAfterReset}", expected "0"`);
+}
 await tab.locator('.mode-toggle .panel-btn[data-mode="normal"]').click();
 await tab.waitForTimeout(50);
 
@@ -898,8 +1483,10 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 2) {
-  problems.push(`screen toggle has ${screenButtons} buttons, expected 2 (Prognos / Jämför scenarier)`);
+if (screenButtons !== 4) {
+  problems.push(
+    `screen toggle has ${screenButtons} buttons, expected 4 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder)`,
+  );
 }
 
 await tab.locator('.screen-toggle .panel-btn[data-screen="compare"]').click();
@@ -936,16 +1523,38 @@ if (scenario1PensionBefore !== baselinePension) {
   );
 }
 
+// Birth year is the fifth override, added on request -- a much younger
+// cohort has to move that scenario's own pension, with salary, retirement
+// age and start-of-work age held fixed, without touching the baseline's.
+const scenario1Born = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").first();
+await scenario1Born.fill("1990");
+await scenario1Born.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const scenario1PensionAfterBorn = await compareCell("Scenario 1", "kpi-pension", "monthly");
+const baselinePensionAfterBorn = await compareCell("Utgångsläge", "kpi-pension", "monthly");
+console.log(`scenario birth year lowered: pension ${scenario1PensionBefore} -> ${scenario1PensionAfterBorn}`);
+if (scenario1PensionAfterBorn === scenario1PensionBefore) {
+  problems.push(
+    `changing a scenario's own birth year did not move its pension in the table (still "${scenario1PensionAfterBorn}")`,
+  );
+}
+if (baselinePensionAfterBorn !== baselinePension) {
+  problems.push(
+    `changing a scenario's birth year changed the baseline's own pension in the table ("${baselinePension}" -> ` +
+      `"${baselinePensionAfterBorn}")`,
+  );
+}
+
 // Raising the scenario's own salary well above the baseline's must move only
 // that scenario's own columns in the table, not the baseline's.
-const scenario1Salary = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").first();
+const scenario1Salary = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(1);
 await scenario1Salary.fill("80000");
 await scenario1Salary.dispatchEvent("change");
 await tab.waitForTimeout(50);
 const scenario1PensionAfter = await compareCell("Scenario 1", "kpi-pension", "monthly");
 const baselinePensionAfter = await compareCell("Utgångsläge", "kpi-pension", "monthly");
-console.log(`scenario salary raised: pension ${scenario1PensionBefore} -> ${scenario1PensionAfter}`);
-if (scenario1PensionAfter === scenario1PensionBefore) {
+console.log(`scenario salary raised: pension ${scenario1PensionAfterBorn} -> ${scenario1PensionAfter}`);
+if (scenario1PensionAfter === scenario1PensionAfterBorn) {
   problems.push(
     `raising a scenario's own salary did not raise its pension in the table (still "${scenario1PensionAfter}")`,
   );
@@ -962,7 +1571,7 @@ if (baselinePensionAfter !== baselinePension) {
 // startWorkAge)), so it has to move that scenario's pension on its own, with
 // salary and retirement age held fixed, not just ride along with the salary
 // control already proven above.
-const scenario1StartWork = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(2);
+const scenario1StartWork = tab.locator(".compare-card").nth(1).locator(".compare-card-controls input").nth(3);
 await scenario1StartWork.fill("35");
 await scenario1StartWork.dispatchEvent("change");
 await tab.waitForTimeout(50);
@@ -1118,8 +1727,1103 @@ if (chartLinesAtFloor !== 2) {
   problems.push(`the compare chart draws ${chartLinesAtFloor} lines at the floor, expected 2`);
 }
 
+// ---- Mikrosim --------------------------------------------------------------
+//
+// The workbook's own batch runner, reproduced as a third top-level view: each
+// row is a fully independent typfall (not a diff against the form on the
+// left, unlike Jämför scenarier's variants). Unlike the real sheet's own
+// explicit-calculate batch runner, results here are live -- there is no
+// "Beräkna" button anywhere in this build, and a row's own output columns
+// fill in immediately on load, on every edit, on adding a row, and on a CSV
+// import finishing. The point of each check is the same independence
+// property Jämför scenarier's own checks establish -- one row's own inputs
+// reach only that row's own run -- plus CSV import/export (no precedent
+// elsewhere in this app) and the stacked chart below the table.
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="mikrosim"]').click();
+await tab.waitForTimeout(50);
+
+// Inputs and Results are two independent tables sharing the same row order
+// (Phase 12), each with its own `data-role` since both carry the plain
+// `.mikrosim-table` class -- a bare `.mikrosim-table tbody tr` locator would
+// match rows from both tables at once.
+const mikrosimInputRow = (i) => tab.locator('[data-role="mikrosim-inputs-table"] tbody tr').nth(i);
+const mikrosimInputCell = (i, col) => mikrosimInputRow(i).locator("td").nth(col);
+const mikrosimResultRow = (i) => tab.locator('[data-role="mikrosim-results-table"] tbody tr').nth(i);
+const mikrosimResultCell = (i, col) => mikrosimResultRow(i).locator("td").nth(col);
+const mikrosimRowCount = (which) => tab.locator(`[data-role="mikrosim-${which}-table"] tbody tr`).count();
+// Inputs table td indices: 0 row#, 1 status, 2-10 the nine inputs, 11 remove.
+// Results table td indices: 0 row#, 1-12 the twelve outputs. See mikrosim.ts's
+// own INPUT_COLUMNS/OUTPUT_COLUMNS order.
+const MI_SALARY_TD = 5;
+const MI_SCHEME_TD = 10;
+const MI_FIRST_OUTPUT_TD = 1;
+
+// Each table's own header row -- 12 columns (row#, status, nine inputs,
+// remove) and 13 (row#, twelve outputs) -- locks in the two-table split
+// itself, not just values inside it.
+const mikrosimInputHeadCols = await tab
+  .locator('[data-role="mikrosim-inputs-table"] thead tr')
+  .first()
+  .locator("th")
+  .count();
+const mikrosimResultHeadCols = await tab
+  .locator('[data-role="mikrosim-results-table"] thead tr')
+  .first()
+  .locator("th")
+  .count();
+console.log(`mikrosim tables : inputs header ${mikrosimInputHeadCols} cols, results header ${mikrosimResultHeadCols} cols`);
+if (mikrosimInputHeadCols !== 12) {
+  problems.push(`the Mikrosim inputs table header has ${mikrosimInputHeadCols} columns, expected 12`);
+}
+if (mikrosimResultHeadCols !== 13) {
+  problems.push(`the Mikrosim results table header has ${mikrosimResultHeadCols} columns, expected 13`);
+}
+const mikrosimLabels = await tab.locator(".mikrosim-table-label").allTextContents();
+console.log(`mikrosim labels : ${JSON.stringify(mikrosimLabels)}`);
+if (mikrosimLabels.length !== 2 || !mikrosimLabels[0] || !mikrosimLabels[1]) {
+  problems.push(`expected two Mikrosim table labels (Inputs, Results), found ${JSON.stringify(mikrosimLabels)}`);
+}
+
+// Both tables' own column headers, not just their body cells, read 8px bold.
+const mikrosimHeadStyle = await tab
+  .locator('[data-role="mikrosim-inputs-table"] thead th')
+  .nth(2)
+  .evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { fontSize: cs.fontSize, fontWeight: cs.fontWeight };
+  });
+console.log(`mikrosim head style: ${mikrosimHeadStyle.fontSize} / ${mikrosimHeadStyle.fontWeight}`);
+if (mikrosimHeadStyle.fontSize !== "8px" || Number(mikrosimHeadStyle.fontWeight) < 700) {
+  problems.push(
+    `the Mikrosim inputs table's own column headers read ${mikrosimHeadStyle.fontSize}/${mikrosimHeadStyle.fontWeight}, expected 8px/700+`,
+  );
+}
+
+// There is no "Beräkna" button to look for -- confirm outright.
+const mikrosimCalcButton = await tab.locator('[data-action="calculate-mikrosim"]').count();
+if (mikrosimCalcButton !== 0) {
+  problems.push(`found ${mikrosimCalcButton} "Beräkna"-style button(s) on the Mikrosim tab, expected none`);
+}
+
+// A single seed row, already computed with no click needed -- in both
+// tables, which have to always agree on row count since they share one
+// underlying row array.
+const mikrosimRowsAtStart = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAtStart = await mikrosimRowCount("results");
+console.log(`mikrosim rows   : ${mikrosimRowsAtStart} inputs, ${mikrosimResultRowsAtStart} results`);
+if (mikrosimRowsAtStart !== 1 || mikrosimResultRowsAtStart !== 1) {
+  problems.push(
+    `the Mikrosim tab starts with ${mikrosimRowsAtStart} input row(s)/${mikrosimResultRowsAtStart} result row(s), expected 1/1`,
+  );
+}
+const mikrosimOutputsAtStart = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+console.log(`mikrosim seed row output (no click): "${mikrosimOutputsAtStart}"`);
+if ((mikrosimOutputsAtStart ?? "").trim() === "") {
+  problems.push("the seed Mikrosim row shows no output on load -- live recompute did not run");
+}
+
+// Adding rows: three clicks from one row should leave four, each already
+// computed (no click needed).
+await tab.locator('[data-action="add-mikrosim-row"]').click();
+await tab.locator('[data-action="add-mikrosim-row"]').click();
+await tab.locator('[data-action="add-mikrosim-row"]').click();
+await tab.waitForTimeout(50);
+const mikrosimRowsAfterAdd = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterAdd = await mikrosimRowCount("results");
+console.log(`mikrosim rows   : ${mikrosimRowsAfterAdd} inputs, ${mikrosimResultRowsAfterAdd} results, after adding three`);
+if (mikrosimRowsAfterAdd !== 4 || mikrosimResultRowsAfterAdd !== 4) {
+  problems.push(
+    `adding three Mikrosim rows left ${mikrosimRowsAfterAdd} input row(s)/${mikrosimResultRowsAfterAdd} result row(s), expected 4/4`,
+  );
+}
+const mikrosimNewRowOutput = await mikrosimResultCell(3, MI_FIRST_OUTPUT_TD).textContent();
+if ((mikrosimNewRowOutput ?? "").trim() === "") {
+  problems.push("a freshly added Mikrosim row shows no output -- expected it computed immediately");
+}
+
+// Row 1 gets a distinct salary and scheme; rows 2-4 are left at their shared
+// defaults. Editing alone -- no click anywhere -- has to update row 1's own
+// output from its own inputs, while rows 2-4 keep agreeing with each other.
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").fill("600000");
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
+await mikrosimInputCell(0, MI_SCHEME_TD).locator("select").selectOption("3");
+await tab.waitForTimeout(100);
+
+const mikrosimRow1Salary = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow2Salary = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow3Salary = await mikrosimResultCell(2, MI_FIRST_OUTPUT_TD).textContent();
+console.log(`mikrosim Slutlön: row1 ${mikrosimRow1Salary}, row2 ${mikrosimRow2Salary}, row3 ${mikrosimRow3Salary}`);
+if ((mikrosimRow1Salary ?? "").trim() === "") {
+  problems.push('editing row 1 left its own "Slutlön" blank -- expected an immediate recompute');
+}
+if (mikrosimRow1Salary === mikrosimRow2Salary) {
+  problems.push(
+    `row 1's own salary raise did not change its "Slutlön" relative to row 2's ("${mikrosimRow1Salary}" both)`,
+  );
+}
+if (mikrosimRow2Salary !== mikrosimRow3Salary) {
+  problems.push(
+    `two untouched Mikrosim rows show different "Slutlön" ("${mikrosimRow2Salary}" vs "${mikrosimRow3Salary}")`,
+  );
+}
+
+// Editing an input again immediately recomputes that row's own output to the
+// new value -- not blank, not the old one -- without touching any other
+// row's own already-computed figures. This edit alone (no add/remove/import)
+// also has to move the chart's own bars, not just the table -- Phase 12's
+// real bug was `editAndRecompute()` never touching the chart at all, which a
+// bar-*count* check alone (kept further below) would not have caught, since
+// the count stays nonzero whether or not the bars' own values refresh.
+const mikrosimChart = tab.locator(".mikrosim-chart");
+const mikrosimChartBeforePlainEdit = await mikrosimChart.locator("svg").innerHTML();
+
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").fill("650000");
+await mikrosimInputCell(0, MI_SALARY_TD).locator("input").dispatchEvent("change");
+await tab.waitForTimeout(100);
+const mikrosimRow1AfterEdit = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimRow2AfterEdit = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+console.log(`mikrosim after edit: row1 "${mikrosimRow1AfterEdit}", row2 "${mikrosimRow2AfterEdit}"`);
+if ((mikrosimRow1AfterEdit ?? "").trim() === "" || mikrosimRow1AfterEdit === mikrosimRow1Salary) {
+  problems.push(
+    `editing row 1's salary again left its own "Slutlön" as "${mikrosimRow1AfterEdit}", expected a fresh value`,
+  );
+}
+if (mikrosimRow2AfterEdit !== mikrosimRow2Salary) {
+  problems.push(
+    `editing row 1's salary changed row 2's already-computed "Slutlön" ("${mikrosimRow2Salary}" -> ` +
+      `"${mikrosimRow2AfterEdit}")`,
+  );
+}
+
+const mikrosimChartAfterPlainEdit = await mikrosimChart.locator("svg").innerHTML();
+console.log(
+  `mikrosim chart  : markup ${mikrosimChartAfterPlainEdit === mikrosimChartBeforePlainEdit ? "unchanged" : "changed"} after a plain edit`,
+);
+if (mikrosimChartAfterPlainEdit === mikrosimChartBeforePlainEdit) {
+  problems.push(
+    "editing a Mikrosim cell alone (no add/remove/import) left the chart's own markup unchanged -- expected its bars to move with the new value",
+  );
+}
+
+// The chart below the table draws one bar group per row, live -- the same
+// edit that just changed row 1's own table cells has to change its own bar.
+const mikrosimBarsBeforeRemove = await mikrosimChart.locator("svg .bar").count();
+const mikrosimLegendItems = await mikrosimChart.locator(".legend li").count();
+console.log(`mikrosim chart  : ${mikrosimBarsBeforeRemove} bar segments, ${mikrosimLegendItems} legend entries`);
+if (mikrosimBarsBeforeRemove === 0) {
+  problems.push("the Mikrosim chart draws no bars at all");
+}
+// Up to 7 stacked bands plus the Disponibel inkomst overlay line.
+if (mikrosimLegendItems === 0 || mikrosimLegendItems > 8) {
+  problems.push(`the Mikrosim chart legend has ${mikrosimLegendItems} entries, expected 1-8`);
+}
+
+// Disponibel inkomst is drawn as a black overlay line, not another stacked
+// band, with its own legend entry -- one point per row, so its own line
+// count tracks the row count the same way the bars already do.
+const mikrosimDisposableLines = await mikrosimChart.locator("svg .mikrosim-disposable-line").count();
+const mikrosimDisposableLegend = await mikrosimChart
+  .locator(".legend li", { hasText: "Disponibel inkomst" })
+  .count();
+console.log(`mikrosim chart  : ${mikrosimDisposableLines} disposable-income line(s), legend entry present: ${mikrosimDisposableLegend > 0}`);
+if (mikrosimDisposableLines !== 1) {
+  problems.push(`the Mikrosim chart draws ${mikrosimDisposableLines} disposable-income line(s), expected 1`);
+}
+if (mikrosimDisposableLegend === 0) {
+  problems.push('the Mikrosim chart legend is missing a "Disponibel inkomst" entry for its overlay line');
+}
+
+// A row's own Bruttopension total is labelled above its bar -- annual by
+// default, matching the Results table's own "Brutto-pension" column exactly
+// (both read the same `TotalGross`, and the sum of the seven stacked bands
+// equals it by construction) -- with 4 rows, at or under the 10-row cap.
+const mikrosimBrutto = await mikrosimResultCell(0, 2).textContent();
+const mikrosimBarValueLabels = await mikrosimChart.locator(".mikrosim-bar-value").allTextContents();
+console.log(`mikrosim brutto : table "${mikrosimBrutto}", chart labels ${JSON.stringify(mikrosimBarValueLabels)}`);
+if (mikrosimBarValueLabels.length !== 4) {
+  problems.push(
+    `the Mikrosim chart shows ${mikrosimBarValueLabels.length} Bruttopension label(s), expected 4 (one per row, at or under the 10-row cap)`,
+  );
+}
+if (mikrosimBarValueLabels[0] !== mikrosimBrutto?.trim()) {
+  problems.push(
+    `the chart's own row-1 Bruttopension label ("${mikrosimBarValueLabels[0]}") doesn't match the Results table's own value ("${mikrosimBrutto}")`,
+  );
+}
+
+// The chart's own Årsvis/Månadsvis toggle is local to the chart -- it moves
+// the bars and this label, never the Results table above, which always
+// reads annual.
+const mikrosimChartToggle = tab.locator(".mikrosim-panel .panel-toggle").last();
+await mikrosimChartToggle.locator("button", { hasText: "Månadsvis" }).click();
+await tab.waitForTimeout(100);
+const mikrosimBarValueLabelsMonthly = await mikrosimChart.locator(".mikrosim-bar-value").allTextContents();
+const mikrosimBruttoAfterToggle = await mikrosimResultCell(0, 2).textContent();
+console.log(`mikrosim brutto (månadsvis): chart "${mikrosimBarValueLabelsMonthly[0]}", table "${mikrosimBruttoAfterToggle}"`);
+if (mikrosimBarValueLabelsMonthly[0] === mikrosimBarValueLabels[0]) {
+  problems.push("switching the Mikrosim chart to Månadsvis did not change its own Bruttopension label");
+}
+if (mikrosimBruttoAfterToggle !== mikrosimBrutto) {
+  problems.push(
+    "switching the Mikrosim chart's own Årsvis/Månadsvis toggle changed the Results table too, expected it to stay annual",
+  );
+}
+await mikrosimChartToggle.locator("button", { hasText: "Årsvis" }).click();
+await tab.waitForTimeout(100);
+
+// Removing a row drops the count, keeps the remaining rows' own values, and
+// the chart's own bar count drops with it.
+await mikrosimInputRow(1).locator('[data-action="mikrosim-remove-row"]').click();
+await tab.waitForTimeout(50);
+const mikrosimRowsAfterRemove = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterRemove = await mikrosimRowCount("results");
+const mikrosimBarsAfterRemove = await mikrosimChart.locator("svg .bar").count();
+console.log(
+  `mikrosim rows   : ${mikrosimRowsAfterRemove} inputs, ${mikrosimResultRowsAfterRemove} results, after removing one, chart bars: ${mikrosimBarsAfterRemove}`,
+);
+if (mikrosimRowsAfterRemove !== 3 || mikrosimResultRowsAfterRemove !== 3) {
+  problems.push(
+    `removing a Mikrosim row left ${mikrosimRowsAfterRemove} input row(s)/${mikrosimResultRowsAfterRemove} result row(s), expected 3/3`,
+  );
+}
+if (mikrosimBarsAfterRemove >= mikrosimBarsBeforeRemove) {
+  problems.push(
+    `removing a Mikrosim row did not shrink the chart (bars ${mikrosimBarsBeforeRemove} -> ${mikrosimBarsAfterRemove})`,
+  );
+}
+
+// CSV export: the canonical Swedish headers, byte for byte, plus row 1's own
+// already-live-computed number -- no click needed before downloading either.
+const mikrosimPanel = tab.locator(".mikrosim-panel");
+const mikrosimCsv = await download(mikrosimPanel.getByRole("button", { name: "Ladda ner CSV" }));
+const mikrosimCsvText = mikrosimCsv.buffer.toString("utf8");
+console.log(`mikrosim CSV    : ${mikrosimCsv.filename}, ${mikrosimCsv.buffer.length} bytes`);
+const expectedHeader =
+  "Födelseår;Börjar arbeta vid ålder;Går i pension vid ålder;Årslön;Årlig inflation;Real tillväxt;" +
+  "Real fondavkastning;Privat pensionsförsäkring;Välj tjänstepension;Slutlön;" +
+  "Brutto-pension;Inkomstpension;Tilläggspension;Premiepension;Garanti-pension;P_tillägg;" +
+  "Tjänstepension;Privat pensionsförsäkring;Efter skatt;Bostadstillägg + ÄFS;Disponibel inkomst";
+if (!mikrosimCsvText.includes(expectedHeader)) {
+  problems.push(`the Mikrosim CSV's header line doesn't match the workbook's own Mikrosim columns`);
+}
+if (!mikrosimCsvText.includes("650000")) {
+  problems.push(`the Mikrosim CSV doesn't contain row 1's own salary (650000)`);
+}
+
+// CSV import replaces the table -- a file with the same nine columns in a
+// scrambled order, matched by header text rather than position -- and the
+// imported rows are computed immediately, no click needed.
+const scrambledCsv =
+  "Välj tjänstepension;Födelseår;Årslön;Börjar arbeta vid ålder;Går i pension vid ålder;" +
+  "Årlig inflation;Real tillväxt;Real fondavkastning;Privat pensionsförsäkring\n" +
+  "2;1980;500000;22;65;0;0;0,017;0\n" +
+  "4;1965;300000;19;66;0;0;0,017;0\n";
+await tab
+  .locator('[data-action="mikrosim-import-file"]')
+  .setInputFiles({ name: "scrambled.csv", mimeType: "text/csv", buffer: Buffer.from(scrambledCsv, "utf8") });
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterImport = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterImport = await mikrosimRowCount("results");
+const importedBorn = await mikrosimInputCell(0, 2).locator("input").inputValue();
+const mikrosimImportedOutput = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+console.log(
+  `mikrosim import : ${mikrosimRowsAfterImport} inputs, ${mikrosimResultRowsAfterImport} results, row 1 born ${importedBorn}, output "${mikrosimImportedOutput}"`,
+);
+if (mikrosimRowsAfterImport !== 2 || mikrosimResultRowsAfterImport !== 2) {
+  problems.push(
+    `importing a 2-row CSV left ${mikrosimRowsAfterImport} input row(s)/${mikrosimResultRowsAfterImport} result row(s), expected 2/2 (replace, not append)`,
+  );
+}
+if (importedBorn !== "1980") {
+  problems.push(`the imported row's birth year reads "${importedBorn}", expected "1980" (scrambled columns)`);
+}
+if ((mikrosimImportedOutput ?? "").trim() === "") {
+  problems.push("an imported Mikrosim row shows no output -- expected it computed immediately, no click");
+}
+
+// A file missing a required column is refused outright, with the missing
+// column named, and the table already on screen is left untouched.
+await tab.locator('[data-action="mikrosim-import-file"]').setInputFiles({
+  name: "missing-column.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from("Födelseår;Går i pension vid ålder\n1970;65\n", "utf8"),
+});
+await tab.waitForTimeout(100);
+const mikrosimFileError = await tab.locator(".mikrosim-file-error").textContent();
+console.log(`mikrosim file error: ${mikrosimFileError}`);
+if (!(mikrosimFileError ?? "").includes("Årslön")) {
+  problems.push(`importing a file missing "Årslön" did not name it in the error ("${mikrosimFileError}")`);
+}
+const mikrosimRowsAfterBadImport = await mikrosimRowCount("inputs");
+if (mikrosimRowsAfterBadImport !== 2) {
+  problems.push(
+    `a refused import changed the row count to ${mikrosimRowsAfterBadImport}, expected the previous 2 to remain`,
+  );
+}
+
+// A row with an invalid scheme is flagged, not dropped, and left blank --
+// the good row next to it is still computed immediately, no click -- and
+// fixing the flagged row's own scheme through its own dropdown recomputes it
+// on the spot, proving an edit always gets a fresh attempt even though a
+// bulk recompute (the import that just ran) left it alone.
+await tab.locator('[data-action="mikrosim-import-file"]').setInputFiles({
+  name: "one-bad-row.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from(
+    "Födelseår;Börjar arbeta vid ålder;Går i pension vid ålder;Årslön;Årlig inflation;Real tillväxt;" +
+      "Real fondavkastning;Privat pensionsförsäkring;Välj tjänstepension\n" +
+      "1970;20;66;480000;0;0;0,017;0;3\n" +
+      "1970;20;66;480000;0;0;0,017;0;99\n",
+    "utf8",
+  ),
+});
+await tab.waitForTimeout(100);
+const mikrosimGoodRowOutput = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimBadRowOutput = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimBadRowFlagged = await mikrosimInputRow(1).locator(".mikrosim-error").count();
+console.log(
+  `mikrosim mixed  : good "${mikrosimGoodRowOutput}", bad "${mikrosimBadRowOutput}", flagged ${mikrosimBadRowFlagged}`,
+);
+if ((mikrosimGoodRowOutput ?? "").trim() === "") {
+  problems.push("a valid row next to an invalid one was not computed immediately");
+}
+if ((mikrosimBadRowOutput ?? "").trim() !== "") {
+  problems.push(`the row with an invalid scheme shows an output ("${mikrosimBadRowOutput}"), expected blank`);
+}
+if (mikrosimBadRowFlagged !== 1) {
+  problems.push(`the row with an invalid scheme is not visibly flagged (found ${mikrosimBadRowFlagged} marker(s))`);
+}
+
+await mikrosimInputCell(1, MI_SCHEME_TD).locator("select").selectOption("2");
+await tab.waitForTimeout(100);
+const mikrosimFixedOutput = await mikrosimResultCell(1, MI_FIRST_OUTPUT_TD).textContent();
+const mikrosimFixedFlag = await mikrosimInputRow(1).locator(".mikrosim-error").count();
+console.log(`mikrosim fixed  : output "${mikrosimFixedOutput}", flagged ${mikrosimFixedFlag}`);
+if ((mikrosimFixedOutput ?? "").trim() === "") {
+  problems.push("fixing a flagged row's scheme through its own dropdown did not recompute it");
+}
+if (mikrosimFixedFlag !== 0) {
+  problems.push("fixing a flagged row's scheme left it still marked as an error");
+}
+
+// Round trip: importing this app's own export back in recovers the same
+// rows, computed immediately.
+await tab
+  .locator('[data-action="mikrosim-import-file"]')
+  .setInputFiles({ name: "roundtrip.csv", mimeType: "text/csv", buffer: mikrosimCsv.buffer });
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterRoundtrip = await mikrosimRowCount("inputs");
+const mikrosimResultRowsAfterRoundtrip = await mikrosimRowCount("results");
+const roundtripSalary = await mikrosimInputCell(0, MI_SALARY_TD).locator("input").inputValue();
+const roundtripOutput = await mikrosimResultCell(0, MI_FIRST_OUTPUT_TD).textContent();
+console.log(
+  `mikrosim roundtrip: ${mikrosimRowsAfterRoundtrip} inputs, ${mikrosimResultRowsAfterRoundtrip} results, row 1 salary ${roundtripSalary}, output "${roundtripOutput}"`,
+);
+if (mikrosimRowsAfterRoundtrip !== 3 || mikrosimResultRowsAfterRoundtrip !== 3) {
+  problems.push(
+    `re-importing this app's own CSV export left ${mikrosimRowsAfterRoundtrip} input row(s)/${mikrosimResultRowsAfterRoundtrip} result row(s), expected 3/3`,
+  );
+}
+if (roundtripSalary !== "650000") {
+  problems.push(`re-importing this app's own CSV export lost row 1's own salary (read back "${roundtripSalary}")`);
+}
+if ((roundtripOutput ?? "").trim() === "") {
+  problems.push("re-importing this app's own CSV export left row 1 uncalculated");
+}
+
+// "Hämta från Prognos" appends one row read from Prognos's own current
+// baseline -- unchanged throughout this script (born 1959, salary 462000) --
+// computed immediately, no click needed beyond the import itself.
+await tab.locator('[data-action="mikrosim-import-forecast"]').click();
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterForecastImport = await mikrosimRowCount("inputs");
+const forecastRowIndex = mikrosimRowsAfterForecastImport - 1;
+const forecastRowBorn = await mikrosimInputCell(forecastRowIndex, 2).locator("input").inputValue();
+const forecastRowSalary = await mikrosimInputCell(forecastRowIndex, MI_SALARY_TD).locator("input").inputValue();
+const forecastRowOutput = await mikrosimResultCell(forecastRowIndex, MI_FIRST_OUTPUT_TD).textContent();
+console.log(
+  `mikrosim from Prognos: ${mikrosimRowsAfterForecastImport} rows, born ${forecastRowBorn}, salary ${forecastRowSalary}, output "${forecastRowOutput}"`,
+);
+if (mikrosimRowsAfterForecastImport !== 4) {
+  problems.push(`"Hämta från Prognos" left ${mikrosimRowsAfterForecastImport} rows, expected 4 (3 + 1)`);
+}
+if (forecastRowBorn !== "1959" || forecastRowSalary !== "462000") {
+  problems.push(
+    `the row imported from Prognos reads born ${forecastRowBorn}/salary ${forecastRowSalary}, expected 1959/462000`,
+  );
+}
+if ((forecastRowOutput ?? "").trim() === "") {
+  problems.push("the row imported from Prognos shows no output -- expected it computed immediately");
+}
+
+// "Hämta från Jämför scenarier" appends one row per current scenario --
+// baseline plus whichever scenario the earlier cap/floor cycle left behind
+// (not necessarily the one whose birth year was edited above, since removal
+// there goes in DOM order) -- given a fresh, distinct birth year here so the
+// check proves each row reflects that scenario's own resolved fields, not
+// just the shared baseline repeated.
+await tab.locator('.screen-toggle .panel-btn[data-screen="compare"]').click();
+await tab.waitForTimeout(50);
+const compareSurvivorBorn = tab
+  .locator(".compare-card:not([data-scenario='baseline']) .compare-card-controls input")
+  .first();
+await compareSurvivorBorn.fill("1975");
+await compareSurvivorBorn.dispatchEvent("change");
+await tab.waitForTimeout(50);
+await tab.locator('.screen-toggle .panel-btn[data-screen="mikrosim"]').click();
+await tab.waitForTimeout(50);
+await tab.locator('[data-action="mikrosim-import-compare"]').click();
+await tab.waitForTimeout(100);
+const mikrosimRowsAfterCompareImport = await mikrosimRowCount("inputs");
+const compareBaselineRowBorn = await mikrosimInputCell(4, 2).locator("input").inputValue();
+const compareScenarioRowBorn = await mikrosimInputCell(5, 2).locator("input").inputValue();
+console.log(
+  `mikrosim from Jämför scenarier: ${mikrosimRowsAfterCompareImport} rows, borns ${compareBaselineRowBorn}/${compareScenarioRowBorn}`,
+);
+if (mikrosimRowsAfterCompareImport !== 6) {
+  problems.push(
+    `"Hämta från Jämför scenarier" left ${mikrosimRowsAfterCompareImport} rows, expected 6 (4 + 2, baseline and one scenario)`,
+  );
+}
+if (compareBaselineRowBorn !== "1959") {
+  problems.push(
+    `the baseline row imported from Jämför scenarier reads born ${compareBaselineRowBorn}, expected 1959`,
+  );
+}
+if (compareScenarioRowBorn !== "1975") {
+  problems.push(
+    `the scenario row imported from Jämför scenarier reads born ${compareScenarioRowBorn}, expected 1975 (its own edited birth year)`,
+  );
+}
+
+// Past 10 rows, no Bruttopension labels are drawn at all -- not some of
+// them -- since they would overlap and clutter more than they inform.
+for (let i = 0; i < 8; i += 1) {
+  await tab.locator('[data-action="add-mikrosim-row"]').click();
+}
+await tab.waitForTimeout(100);
+const mikrosimRowsOver10 = await mikrosimRowCount("inputs");
+const mikrosimBarValueLabelsOver10 = await mikrosimChart.locator(".mikrosim-bar-value").count();
+console.log(`mikrosim >10 rows: ${mikrosimRowsOver10} rows, ${mikrosimBarValueLabelsOver10} Bruttopension label(s)`);
+if (mikrosimRowsOver10 <= 10) {
+  problems.push(`expected more than 10 Mikrosim rows for this check, found ${mikrosimRowsOver10}`);
+}
+if (mikrosimBarValueLabelsOver10 !== 0) {
+  problems.push(`the Mikrosim chart shows ${mikrosimBarValueLabelsOver10} Bruttopension label(s) with over 10 rows, expected 0`);
+}
+// Unlike the Bruttopension labels, the disposable-income line has no 10-row
+// cap -- it is one continuous polyline covering every row, not a label per
+// row that would start overlapping.
+const mikrosimDisposableLinesOver10 = await mikrosimChart.locator("svg .mikrosim-disposable-line").count();
+if (mikrosimDisposableLinesOver10 !== 1) {
+  problems.push(
+    `the Mikrosim chart draws ${mikrosimDisposableLinesOver10} disposable-income line(s) with over 10 rows, expected 1`,
+  );
+}
+
 // Back to the single-scenario view for the screenshots, and to leave the
 // page as found.
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
+// ---- Bästa pensionsålder ---------------------------------------------------
+//
+// A fourth top-level view: seven retirement ages around a reference age, run
+// as one typfall each, summed over a lifespan and compared. The point of each
+// check, as above, is that a control reaches the runs it should and the page
+// says what the engine said. The numbers pinned here are the ones a static
+// report on this very typfall (born 1980, work from 25, 38 500 kr/month, the
+// workbook's own assumptions, no agreement) printed first -- the tab has to
+// reproduce that report to the krona -- and `pensionAge.test.ts` pins the
+// same ones against the engine without a browser.
+
+const paRiktalderTable = JSON.parse(readFileSync(join(repo, "packages/data/retirement-ages.json"), "utf8"));
+const paRiktalder = (born) => paRiktalderTable.riktalder[born - paRiktalderTable.firstCohort];
+
+const PA_BEST_DEFAULT = [65, 65, 65, 66, 68, 68, 68, 71, 71, 71, 71, 71, 71, 71, 71, 71];
+const PA_BEST_ITP1 = [65, 65, 65, 66, 66, 68, 68, 68, 71, 71, 71, 71, 71, 71, 71, 71];
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').click();
+await tab.waitForTimeout(100);
+
+const pa = tab.locator('[data-role="pension-age-panel"]');
+const paSetting = (name) => pa.locator(`[data-setting="${name}"]`);
+const paType = async (name, value) => {
+  const field = paSetting(name);
+  await field.fill(String(value));
+  await field.dispatchEvent("change");
+  await tab.waitForTimeout(60);
+};
+const paBest = () =>
+  pa.locator('[data-role="pa-ribbon"] li').evaluateAll((items) => items.map((li) => Number(li.dataset.best)));
+const paTies = () =>
+  pa.locator('[data-role="pa-ribbon"] li').evaluateAll((items) => items.map((li) => li.dataset.tie));
+const paCell = async (lifespan, par) =>
+  Number(await pa.locator(`[data-role="pa-matrix"] tr[data-lifespan="${lifespan}"] td[data-par="${par}"]`).getAttribute("data-kr"));
+const paLines = (figure) => pa.locator(`[data-role="${figure}"] svg polyline.pa-line`).evaluateAll((lines) => lines.map((l) => Number(l.dataset.par)));
+const sameList = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
+
+if ((await pa.count()) !== 1) problems.push("the Bästa pensionsålder tab did not open");
+
+// The inputs start as the report's typfall, centred on the cohort's riktålder.
+const paStart = {
+  born: await paSetting("paBorn").inputValue(),
+  start: await paSetting("paStartWork").inputValue(),
+  salary: await paSetting("paSalary").inputValue(),
+  centre: await paSetting("paCentre").inputValue(),
+  centreDisabled: await paSetting("paCentre").isDisabled(),
+  riktalder: await paSetting("paRiktalder").isChecked(),
+};
+console.log(`pension age     : inputs ${JSON.stringify(paStart)}`);
+if (paStart.born !== "1980" || paStart.start !== "25" || paStart.salary !== "38500" || paStart.centre !== "68") {
+  problems.push(`the Bästa pensionsålder inputs start at ${JSON.stringify(paStart)}, expected 1980/25/38500 around 68`);
+}
+if (!paStart.centreDisabled || !paStart.riktalder) {
+  problems.push("the reference age is not locked to the riktålder as loaded");
+}
+
+// The short answer: sixteen lifespans, the report's winners, its near-ties.
+const paBestDefault = await paBest();
+console.log(`pension age     : best per lifespan ${paBestDefault.join(",")}`);
+if (!sameList(paBestDefault, PA_BEST_DEFAULT)) {
+  problems.push(`the short answer picks ${paBestDefault.join(",")} for lifespans 80-95, expected ${PA_BEST_DEFAULT.join(",")}`);
+}
+const paTiesDefault = (await paTies()).join("");
+if (paTiesDefault !== "0111111111000000") {
+  problems.push(`the short answer flags near-ties as ${paTiesDefault}, expected 0111111111000000 (81-89)`);
+}
+
+// The matrix: the report's totals to the krona, the winner marked.
+const paMatrixRows = await pa.locator('[data-role="pa-matrix"] tbody tr').count();
+const paTotal80 = await paCell(80, 65);
+const paTotal83 = await paCell(83, 66);
+console.log(`pension age     : matrix ${paMatrixRows} rows, 80/65=${paTotal80}, 83/66=${paTotal83}`);
+if (paMatrixRows !== 16) problems.push(`the matrix has ${paMatrixRows} rows, expected 16 (lifespans 80-95)`);
+if (paTotal80 !== 2972916) problems.push(`the matrix says ${paTotal80} for living to 80 with a start at 65, the report says 2972916`);
+if (paTotal83 !== 3552168) problems.push(`the matrix says ${paTotal83} for living to 83 with a start at 66, the report says 3552168`);
+const paBestCells = await pa.locator('[data-role="pa-matrix"] td.pa-best').count();
+if (paBestCells !== 16) problems.push(`the matrix marks ${paBestCells} winning cells, expected one per row (16)`);
+
+// The three charts: one line per alternative, the reference drawn heavier.
+const paMonthlyLines = await paLines("pa-fig-monthly");
+const paTotalLines = await paLines("pa-fig-total");
+const paDeltaLines = await paLines("pa-fig-delta");
+console.log(`pension age     : lines monthly ${paMonthlyLines.length}, total ${paTotalLines.length}, delta ${paDeltaLines.length}`);
+for (const [name, lines] of [["monthly", paMonthlyLines], ["total", paTotalLines], ["difference", paDeltaLines]]) {
+  if (!sameList([...lines].sort((a, b) => a - b), [65, 66, 67, 68, 69, 70, 71])) {
+    problems.push(`the ${name} chart draws lines for ${lines.join(",")}, expected 65-71`);
+  }
+}
+const paHeavy = await pa.locator("svg polyline.pa-line-z").evaluateAll((lines) => [...new Set(lines.map((l) => Number(l.dataset.par)))]);
+if (!sameList(paHeavy, [68])) problems.push(`the heavy reference line is ${paHeavy.join(",")}, expected 68 only`);
+
+// The hover readout names every line that has a value at the pointer's age.
+const paTotalFigure = pa.locator('[data-role="pa-fig-total"]');
+await paTotalFigure.scrollIntoViewIfNeeded();
+const paBox = await paTotalFigure.locator("svg").boundingBox();
+if (paBox) {
+  const k = paBox.width / 760;
+  // 80 of 65-95, in the chart's own geometry (68 left, 722 right of 760).
+  await tab.mouse.move(paBox.x + 300 * k, paBox.y + 150 * k);
+  await tab.mouse.move(paBox.x + (68 + 0.5 * (722 - 68)) * k, paBox.y + 150 * k);
+  await tab.waitForTimeout(100);
+}
+const paTooltipRows = await paTotalFigure.locator(".tooltip .tooltip-row").count();
+const paTooltipHead = (await paTotalFigure.locator(".tooltip strong").textContent()) ?? "";
+console.log(`pension age     : hover "${paTooltipHead}", ${paTooltipRows} rows`);
+if (paTooltipRows !== 7 || !/80/.test(paTooltipHead)) {
+  problems.push(`the total chart's hover shows "${paTooltipHead}" with ${paTooltipRows} rows at age 80, expected 7 rows`);
+}
+// The same readout from the keyboard.
+await paTotalFigure.locator("svg").focus();
+await tab.keyboard.press("ArrowRight");
+const paKeyHead = (await paTotalFigure.locator(".tooltip strong").textContent()) ?? "";
+if (!/81/.test(paKeyHead)) problems.push(`the arrow key moved the readout to "${paKeyHead}", expected age 81`);
+await tab.keyboard.press("Escape");
+
+// A collective agreement adds exactly its occupational pension, and can move the winners.
+await paSetting("paScheme").selectOption("2"); // ITP-1
+await tab.waitForTimeout(80);
+const paItpBest = await paBest();
+const paItpTotal = await paCell(80, 65);
+console.log(`pension age     : ITP-1 best ${paItpBest.join(",")}, 80/65=${paItpTotal}`);
+if (paItpTotal !== 4238496) problems.push(`with ITP-1 the total for 80/65 is ${paItpTotal}, expected 4238496`);
+if (!sameList(paItpBest, PA_BEST_ITP1)) {
+  problems.push(`with ITP-1 the short answer picks ${paItpBest.join(",")}, expected ${PA_BEST_ITP1.join(",")}`);
+}
+const paTimeHeads = await pa.locator('[data-role="pa-time-table"] thead th').allTextContents();
+if (!paTimeHeads.some((text) => /tjänstepension/i.test(text))) {
+  problems.push(`the per-age table has no occupational-pension column with ITP-1 chosen (${paTimeHeads.join(" | ")})`);
+}
+if (await paSetting("paIncludeOccupational").isDisabled()) {
+  problems.push("the include-occupational box is still disabled with an agreement chosen");
+}
+// ...and switching it off is the same as choosing no agreement.
+await paSetting("paIncludeOccupational").uncheck();
+await tab.waitForTimeout(80);
+const paOffTotal = await paCell(80, 65);
+if (paOffTotal !== 2972916) problems.push(`with occupational pension switched off the total for 80/65 is ${paOffTotal}, expected 2972916`);
+await paSetting("paIncludeOccupational").check();
+await paSetting("paScheme").selectOption("1");
+await tab.waitForTimeout(80);
+
+// The economic assumptions: the second preset moves the break-evens years earlier.
+await pa.locator('button[data-preset="growth"]').click();
+await tab.waitForTimeout(80);
+const paGrowthBest = await paBest();
+const paGrowthActive = await pa.locator('button[data-preset="growth"]').evaluate((b) => b.classList.contains("active"));
+const paGrowthFields = [await paSetting("paInflation").inputValue(), await paSetting("paGrowth").inputValue()];
+console.log(`pension age     : growth best ${paGrowthBest.slice(0, 4).join(",")}..., fields ${paGrowthFields.join("/")}`);
+if (!sameList(paGrowthBest.slice(0, 4), [67, 68, 70, 71]) || !paGrowthBest.slice(3).every((par) => par === 71)) {
+  problems.push(`with 2 %/1.8 % assumptions the short answer picks ${paGrowthBest.join(",")}, expected 67,68,70 then 71 from 83`);
+}
+if (!paGrowthActive || paGrowthFields[0] !== "2" || paGrowthFields[1] !== "1,8") {
+  problems.push(`the growth preset reads active=${paGrowthActive}, fields ${paGrowthFields.join("/")}, expected active 2/1,8`);
+}
+await pa.locator('button[data-preset="standard"]').click();
+await tab.waitForTimeout(80);
+if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("the standard preset did not restore the default short answer");
+
+// After tax sums the model's net income.
+await pa.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(80);
+const paNetTotal = await paCell(80, 65);
+const paNetBest = await paBest();
+console.log(`pension age     : after tax 80/65=${paNetTotal}, best ${paNetBest[0]}..${paNetBest[paNetBest.length - 1]}`);
+if (paNetTotal !== 2449482) problems.push(`after tax the total for 80/65 is ${paNetTotal}, expected 2449482`);
+if (paNetBest[0] !== 65 || paNetBest[paNetBest.length - 1] !== 71) {
+  problems.push(`after tax the winners run ${paNetBest[0]}..${paNetBest[paNetBest.length - 1]}, expected 65..71`);
+}
+await pa.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(80);
+
+// The reference age: unlock the riktålder and move it; ages outside the cohort's range are clamped.
+await paSetting("paRiktalder").uncheck();
+await paType("paCentre", 72);
+const paShifted = await paLines("pa-fig-total");
+if (!sameList([...paShifted].sort((a, b) => a - b), [69, 70, 71, 72, 73, 74, 75])) {
+  problems.push(`a reference age of 72 draws lines for ${paShifted.join(",")}, expected 69-75`);
+}
+await paType("paCentre", 62);
+const paClamped = await paLines("pa-fig-total");
+const paCentreShown = await paSetting("paCentre").inputValue();
+console.log(`pension age     : reference 62 -> shows ${paCentreShown}, lines ${paClamped.join(",")}`);
+if (paCentreShown !== "65" || !sameList([...paClamped].sort((a, b) => a - b), [65, 66, 67, 68])) {
+  problems.push(`a reference age of 62 (cohort's lowest is 65) shows ${paCentreShown} with lines ${paClamped.join(",")}, expected 65 and 65-68`);
+}
+await paSetting("paRiktalder").check();
+await tab.waitForTimeout(80);
+if ((await paSetting("paCentre").inputValue()) !== "68") problems.push("ticking the riktålder box did not put the reference age back on 68");
+
+// The riktålder follows the birth year while its box is ticked.
+await paType("paBorn", 1990);
+const paCentre1990 = await paSetting("paCentre").inputValue();
+if (paCentre1990 !== String(paRiktalder(1990))) {
+  problems.push(`born 1990 puts the reference age at ${paCentre1990}, the cohort table says ${paRiktalder(1990)}`);
+}
+await paType("paBorn", 1980);
+
+// A final salary as the input: the monthly salary behind it is worked out and shown.
+await paSetting("paSalaryAs").selectOption("1");
+await tab.waitForTimeout(80);
+const paFinalShown = await paSetting("paSalary").inputValue();
+await paType("paSalary", 40000);
+const paMonthlyHint = (await pa.locator('label:has([data-setting="paSalary"]) .field-hint').textContent()) ?? "";
+console.log(`pension age     : final salary shown ${paFinalShown}, hint "${paMonthlyHint}"`);
+if (paFinalShown !== "39872") problems.push(`switching to final salary shows ${paFinalShown}, expected 39872 (the model's own final salary)`);
+if (!/38\D?623/.test(paMonthlyHint)) {
+  problems.push(`typing a final salary of 40000 gives the hint "${paMonthlyHint}", expected the monthly salary 38 623`);
+}
+const paFinalRaised = await paCell(80, 65);
+if (!(paFinalRaised > 2972916)) problems.push("a higher final salary did not raise the totals");
+await paSetting("paSalaryAs").selectOption("0");
+await tab.waitForTimeout(80);
+if ((await paSetting("paSalary").inputValue()) !== "38623") {
+  problems.push(`switching back to monthly salary shows ${await paSetting("paSalary").inputValue()}, expected the derived 38623`);
+}
+await paType("paSalary", 38500);
+
+// The lifespan range, linked so it never inverts; a single lifespan has no difference chart.
+await paType("paLifespanFrom", 85);
+await paType("paLifespanTo", 90);
+const paItems = await pa.locator('[data-role="pa-ribbon"] li').count();
+if (paItems !== 6) problems.push(`lifespans 85-90 give ${paItems} answer boxes, expected 6`);
+await paType("paLifespanFrom", 92);
+const paToLinked = await paSetting("paLifespanTo").inputValue();
+const paDeltaWhenOne = await pa.locator('[data-role="pa-fig-delta"]').count();
+if (paToLinked !== "92" || paDeltaWhenOne !== 0) {
+  problems.push(`raising "from" to 92 left "to" at ${paToLinked} and ${paDeltaWhenOne} difference chart(s), expected 92 and none`);
+}
+
+// Reset puts everything back; "Hämta från Prognos" copies the form's person once.
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(80);
+if (!sameList(await paBest(), PA_BEST_DEFAULT) || (await paSetting("paLifespanFrom").inputValue()) !== "80") {
+  problems.push("Återställ did not restore the default typfall");
+}
+await pa.locator('[data-action="pa-import-forecast"]').click();
+await tab.waitForTimeout(80);
+const paImported = [
+  await paSetting("paBorn").inputValue(),
+  await paSetting("paStartWork").inputValue(),
+  await paSetting("paSalary").inputValue(),
+  await paSetting("paCentre").inputValue(),
+];
+console.log(`pension age     : from Prognos ${paImported.join("/")}`);
+if (paImported.join("/") !== `1959/23/38500/${paRiktalder(1959)}`) {
+  problems.push(`"Hämta från Prognos" gives ${paImported.join("/")}, expected 1959/23/38500/${paRiktalder(1959)}`);
+}
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(80);
+
+// The exports: the matrix as CSV (whole kronor, Swedish delimiter) and a real .xlsx.
+const paMatrixActions = pa.locator('[data-role="pa-matrix-panel"] .panel-actions');
+const paCsv = await download(paMatrixActions.getByRole("button", { name: "Ladda ner CSV" }));
+const paCsvLines = paCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`pension age     : CSV ${paCsv.filename}, ${paCsvLines.length} lines`);
+if (paCsvLines.length !== 17 || paCsvLines[0] !== "Lever till (år);65;66;67;68;69;70;71;Bäst;Försprång mot näst bäst (kr)") {
+  problems.push(`the matrix CSV starts "${paCsvLines[0]}" and has ${paCsvLines.length} lines, expected the 17-line lifespan matrix`);
+}
+if (paCsvLines[1] !== "80;2972916;2942724;2901684;2851104;2760972;2668008;2568324;65;30192") {
+  problems.push(`the matrix CSV's first row reads "${paCsvLines[1]}"`);
+}
+const paXlsx = await download(paMatrixActions.getByRole("button", { name: "Ladda ner Excel" }));
+if (!looksLikeXlsx(paXlsx.buffer)) problems.push(`the matrix's Excel download ("${paXlsx.filename}") isn't a real .xlsx file`);
+const paSeries = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const paSeriesLines = paSeries.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+if (paSeriesLines.length !== 32 || !paSeriesLines[1]?.startsWith("65;16498;")) {
+  problems.push(`the per-age CSV has ${paSeriesLines.length} lines starting "${paSeriesLines[1]}", expected 32 lines from age 65 at 16498`);
+}
+
+// The theme tokens reach the boxes: the reference age is ink, black on light and white on dark.
+const paInk = async () => pa.locator(".pa-ribbon .pa-chip-z").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+const paInkLight = await paInk();
+await tab.emulateMedia({ colorScheme: "dark" });
+const paInkDark = await paInk();
+await tab.emulateMedia({ colorScheme: "light" });
+console.log(`pension age     : reference chip ${paInkLight} light, ${paInkDark} dark`);
+if (paInkLight !== "rgb(0, 0, 0)" || paInkDark !== "rgb(255, 255, 255)") {
+  problems.push(`the reference chip is ${paInkLight}/${paInkDark} on light/dark, expected black/white`);
+}
+
+// Swedish and English.
+const paHeadSv = (await pa.locator("section.panel > h2 span").first().textContent()) ?? "";
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paHeadEn = (await pa.locator("section.panel > h2 span").first().textContent()) ?? "";
+const paLabelEn = (await pa.locator(".pa-ribbon-label").textContent()) ?? "";
+const paButtonEn = (await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').textContent()) ?? "";
+console.log(`pension age     : "${paHeadSv}" / "${paHeadEn}", "${paLabelEn}", button "${paButtonEn}"`);
+if (paHeadSv !== "Bästa pensionsålder" || paHeadEn !== "Best retirement age" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "Best retirement age") {
+  problems.push(`the tab's language switch reads "${paHeadSv}"/"${paHeadEn}"/"${paLabelEn}"/"${paButtonEn}"`);
+}
+if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("switching language changed the short answer");
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+
+// A phone: nothing widens the page, and the sixteen boxes wrap instead of overflowing.
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(100);
+const paOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const paRibbonRows = await pa.locator(".pa-ribbon li").evaluateAll((items) => new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size);
+console.log(`pension age @375px: page overflow ${paOverflow}px, ribbon in ${paRibbonRows} rows`);
+if (paOverflow > 1) problems.push(`the Bästa pensionsålder tab widens the page by ${paOverflow}px at 375px`);
+if (paRibbonRows < 2) problems.push("the sixteen answer boxes did not wrap onto several rows at 375px");
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
+
+// ---- Jämför avtalsområden ---------------------------------------------------
+//
+// The tab's second view: the same person under each collective agreement,
+// side by side. What is checked is that the switch reaches it, that the
+// agreements are the ones the cohort can belong to until somebody picks, that
+// every number on the page is the engine's (the totals below are what
+// `pensionAge.test.ts` pins against it, and the ITP-1 line reproduces the
+// single view's 80/65 total above to the krona), and that each control --
+// agreement chips, retirement age, the lifespan to read at, the chart toggle --
+// reaches the figure, the grid and the table it should.
+
+const expandRuns = (text) =>
+  text.split(" ").flatMap((run) => {
+    const [range, age] = run.split(":");
+    const [from, to = from] = range.split("-").map(Number);
+    return Array.from({ length: to - from + 1 }, () => Number(age));
+  });
+// Each agreement's best age at lifespans 80..95, born 1980, the workbook's assumptions.
+const PA_AG_RUNS = {
+  1: "80-82:65 83:66 84-86:68 87-95:71",
+  2: "80-82:65 83-84:66 85-87:68 88-95:71",
+  3: "80-81:65 82:67 83-85:68 86-88:70 89-95:71",
+  4: "80-83:65 84:66 85-87:68 88-95:71",
+  5: "80-82:65 83:66 84:67 85-87:68 88-95:71",
+  6: "80-82:65 83:66 84-85:68 86-95:71",
+  7: "80-82:65 83:66 84-85:68 86-87:69 88-95:71",
+  8: "80-82:65 83:66 84-85:67 86-87:68 88-95:71",
+};
+// Total / added over having no agreement, in kronor, at the best age, by agreement (1 = none, 2 = ITP-1, 4 = SAF-LO, 5 = KAP-KL, 7 = PA16 avd 2).
+const PA_AG_AT_85 = { 1: [3988140, 0], 2: [5662368, 1674228], 4: [5606472, 1618332], 5: [5661348, 1673208], 7: [5813328, 1825188] };
+const PA_AG_AT_90 = { 1: [5233356, 0], 2: [7422612, 2189256], 4: [7353072, 2119716], 5: [7421244, 2187888], 7: [7655400, 2422044] };
+const PA_AG_AT_85_RETIRING_65 = { 1: [3931176, 0], 2: [5618616, 1687440], 4: [5576856, 1645680], 5: [5596776, 1665600], 7: [5708376, 1777200] };
+
+const cmpControls = pa.locator('[data-role="pa-compare-controls"]');
+const cmpPressed = () =>
+  cmpControls
+    .locator("button.pa-agr")
+    .evaluateAll((buttons) => buttons.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => Number(b.dataset.scheme)));
+const cmpGrid = () =>
+  pa.locator('[data-role="pa-compare-grid"] tbody tr').evaluateAll((rows) =>
+    rows.map((tr) => ({ scheme: Number(tr.dataset.scheme), best: [...tr.querySelectorAll("td.pa-gcell")].map((td) => Number(td.dataset.best)) })),
+  );
+const cmpRow = (scheme) => pa.locator(`[data-role="pa-compare-table"] tr[data-scheme="${scheme}"]`);
+const cmpKr = async (scheme, nth) => Number(await cmpRow(scheme).locator("td[data-kr]").nth(nth).getAttribute("data-kr"));
+const cmpFigures = async (expected, label) => {
+  const got = {};
+  for (const scheme of Object.keys(expected)) got[scheme] = [await cmpKr(scheme, 0), await cmpKr(scheme, 1)];
+  if (JSON.stringify(got) !== JSON.stringify(expected)) {
+    problems.push(`${label}: the table reads ${JSON.stringify(got)}, expected ${JSON.stringify(expected)}`);
+  }
+};
+const cmpLines = () => pa.locator('[data-role="pa-fig-compare"] svg polyline.pa-line').evaluateAll((lines) => lines.map((l) => Number(l.dataset.agreement)));
+const cmpTitle = (role) => pa.locator(`[data-role="${role}"] > h2 span, [data-role="${role}"] figcaption`).first().textContent();
+
+// The switch: closed by default, the single view's boxes gone once it is open.
+const cmpHiddenAtFirst = await cmpControls.isHidden();
+const cmpViewButtons = await pa.locator(".pa-view .panel-btn").count();
+await pa.locator('.pa-view .panel-btn[data-view="compare"]').click();
+await tab.waitForTimeout(150);
+const cmpShown = await cmpControls.isVisible();
+const cmpRibbonGone = (await pa.locator('[data-role="pa-ribbon"]').count()) === 0;
+console.log(`agreements      : switch ${cmpViewButtons} buttons, controls hidden at first ${cmpHiddenAtFirst}, shown ${cmpShown}, single boxes gone ${cmpRibbonGone}`);
+if (cmpViewButtons !== 2 || !cmpHiddenAtFirst || !cmpShown || !cmpRibbonGone) {
+  problems.push("the Jämför avtalsområden switch does not open and close the comparison");
+}
+
+// Until somebody picks: the agreements a 1980 cohort can belong to.
+const cmpDefault = await cmpPressed();
+const cmpOffCohort = await cmpControls.locator("button.pa-agr.pa-agr-off").evaluateAll((buttons) => buttons.map((b) => Number(b.dataset.scheme)));
+console.log(`agreements      : picked ${cmpDefault.join(",")}, marked "what if" ${cmpOffCohort.join(",")}`);
+if (cmpDefault.join(",") !== "2,4,5,7" || cmpOffCohort.join(",") !== "3,6,8") {
+  problems.push(`a 1980 cohort starts with agreements ${cmpDefault.join(",")} picked and ${cmpOffCohort.join(",")} marked "what if", expected 2,4,5,7 and 3,6,8`);
+}
+
+// The grid: every agreement's best age at every lifespan, to the engine's.
+const cmpRows = await cmpGrid();
+console.log(`agreements      : grid rows ${cmpRows.map((r) => r.scheme).join(",")}`);
+if (cmpRows.map((r) => r.scheme).join(",") !== "1,2,4,5,7") {
+  problems.push(`the grid has rows for ${cmpRows.map((r) => r.scheme).join(",")}, expected the baseline and 2,4,5,7`);
+}
+for (const row of cmpRows) {
+  if (!sameList(row.best, expandRuns(PA_AG_RUNS[row.scheme]))) {
+    problems.push(`agreement ${row.scheme}'s best ages read ${row.best.join(",")}, expected ${expandRuns(PA_AG_RUNS[row.scheme]).join(",")}`);
+  }
+}
+if (!sameList(cmpRows[0].best, PA_BEST_DEFAULT)) problems.push("the baseline row does not match the single view's short answer");
+
+// The table, read at 85 by default: what each pays and what it adds, to the krona.
+const cmpTitle85 = (await cmpTitle("pa-compare-table-panel")) ?? "";
+await cmpFigures(PA_AG_AT_85, "at 85, best age");
+console.log(`agreements      : "${cmpTitle85.trim()}", ITP-1 ${await cmpKr(2, 0)} / +${await cmpKr(2, 1)}`);
+if (!/85/.test(cmpTitle85)) problems.push(`the table is titled "${cmpTitle85}", expected it to read at 85`);
+// The ITP-1 line is the single view's 80/65 total, the same engine number reached by another route.
+const cmpCsvLike = await pa.locator('[data-role="pa-compare-grid"] tr[data-scheme="2"] td[data-lifespan="80"]').getAttribute("title");
+if (!/bäst är pension vid 65 \(4\s238\stkr\)/.test(cmpCsvLike ?? "")) problems.push(`the grid cell for ITP-1 at 80 carries "${cmpCsvLike}", expected its best age (65) and total (4 238 tkr)`);
+
+// The figure: one line per row, the baseline heavy, keyed by agreement; the lines are the agreements' own colours.
+const cmpLinesDefault = await cmpLines();
+const cmpHeavy = await pa.locator('[data-role="pa-fig-compare"] svg polyline.pa-line-z').evaluateAll((lines) => lines.map((l) => Number(l.dataset.agreement)));
+const cmpLegend = await pa.locator('[data-role="pa-fig-compare"] .legend li').count();
+console.log(`agreements      : lines ${cmpLinesDefault.join(",")}, heavy ${cmpHeavy.join(",")}, legend ${cmpLegend}`);
+if ([...cmpLinesDefault].sort().join(",") !== "1,2,4,5,7" || cmpHeavy.join(",") !== "1" || cmpLegend !== 5) {
+  problems.push(`the comparison figure draws ${cmpLinesDefault.join(",")} (heavy ${cmpHeavy.join(",")}, ${cmpLegend} legend entries), expected 1,2,4,5,7 with the baseline heavy`);
+}
+const cmpStroke = (scheme) =>
+  pa.locator(`[data-role="pa-fig-compare"] svg polyline[data-agreement="${scheme}"]`).evaluate((line) => getComputedStyle(line).stroke);
+const cmpKey = (scheme) => cmpControls.locator(`.pa-key-ag${scheme}`).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+const cmpBlueLight = await cmpStroke(4);
+const cmpInkLight = await cmpStroke(1);
+const cmpKeyLight = await cmpKey(4);
+await tab.emulateMedia({ colorScheme: "dark" });
+const cmpBlueDark = await cmpStroke(4);
+const cmpInkDark = await cmpStroke(1);
+const cmpKeyDark = await cmpKey(4);
+await tab.emulateMedia({ colorScheme: "light" });
+console.log(`agreements      : SAF-LO ${cmpBlueLight} light, ${cmpBlueDark} dark; baseline ${cmpInkLight} / ${cmpInkDark}`);
+if (cmpBlueLight !== "rgb(42, 120, 214)" || cmpBlueDark !== "rgb(57, 135, 229)" || cmpKeyLight !== cmpBlueLight || cmpKeyDark !== cmpBlueDark) {
+  problems.push(`SAF-LO's line reads ${cmpBlueLight}/${cmpBlueDark} (key ${cmpKeyLight}/${cmpKeyDark}) on light/dark, expected rgb(42, 120, 214) and rgb(57, 135, 229)`);
+}
+if (cmpInkLight !== "rgb(0, 0, 0)" || cmpInkDark !== "rgb(255, 255, 255)") {
+  problems.push(`the baseline line is ${cmpInkLight}/${cmpInkDark} on light/dark, expected black/white`);
+}
+
+// Hover: one row per line, named by text.
+const cmpFigure = pa.locator('[data-role="pa-fig-compare"]');
+await cmpFigure.scrollIntoViewIfNeeded();
+const cmpBox = await cmpFigure.locator("svg").boundingBox();
+await tab.mouse.move(cmpBox.x + cmpBox.width * 0.4, cmpBox.y + cmpBox.height * 0.5);
+await tab.mouse.move(cmpBox.x + cmpBox.width * 0.45, cmpBox.y + cmpBox.height * 0.5);
+await tab.waitForTimeout(100);
+const cmpTipRows = await cmpFigure.locator(".tooltip .tooltip-row").allTextContents();
+const cmpTipHead = (await cmpFigure.locator(".tooltip strong").textContent()) ?? "";
+console.log(`agreements      : hover "${cmpTipHead}", ${cmpTipRows.length} rows`);
+if (cmpTipRows.length !== 5 || !/^Lever till \d+$/.test(cmpTipHead) || !cmpTipRows.some((text) => /ITP-1/.test(text) && /Mkr/.test(text))) {
+  problems.push(`hovering the comparison figure shows "${cmpTipHead}" with ${cmpTipRows.length} rows, expected one per line naming the agreement`);
+}
+await tab.mouse.move(5, 5);
+
+// The agreement chosen in the inputs is shown whether or not the cohort fits it, and marked.
+await paSetting("paScheme").selectOption("6");
+await tab.waitForTimeout(150);
+const cmpWithMine = await cmpPressed();
+const cmpMineRow = await cmpRow(6).evaluate((tr) => tr.classList.contains("pa-mine"));
+const cmpMineText = (await pa.locator('[data-role="pa-compare-answer"]').textContent()) ?? "";
+console.log(`agreements      : AKAP-KR chosen -> picked ${cmpWithMine.join(",")}, marked row ${cmpMineRow}`);
+if (cmpWithMine.join(",") !== "2,4,5,6,7" || !cmpMineRow || !/Ditt val/.test(cmpMineText) || (await cmpKr(6, 0)) !== 5872080) {
+  problems.push(`choosing AKAP-KR above gives picked ${cmpWithMine.join(",")}, marked row ${cmpMineRow}, total ${await cmpKr(6, 0)}; expected 2,4,5,6,7, marked, 5872080`);
+}
+await paSetting("paScheme").selectOption("1");
+await tab.waitForTimeout(100);
+
+// The cohort decides what is shown until somebody picks: born 1990 swaps the agreements.
+await paType("paBorn", 1990);
+const cmp1990 = await cmpPressed();
+console.log(`agreements      : born 1990 -> picked ${cmp1990.join(",")}`);
+if (cmp1990.join(",") !== "2,4,5,6,8") problems.push(`born 1990 starts with agreements ${cmp1990.join(",")}, expected 2,4,5,6,8`);
+await paType("paBorn", 1980);
+if ((await cmpPressed()).join(",") !== "2,4,5,7") problems.push("going back to 1980 did not bring back the 1980 cohort's agreements");
+
+// Picking: a chip switches an agreement on, and a "what if" is labelled as one.
+await cmpControls.locator('button.pa-agr[data-scheme="3"]').click();
+await tab.waitForTimeout(150);
+const cmpWith3 = await cmpGrid();
+const cmpItp2 = cmpWith3.find((r) => r.scheme === 3);
+const cmpWhatIfTag = await cmpRow(3).locator(".pa-tag-off").count();
+console.log(`agreements      : ITP-2 on -> rows ${cmpWith3.map((r) => r.scheme).join(",")}, "what if" tags ${cmpWhatIfTag}, lines ${(await cmpLines()).length}`);
+if (cmpWith3.map((r) => r.scheme).join(",") !== "1,2,3,4,5,7" || !cmpItp2 || !sameList(cmpItp2.best, expandRuns(PA_AG_RUNS[3])) || cmpWhatIfTag !== 1) {
+  problems.push("switching ITP-2 on did not add its row, its best ages or its \"what if\" tag");
+}
+if ((await cmpLines()).length !== 6) problems.push("switching ITP-2 on did not add its line to the figure");
+await cmpControls.locator('button.pa-agr[data-scheme="3"]').click();
+await tab.waitForTimeout(100);
+await cmpControls.locator('button.pa-agr[data-scheme="2"]').click();
+await tab.waitForTimeout(100);
+const cmpWithout2 = (await cmpGrid()).map((r) => r.scheme).join(",");
+if (cmpWithout2 !== "1,4,5,7" || (await cmpPressed()).join(",") !== "4,5,7") {
+  problems.push(`switching ITP-2 back off and ITP-1 off leaves rows ${cmpWithout2}, expected 1,4,5,7`);
+}
+// A colour follows its agreement, not its position: SAF-LO is still blue with ITP-1 gone.
+if ((await cmpStroke(4)) !== cmpBlueLight) problems.push("switching an agreement off repainted the others");
+await cmpControls.locator('button.pa-agr[data-scheme="2"]').click();
+await tab.waitForTimeout(100);
+
+// The retirement age the totals are read at.
+await paSetting("paCompareBasis").selectOption("65");
+await tab.waitForTimeout(150);
+await cmpFigures(PA_AG_AT_85_RETIRING_65, "at 85, retiring at 65");
+const cmpAgeCells = await pa.locator('[data-role="pa-compare-table"] tbody tr').evaluateAll((rows) => rows.map((tr) => Number(tr.dataset.age)));
+const cmpFixedHead = (await pa.locator('[data-role="pa-compare-table"] thead th').allTextContents()).join("|");
+console.log(`agreements      : retiring at 65 -> ages ${cmpAgeCells.join(",")}, columns ${cmpFixedHead.length > 0}`);
+if (!cmpAgeCells.every((age) => age === 65) || !/Bästa ålder vid 85/.test(cmpFixedHead)) {
+  problems.push(`reading at retirement age 65 gives ages ${cmpAgeCells.join(",")} and columns "${cmpFixedHead}", expected all 65 and a best-age column`);
+}
+await paSetting("paCompareBasis").selectOption("best");
+await tab.waitForTimeout(150);
+await cmpFigures(PA_AG_AT_85, "back to the best age");
+
+// The lifespan the table and the answer are read at.
+await paType("paCompareLifespan", 90);
+await cmpFigures(PA_AG_AT_90, "at 90, best age");
+const cmpTitle90 = (await cmpTitle("pa-compare-table-panel")) ?? "";
+const cmpReadColumns = await pa.locator('[data-role="pa-compare-grid"] th.pa-read').evaluateAll((cells) => cells.map((th) => th.textContent));
+console.log(`agreements      : read at 90 -> "${cmpTitle90.trim()}", highlighted column ${cmpReadColumns.join(",")}`);
+if (!/90/.test(cmpTitle90) || cmpReadColumns.join(",") !== "90") problems.push("reading at 90 did not move the table's title and the grid's highlighted column");
+await paType("paCompareLifespan", 85);
+
+// The chart toggle: what each agreement adds, no line for the baseline.
+await cmpControls.locator('button[data-metric="extra"]').click();
+await tab.waitForTimeout(150);
+const cmpExtraLines = await cmpLines();
+const cmpExtraTitle = (await cmpTitle("pa-fig-compare")) ?? "";
+const cmpExtraTicks = await cmpFigure.locator("svg text.tick-y").allTextContents();
+console.log(`agreements      : added -> lines ${cmpExtraLines.join(",")}, "${cmpExtraTitle.trim()}", ticks ${cmpExtraTicks.slice(0, 3).join(" ")}`);
+if (cmpExtraLines.join(",") !== "2,4,5,7" || !cmpExtraTicks.some((text) => text.startsWith("+"))) {
+  problems.push(`the "added" chart draws ${cmpExtraLines.join(",")} with ticks ${cmpExtraTicks.join(" ")}, expected 2,4,5,7 and "+" ticks`);
+}
+await cmpControls.locator('button[data-metric="total"]').click();
+await tab.waitForTimeout(100);
+
+// After tax: the figure drops the occupational column (it cannot be split out of net income) and the totals fall.
+await pa.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(150);
+const cmpNetHead = (await pa.locator('[data-role="pa-compare-table"] thead th').allTextContents()).join("|");
+const cmpNetBaseline = await cmpKr(1, 0);
+const cmpNetBest = await cmpGrid();
+console.log(`agreements      : after tax -> baseline ${cmpNetBaseline}, split column ${/varav/.test(cmpNetHead)}`);
+if (/varav/.test(cmpNetHead) || !(cmpNetBaseline > 0 && cmpNetBaseline < PA_AG_AT_85[1][0]) || cmpNetBest.length !== 5) {
+  problems.push(`after tax the comparison reads baseline ${cmpNetBaseline} with columns "${cmpNetHead}", expected a lower total and no occupational column`);
+}
+await pa.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(150);
+
+// The exports: best ages and totals per agreement and lifespan, whole kronor.
+const cmpActions = pa.locator('[data-role="pa-compare-grid-panel"] .panel-actions');
+const cmpCsv = await download(cmpActions.getByRole("button", { name: "Ladda ner CSV" }));
+const cmpCsvLines = cmpCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`agreements      : CSV ${cmpCsv.filename}, ${cmpCsvLines.length} lines`);
+if (cmpCsvLines.length !== 17 || !cmpCsvLines[0].startsWith("Lever till (år);Saknar tjänstepension: bästa ålder;Saknar tjänstepension: total före skatt (kr);ITP-1: bästa ålder;")) {
+  problems.push(`the comparison CSV starts "${cmpCsvLines[0]}" and has ${cmpCsvLines.length} lines, expected the 17-line per-agreement table`);
+}
+if (cmpCsvLines[1] !== "80;65;2972916;65;4238496;65;4207176;65;4222116;65;4305816") {
+  problems.push(`the comparison CSV's first row reads "${cmpCsvLines[1]}"`);
+}
+const cmpXlsx = await download(cmpActions.getByRole("button", { name: "Ladda ner Excel" }));
+if (!looksLikeXlsx(cmpXlsx.buffer)) problems.push(`the comparison's Excel download ("${cmpXlsx.filename}") isn't a real .xlsx file`);
+
+// Swedish and English; the numbers do not move with the language.
+const cmpHeadSv = (await cmpTitle("pa-compare-controls")) ?? "";
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(150);
+const cmpHeadEn = (await cmpTitle("pa-compare-controls")) ?? "";
+const cmpTableEn = (await cmpTitle("pa-compare-table-panel")) ?? "";
+const cmpNameEn = (await cmpRow(7).locator(".pa-name-text").textContent()) ?? "";
+const cmpViewEn = (await pa.locator('.pa-view .panel-btn[data-view="compare"]').textContent()) ?? "";
+console.log(`agreements      : "${cmpHeadSv.trim()}" / "${cmpHeadEn.trim()}", "${cmpTableEn.trim()}", PA16 as "${cmpNameEn}", switch "${cmpViewEn}"`);
+if (cmpHeadSv.trim() !== "Jämför avtalsområden" || cmpHeadEn.trim() !== "Compare agreements" || cmpTableEn.trim() !== "The agreements at 85" || cmpNameEn !== "PA16 section 2" || cmpViewEn !== "Compare agreements") {
+  problems.push(`the comparison's language switch reads "${cmpHeadSv}"/"${cmpHeadEn}"/"${cmpTableEn}"/"${cmpNameEn}"/"${cmpViewEn}"`);
+}
+await cmpFigures(PA_AG_AT_85, "in English");
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(150);
+
+// A phone: nothing widens the page; the grid scrolls inside its own box and the chips wrap.
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(150);
+const cmpOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const cmpGridScrolls = await pa.locator('[data-role="pa-compare-grid-panel"] .scroll').evaluate((box) => box.scrollWidth > box.clientWidth);
+const cmpChipRows = await cmpControls.locator(".pa-chips > *").evaluateAll((items) => new Set(items.map((el) => Math.round(el.getBoundingClientRect().top))).size);
+console.log(`agreements @375px: page overflow ${cmpOverflow}px, grid scrolls ${cmpGridScrolls}, chips in ${cmpChipRows} rows`);
+if (cmpOverflow > 1 || !cmpGridScrolls || cmpChipRows < 2) {
+  problems.push(`at 375px the comparison widens the page by ${cmpOverflow}px (grid scrolls ${cmpGridScrolls}, chips in ${cmpChipRows} rows)`);
+}
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
+
+// Reset puts the picks, the age, the lifespan and the chart back; the single view still says what it did.
+await cmpControls.locator('button.pa-agr[data-scheme="8"]').click();
+await paSetting("paCompareBasis").selectOption("66");
+await cmpControls.locator('button[data-metric="extra"]').click();
+await tab.waitForTimeout(100);
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(150);
+const cmpAfterReset = [(await cmpPressed()).join(","), await paSetting("paCompareBasis").inputValue(), await paSetting("paCompareLifespan").inputValue(), (await cmpLines()).length];
+console.log(`agreements      : after reset ${cmpAfterReset.join(" / ")}`);
+if (cmpAfterReset.join("/") !== "2,4,5,7/best/85/5") problems.push(`Återställ left the comparison at ${cmpAfterReset.join("/")}, expected 2,4,5,7/best/85/5`);
+await pa.locator('.pa-view .panel-btn[data-view="single"]').click();
+await tab.waitForTimeout(150);
+if (!sameList(await paBest(), PA_BEST_DEFAULT) || !(await cmpControls.isHidden())) {
+  problems.push("going back to the single view did not restore its short answer and hide the comparison's controls");
+}
+
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 
@@ -1129,6 +2833,16 @@ await tab.waitForTimeout(50);
 // say whose model it is; and people print a forecast to take to a meeting, so
 // paper is a real output rather than an afterthought.
 
+const pageTitle = await tab.locator("h1").first().textContent();
+const documentTitle = await tab.title();
+console.log(`page title      : h1 "${pageTitle}", document title "${documentTitle}"`);
+if (pageTitle !== "Typfallsmodellen web version") {
+  problems.push(`the page's own h1 reads "${pageTitle}", expected "Typfallsmodellen web version"`);
+}
+if (documentTitle !== "Typfallsmodellen web version") {
+  problems.push(`the document title reads "${documentTitle}", expected "Typfallsmodellen web version"`);
+}
+
 const notice = tab.locator('[data-role="disclaimer"]');
 const noticeText = (await notice.count()) > 0 ? ((await notice.textContent()) ?? "") : "";
 if (!/inofficiell|unofficial/i.test(noticeText)) {
@@ -1137,8 +2851,8 @@ if (!/inofficiell|unofficial/i.test(noticeText)) {
 if (!noticeText.includes("Pensionsmyndigheten")) {
   problems.push("the disclaimer does not name Pensionsmyndigheten");
 }
-if (!noticeText.includes("typfallsmodellen@pensionsmyndigheten.se")) {
-  problems.push("the disclaimer does not give the agency's address for model questions");
+if (noticeText.includes("typfallsmodellen@pensionsmyndigheten.se")) {
+  problems.push("the disclaimer still names the agency's address for model questions, expected it removed");
 }
 
 const closedOnScreen = await tab.locator("details:not([open])").count();
@@ -1237,14 +2951,15 @@ if (shots) {
   console.log(`screenshots     : ${shots}`);
 }
 
-// The PGB dialog's own fit was checked above at this suite's standard 1280px
-// desktop width, where its ~480px cap already clears the grid's old 380px
-// floor on its own -- not a meaningful check of `.pgb-dialog .pgb-grid {
-// min-width: 0; }` specifically, since that rule only matters once the
-// dialog itself is narrower than the floor it removes, which only happens on
-// a phone. Re-checked here at 375px (iPhone SE, the narrowest of the widths
-// this was hand-verified at before this check existed: 375, 390, 1280) in its
-// own short-lived context, rather than resizing `tab` and disturbing every
+// The old PGB grid needed a `<dialog>` to escape the sidebar's own width at
+// a phone size, where even its own `.adv-grid-scroll` box was not enough to
+// keep it from widening the page. The sparse summary table replacing it
+// wraps in the same `.scroll` box every other wide table here already uses
+// (Table 2, the comparison table): a long header can still make that one box
+// scroll sideways on its own, same as Table 2's does, but the page itself
+// must not follow it. Re-checked here at 375px (iPhone SE, the narrowest of
+// the widths this app is hand-verified at: 375, 390, 1280) in its own
+// short-lived context, rather than resizing `tab` and disturbing every
 // assertion above that assumes the 1280px layout.
 const narrowContext = await browser.newContext({ viewport: { width: 375, height: 700 } });
 const narrowTab = await narrowContext.newPage();
@@ -1252,22 +2967,73 @@ await narrowTab.goto(pathToFileURL(page).href);
 await narrowTab.waitForSelector("#app");
 await narrowTab.locator('.mode-toggle .panel-btn[data-mode="advanced"]').click();
 await narrowTab.locator('.adv-group[data-group="pgb"] summary').click();
-await narrowTab.locator('[data-action="pgb-expand"]').click();
+await narrowTab.locator('[data-setting="pgbEntryType"]').selectOption("2"); // Sickness
+const narrowYear = narrowTab.locator('[data-setting="pgbEntryYear"]');
+await narrowYear.fill("2005");
+await narrowYear.dispatchEvent("change");
+const narrowAmount = narrowTab.locator('[data-setting="pgbEntryAmount"]');
+await narrowAmount.fill("200000");
+await narrowAmount.dispatchEvent("change");
+await narrowTab.locator('[data-action="pgb-add-entry"]').click();
 await narrowTab.waitForTimeout(120);
-const narrowMetrics = await narrowTab.locator(".pgb-dialog .adv-grid-scroll").evaluate((el) => ({
-  scrollWidth: el.scrollWidth,
-  clientWidth: el.clientWidth,
+const narrowMetrics = await narrowTab.evaluate(() => ({
+  scrollWidth: document.documentElement.scrollWidth,
+  clientWidth: document.documentElement.clientWidth,
 }));
 console.log(
-  `pgb dialog @375px: scrollWidth ${narrowMetrics.scrollWidth} <= clientWidth ${narrowMetrics.clientWidth}?`,
+  `pgb page @375px : scrollWidth ${narrowMetrics.scrollWidth} <= clientWidth ${narrowMetrics.clientWidth}?`,
 );
 if (narrowMetrics.scrollWidth > narrowMetrics.clientWidth) {
   problems.push(
-    `at a 375px phone width, the PGB dialog still needs horizontal scroll (scrollWidth ` +
-      `${narrowMetrics.scrollWidth} > clientWidth ${narrowMetrics.clientWidth})`,
+    `at a 375px phone width, the PGB summary table widened the whole page (scrollWidth ` +
+      `${narrowMetrics.scrollWidth} > clientWidth ${narrowMetrics.clientWidth}) instead of scrolling in its own box`,
   );
 }
 await narrowContext.close();
+
+// A first draft of the expanded PGB panel floated full-width at every size
+// above 375px too, and a short viewport (or a sidebar scrolled far enough)
+// could put the add-entry form's own fields directly under it -- caught by
+// hand at 900px wide, not by the 375px or 1280px checks around it, since
+// neither happens to put the form there. `.layout`'s own two-column
+// breakpoint is 861px; checked here just above it, in its own short-lived
+// context, by adding a second entry *while the panel is expanded* and
+// confirming the click actually lands instead of hitting the floating
+// panel on top of it.
+const midContext = await browser.newContext({ viewport: { width: 900, height: 700 } });
+const midTab = await midContext.newPage();
+await midTab.goto(pathToFileURL(page).href);
+await midTab.waitForSelector("#app");
+await midTab.locator('.mode-toggle .panel-btn[data-mode="advanced"]').click();
+await midTab.locator('.adv-group[data-group="pgb"] summary').click();
+await midTab.locator('[data-setting="pgbEntryType"]').selectOption("2"); // Sickness
+const midYear = midTab.locator('[data-setting="pgbEntryYear"]');
+await midYear.fill("2005");
+await midYear.dispatchEvent("change");
+const midAmount = midTab.locator('[data-setting="pgbEntryAmount"]');
+await midAmount.fill("200000");
+await midAmount.dispatchEvent("change");
+await midTab.locator('[data-action="pgb-add-entry"]').click();
+await midTab.waitForTimeout(80);
+await midTab.locator('[data-action="pgb-expand"]').click();
+await midTab.waitForTimeout(80);
+await midTab.locator('[data-setting="pgbEntryType"]').selectOption("3"); // Study
+await midYear.fill("2010");
+await midYear.dispatchEvent("change");
+const midSemesters = midTab.locator('[data-setting="pgbEntryStudySemesters"]');
+await midSemesters.fill("1");
+await midSemesters.dispatchEvent("change");
+// A plain `.click()` throws (rather than silently mis-clicking) if the
+// floating panel intercepts the pointer here -- exactly the failure mode
+// the right-hand docking above 860px exists to prevent.
+await midTab.locator('[data-action="pgb-add-entry"]').click({ timeout: 5000 });
+await midTab.waitForTimeout(80);
+const midRows = await midTab.locator(".pgb-summary-table tbody tr").count();
+console.log(`pgb expand @900px: rows=${midRows}, add-entry form reachable while expanded`);
+if (midRows !== 2) {
+  problems.push(`adding a second PGB entry while expanded at 900px left ${midRows} rows, expected 2`);
+}
+await midContext.close();
 
 await browser.close();
 
