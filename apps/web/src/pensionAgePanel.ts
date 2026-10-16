@@ -31,6 +31,13 @@
  * Which alternative's final salary is matched is the reference age's: the
  * others can differ a little once wages grow.
  *
+ * **Two views.** Below the inputs a switch chooses what the results are: the
+ * single-agreement analysis this file builds, or the side-by-side comparison of
+ * all the collective agreements (`pensionAgeCompare.ts`, which has its own
+ * controls and takes the person and the assumptions from the inputs here). Only
+ * the view showing is computed. The inputs, the switch and the comparison's
+ * controls are built once; the results area is rebuilt on every change.
+ *
  * Every visible string is a plain per-language literal, the same way
  * `compare.ts`'s and `mikrosim.ts`'s own new UI text is -- there is no SysLang
  * row for any of it. The field captions that do have one (birth year, start of
@@ -42,7 +49,7 @@ import type { DeathProbabilities, ModelContext, SchemeId, TypfallInput } from "@
 import type { Bounds, Relabel } from "./controls.js";
 import { fieldSet, rangeHint, span } from "./controls.js";
 import { csvExportButton, xlsxExportButton } from "./export.js";
-import { kronor, locale, percent as share } from "./format.js";
+import { kronor, percent as share } from "./format.js";
 import { t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
 import {
@@ -61,10 +68,27 @@ import {
   seriesToXlsxRows,
 } from "./pensionAge.js";
 import type { BreakEven, LifespanRow, Study, StudyInput, StudyOption } from "./pensionAge.js";
+import { createAgreementCompare } from "./pensionAgeCompare.js";
 import { niceTicks, renderLineChart } from "./pensionAgeChart.js";
+import {
+  capital,
+  chip,
+  decimals,
+  h,
+  measureText,
+  mkr,
+  optionCell,
+  optionName,
+  panel,
+  priceText,
+  refName,
+  row,
+  say,
+  signed,
+  tableOf,
+  tkr,
+} from "./pensionAgeUi.js";
 import { cell, headCell } from "./tables.js";
-
-const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
 
 // The sheet's own ranges; duplicated rather than imported for the same reason
 // `compare.ts` and `mikrosim.ts` each duplicate them (neither exports its own).
@@ -89,76 +113,6 @@ export interface PensionAgeHandle {
   setContext(context: ModelContext, deaths: DeathProbabilities): void;
 }
 
-// ---------------------------------------------------------------- helpers ---
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function decimals(value: number, digits: number, l: Lang): string {
-  return new Intl.NumberFormat(locale(l), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
-}
-
-/** Thousands of kronor, no decimals. */
-const tkr = (value: number, l: Lang): string => kronor(Math.round(value / 1000), l);
-const signed = (text: string, value: number): string => (value > 0 ? `+${text}` : text);
-
-/** An amount in millions of kronor, two decimals. */
-const mkr = (value: number, l: Lang): string => decimals(value / 1e6, 2, l);
-
-const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
-
-/** A section with the sheet's own gold title bar, the way `main.ts`'s `section()` builds one. */
-function panel(title: string, actions: readonly HTMLElement[] = []): { section: HTMLElement; body: HTMLElement } {
-  const section = h("section", "panel");
-  const head = h("h2");
-  head.append(h("span", undefined, title));
-  if (actions.length > 0) {
-    const box = h("div", "panel-actions");
-    box.append(...actions);
-    head.append(box);
-  }
-  const body = h("div", "pa-body");
-  section.append(head, body);
-  return { section, body };
-}
-
-function tableOf(role: string, extra: string, head: readonly HTMLTableCellElement[], rows: readonly HTMLTableRowElement[]): HTMLElement {
-  const wrap = h("div", "scroll");
-  const table = h("table", `table pa-table ${extra}`);
-  table.dataset.role = role;
-  const thead = h("thead");
-  const headRow = h("tr");
-  headRow.append(...head);
-  thead.append(headRow);
-  const tbody = h("tbody");
-  tbody.append(...rows);
-  table.append(thead, tbody);
-  wrap.append(table);
-  return wrap;
-}
-
-function row(cells: readonly HTMLTableCellElement[], data: Record<string, string> = {}): HTMLTableRowElement {
-  const tr = h("tr");
-  for (const [key, value] of Object.entries(data)) tr.dataset[key] = value;
-  tr.append(...cells);
-  return tr;
-}
-
-/** A table cell carrying an alternative's line key beside its label. */
-function optionCell(option: StudyOption, text: string): HTMLTableCellElement {
-  const td = cell("");
-  td.append(h("span", `pa-key pa-key-${option.slot}`), document.createTextNode(text));
-  return td;
-}
-
-function chip(option: StudyOption): HTMLElement {
-  return h("span", `pa-chip pa-chip-${option.slot}`, String(option.par));
-}
-
 // ------------------------------------------------------------------ panel ---
 
 export function createPensionAgePanel(lang: Lang, getForecastInput: () => TypfallInput): PensionAgeHandle {
@@ -168,6 +122,7 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   /** The typed final salary, per month; read only while `salaryAs` is "final". */
   let finalTarget = 0;
   let riktalderLocked = true;
+  let view: "single" | "compare" = "single";
   let context: ModelContext | undefined;
   let deaths: DeathProbabilities | undefined;
   /** What the last run worked out, for the two field hints that quote it. */
@@ -187,7 +142,32 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   inputsSection.append(inputsHead, intro, grid);
 
   const results = h("div", "pa-results");
-  element.append(inputsSection, results);
+
+  // The switch between the two views, and the comparison's own controls.
+  const viewBar = h("div", "pa-view");
+  const viewLabel = h("span", "pa-pick-label");
+  const viewBox = h("div", "panel-toggle pa-toggle");
+  viewBox.setAttribute("role", "group");
+  const viewButtons = (
+    [
+      { view: "single", sv: "Ett avtalsområde", en: "One agreement" },
+      { view: "compare", sv: "Jämför avtalsområden", en: "Compare agreements" },
+    ] as const
+  ).map((choice) => {
+    const button = h("button", "panel-btn");
+    button.type = "button";
+    button.dataset.view = choice.view;
+    button.addEventListener("click", () => {
+      view = choice.view;
+      sync();
+      redraw();
+    });
+    viewBox.append(button);
+    return { choice, button };
+  });
+  viewBar.append(viewLabel, viewBox);
+  const compare = createAgreementCompare(lang, () => redraw());
+  element.append(inputsSection, viewBar, compare.controls, results);
 
   const importButton = h("button", "export-btn");
   importButton.type = "button";
@@ -411,6 +391,11 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     for (const { choice, button } of basisButtons) {
       button.classList.toggle("active", choice.afterTax === input.afterTax);
     }
+    for (const { choice, button } of viewButtons) {
+      button.classList.toggle("active", choice.view === view);
+      button.setAttribute("aria-pressed", String(choice.view === view));
+    }
+    compare.controls.hidden = view !== "compare";
     for (const relabel of [relabelBorn, relabelSalary, relabelInclude, relabelCentre]) relabel(currentLang);
   }
 
@@ -438,39 +423,13 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     input = defaultStudyInput();
     salaryAs = "monthly";
     riktalderLocked = true;
+    compare.reset();
     normalise();
     sync();
     redraw();
   });
 
   // ---- results -----------------------------------------------------------------
-
-  const refName = (study: Study, l: Lang): string =>
-    study.options[study.reference]?.par === study.riktalder
-      ? say(l, "riktåldern", `the ${t("riktalderCheckbox", l).toLowerCase()}`)
-      : say(l, "referensåldern", "the reference age");
-
-  const optionName = (study: Study, option: StudyOption, l: Lang): string => {
-    const years = say(l, "år", "yrs");
-    if (option.offset === 0) return `${option.par} ${years} (${refName(study, l).replace(/^the /, "")})`;
-    return `${option.par} ${years} (${option.offset > 0 ? "+" : "−"}${Math.abs(option.offset)})`;
-  };
-
-  const priceText = (study: Study, l: Lang): string => {
-    const year = study.referenceYear;
-    if (study.priceBasis === 1) return say(l, `fasta priser (${year})`, `constant prices (${year})`);
-    if (study.priceBasis === 0) return say(l, `dagens (${year}) lönenivå`, `current (${year}) wage level`);
-    return say(l, "löpande priser", "current prices");
-  };
-
-  const measureText = (study: Study, l: Lang): string => {
-    const occupational = study.input.includeOccupational && study.input.scheme !== Scheme.None;
-    const kind = occupational
-      ? say(l, "allmän pension + tjänstepension", "public + occupational pension")
-      : say(l, "allmän pension", "public pension");
-    const tax = study.input.afterTax ? say(l, "efter skatt", "after tax") : say(l, "före skatt", "before tax");
-    return `${kind}, ${tax}`;
-  };
 
   /** "83,4–83,8", or "efter 100" when a later start never catches up within the study. */
   const atText = (items: readonly BreakEven[], l: Lang): string => {
@@ -986,6 +945,13 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     if (salaryAs === "final") {
       effective = { ...input, monthlySalary: monthlySalaryForTarget(input, finalTarget, context, deaths) };
     }
+    if (view === "compare") {
+      const shown = compare.render({ input: effective, chosen: input.scheme, context, deaths });
+      derived = shown.derived;
+      relabelSalary(currentLang);
+      results.replaceChildren(...shown.nodes);
+      return;
+    }
     const study = computeStudy(effective, context, deaths);
     derived = {
       finalSalary: study.options[study.reference]?.finalSalaryMonthly ?? 0,
@@ -1015,6 +981,9 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
       );
     }
     for (const { choice, button } of basisButtons) button.textContent = say(l, choice.sv, choice.en);
+    viewLabel.textContent = say(l, "Resultat", "Results");
+    viewBox.setAttribute("aria-label", say(l, "Vilket resultat som visas", "Which results are shown"));
+    for (const { choice, button } of viewButtons) button.textContent = say(l, choice.sv, choice.en);
   };
   applyText(lang);
   normalise();
@@ -1026,6 +995,7 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
       currentLang = l;
       applyText(l);
       for (const relabel of relabels) relabel(l);
+      compare.relabel(l);
       sync();
       redraw();
     },

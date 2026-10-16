@@ -12,9 +12,12 @@
  * Everything here is pure -- no DOM, no `document` -- so the arithmetic can be
  * unit-tested directly (`apps/web/test/pensionAge.test.ts`), the same split
  * `kpis.ts`/`computeKpis` and `compare.ts`/`applyScenario` already make. What
- * it reuses is `run()` itself, once per alternative retirement age (a run is
- * well under a millisecond, so ten of them per keystroke needs no worker, no
- * memoisation and no debounce -- `main.ts`'s own stated philosophy).
+ * it reuses is `run()` itself, once per alternative retirement age. A run takes
+ * a couple of milliseconds (the engine shares the annuity factors between runs
+ * of one cohort -- `deltal.ts` says why that matters), so seven of them per
+ * keystroke need no worker and no debounce, which is `main.ts`'s own stated
+ * philosophy. The agreement comparison below is eight times that; it is only
+ * computed while its view is showing, and its studies are cached by the caller.
  *
  * The method is the one a static report on the same typfall used first
  * (born 1980, work from 25, 38 500 kr/month; 7 ages around the riktålder):
@@ -56,6 +59,18 @@
  * Every other shared setting (tax, wage profile, own salary path excluded --
  * that is a `TypfallInput` field this tab does not read -- price basis, the
  * "temporary occupational withdrawal" years, ...) applies as in the other tabs.
+ *
+ * **Comparing agreements** (`computeComparison`). The same person, the same
+ * seven alternatives, run once per collective agreement: "Saknar tjänstepension"
+ * is the baseline, and everything an agreement adds is measured against it, so a
+ * figure reads as "what this agreement is worth" and not as a level that mixes
+ * the public pension in. The agreement is the *only* thing that varies -- not
+ * the retirement age, which is shared by every agreement -- so the best age of
+ * each agreement is a fair like-for-like answer. Some agreements are written
+ * for particular birth years (`SCHEME_COHORTS`, taken from the workbook's own
+ * labels). The model does not stop a 1980 cohort from being given ITP-2, and
+ * neither does this: such an agreement is a "what if", marked as one, and left
+ * out of the default selection.
  */
 import {
   RETIREMENT_AGES,
@@ -211,7 +226,7 @@ export interface StudyOption {
   readonly par: number;
   /** The measure, in kronor per year at each age 0..`LAST_AGE`; zero before `par`. */
   readonly annual: readonly number[];
-  /** Of which occupational pension (before tax; zero in the after-tax view, which cannot be split). */
+  /** Of which occupational pension, before tax -- also in the after-tax view, where it cannot be split out of net income and is not shown. */
   readonly occupational: readonly number[];
   /** `cumulative[x]`: kronor paid out before the x-th birthday. */
   readonly cumulative: readonly number[];
@@ -338,6 +353,28 @@ export function breakEven(earlier: StudyOption, later: StudyOption): number | nu
   return null;
 }
 
+/**
+ * Who wins at one lifespan: every alternative's total, the best and the
+ * runner-up, and how far apart they are. Ties go to the earlier age.
+ */
+export function lifespanRow(options: readonly StudyOption[], lifespan: number): LifespanRow {
+  const totals = options.map((o) => o.cumulative[lifespan] ?? 0);
+  const order = totals
+    .map((total, index) => ({ total, index }))
+    .sort((a, b) => b.total - a.total || a.index - b.index);
+  const best = order[0]!;
+  const second = order[1];
+  const margin = second === undefined ? 0 : best.total - second.total;
+  return {
+    lifespan,
+    totals,
+    best: best.index,
+    runnerUp: second?.index ?? best.index,
+    margin,
+    marginShare: best.total > 0 ? margin / best.total : 0,
+  };
+}
+
 /** Runs the study: one `run()` per alternative, then the sums and break-evens. */
 export function computeStudy(input: StudyInput, shared: ModelContext, deaths: DeathProbabilities): Study {
   const context = studyContext(shared);
@@ -355,21 +392,7 @@ export function computeStudy(input: StudyInput, shared: ModelContext, deaths: De
 
   const rows: LifespanRow[] = [];
   for (let lifespan = input.lifespanFrom; lifespan <= input.lifespanTo; lifespan += 1) {
-    const totals = options.map((o) => o.cumulative[lifespan] ?? 0);
-    const order = totals
-      .map((total, index) => ({ total, index }))
-      .sort((a, b) => b.total - a.total || a.index - b.index);
-    const best = order[0]!;
-    const second = order[1];
-    const margin = second === undefined ? 0 : best.total - second.total;
-    rows.push({
-      lifespan,
-      totals,
-      best: best.index,
-      runnerUp: second?.index ?? best.index,
-      margin,
-      marginShare: best.total > 0 ? margin / best.total : 0,
-    });
+    rows.push(lifespanRow(options, lifespan));
   }
 
   const ref = options[reference];
@@ -468,6 +491,276 @@ export function monthlySalaryForTarget(
   return monthlySalaryForFinalSalary(target, (monthlySalary) =>
     finalSalaryOf({ ...input, monthlySalary }, age, shared, deaths),
   );
+}
+
+// ------------------------------------------------------------- agreements ---
+
+/** The agreements in the workbook's own order -- its drop-down's, and so this tab's -- "Saknar tjänstepension" first. */
+export const SCHEME_ORDER: readonly SchemeId[] = [
+  Scheme.None,
+  Scheme.Itp1,
+  Scheme.Itp2,
+  Scheme.SafLo,
+  Scheme.KapKl,
+  Scheme.AkapKr,
+  Scheme.Pa16Avd2,
+  Scheme.Pa16Avd1,
+];
+
+/** The seven that are an agreement: all but the baseline. */
+export const AGREEMENTS: readonly SchemeId[] = SCHEME_ORDER.filter((scheme) => scheme !== Scheme.None);
+
+/** Birth years an agreement is written for; either end may be open. */
+export interface CohortRange {
+  readonly from?: number;
+  readonly to?: number;
+}
+
+/**
+ * The birth years each agreement covers, as the workbook's own labels word them
+ * ("ITP-1 ... födda 1979-", "ITP-2 ... födda före 1979", "AKAP-KR ... födda
+ * 1986-", "PA16 (Avd 2) ... födda före 1988", "PA16 (Avd 1) ... födda 1988 och
+ * senare"). The others carry no year in their label and fit every cohort.
+ * Reality is looser than a label -- KAP-KL and AKAP-KR overlap for those who
+ * chose to switch -- which is why this only marks an agreement as a "what if"
+ * and never removes it.
+ */
+export const SCHEME_COHORTS: Readonly<Partial<Record<SchemeId, CohortRange>>> = {
+  [Scheme.Itp1]: { from: 1979 },
+  [Scheme.Itp2]: { to: 1978 },
+  [Scheme.AkapKr]: { from: 1986 },
+  [Scheme.Pa16Avd2]: { to: 1987 },
+  [Scheme.Pa16Avd1]: { from: 1988 },
+};
+
+export function schemeFitsCohort(scheme: SchemeId, born: number): boolean {
+  const range = SCHEME_COHORTS[scheme];
+  if (range === undefined) return true;
+  return (range.from === undefined || born >= range.from) && (range.to === undefined || born <= range.to);
+}
+
+/** "födda 1979 och senare", "born before 1979" -- undefined for an agreement with no cohort in its label. */
+export function cohortText(scheme: SchemeId, lang: Lang): string | undefined {
+  const range = SCHEME_COHORTS[scheme];
+  if (range?.from !== undefined) return say(lang, `födda ${range.from} och senare`, `born ${range.from} or later`);
+  if (range?.to !== undefined) return say(lang, `födda före ${range.to + 1}`, `born before ${range.to + 1}`);
+  return undefined;
+}
+
+const SCHEME_NAMES: Readonly<
+  Record<SchemeId, { readonly sv: string; readonly en: string; readonly sectorSv: string; readonly sectorEn: string }>
+> = {
+  [Scheme.None]: {
+    sv: "Saknar tjänstepension",
+    en: "No occupational pension",
+    sectorSv: "Inget kollektivavtal",
+    sectorEn: "No collective agreement",
+  },
+  [Scheme.Itp1]: { sv: "ITP-1", en: "ITP-1", sectorSv: "Privatanställda tjänstemän", sectorEn: "Private-sector salaried employees" },
+  [Scheme.Itp2]: { sv: "ITP-2", en: "ITP-2", sectorSv: "Privatanställda tjänstemän", sectorEn: "Private-sector salaried employees" },
+  [Scheme.SafLo]: { sv: "SAF-LO", en: "SAF-LO", sectorSv: "Privatanställda arbetare", sectorEn: "Private-sector blue-collar workers" },
+  [Scheme.KapKl]: {
+    sv: "KAP-KL",
+    en: "KAP-KL",
+    sectorSv: "Kommunal- och regionalanställda",
+    sectorEn: "Municipal and regional employees",
+  },
+  [Scheme.AkapKr]: {
+    sv: "AKAP-KR",
+    en: "AKAP-KR",
+    sectorSv: "Kommunal- och regionalanställda",
+    sectorEn: "Municipal and regional employees",
+  },
+  [Scheme.Pa16Avd2]: { sv: "PA16 avd 2", en: "PA16 section 2", sectorSv: "Statligt anställda", sectorEn: "Central government employees" },
+  [Scheme.Pa16Avd1]: { sv: "PA16 avd 1", en: "PA16 section 1", sectorSv: "Statligt anställda", sectorEn: "Central government employees" },
+};
+
+/** The short name a table row or a chart label carries. */
+export function schemeName(scheme: SchemeId, lang: Lang): string {
+  const names = SCHEME_NAMES[scheme];
+  return say(lang, names.sv, names.en);
+}
+
+/** Who the agreement is for: "Privatanställda tjänstemän". */
+export function schemeSector(scheme: SchemeId, lang: Lang): string {
+  const names = SCHEME_NAMES[scheme];
+  return say(lang, names.sectorSv, names.sectorEn);
+}
+
+/** The agreements a comparison shows until someone picks: those the cohort can belong to, and the one chosen in the inputs. */
+export function defaultSchemes(born: number, chosen: SchemeId): readonly SchemeId[] {
+  return AGREEMENTS.filter((scheme) => schemeFitsCohort(scheme, born) || scheme === chosen);
+}
+
+export interface AgreementEntry {
+  readonly scheme: SchemeId;
+  /** False when the agreement is written for other birth years than this person's. */
+  readonly fits: boolean;
+  /** The seven alternatives under this agreement; its `input` carries the agreement. */
+  readonly study: Study;
+}
+
+export interface Comparison {
+  readonly input: StudyInput;
+  /** The baseline (no agreement) first, then the chosen agreements in the workbook's order. */
+  readonly entries: readonly AgreementEntry[];
+  /** The alternative retirement ages, ascending -- the same under every agreement. */
+  readonly ages: readonly number[];
+  /** Index into `ages` of the reference age. */
+  readonly reference: number;
+  /** The "lever till" ages the study covers. */
+  readonly lifespans: readonly number[];
+  /** The distinct warnings any of the runs raised, in the order met. */
+  readonly warnings: readonly string[];
+}
+
+/**
+ * What a cached agreement study is valid for: everything in the input but the
+ * agreement itself, which is what a comparison varies. A caller keeps its
+ * studies while this and the shared context stay the same, and empties the
+ * cache when either changes.
+ */
+export function comparisonKey(input: StudyInput): string {
+  const { scheme, includeOccupational, ...rest } = input;
+  return JSON.stringify(rest);
+}
+
+/**
+ * One study per agreement. `cache` holds studies already computed for the same
+ * `comparisonKey` and context, and is filled in with any that were not.
+ */
+export function computeComparison(
+  input: StudyInput,
+  schemes: readonly SchemeId[],
+  shared: ModelContext,
+  deaths: DeathProbabilities,
+  cache: Map<SchemeId, Study> = new Map(),
+): Comparison {
+  const entries: AgreementEntry[] = [];
+  for (const scheme of SCHEME_ORDER) {
+    if (scheme !== Scheme.None && !schemes.includes(scheme)) continue;
+    let study = cache.get(scheme);
+    if (study === undefined) {
+      study = computeStudy({ ...input, scheme, includeOccupational: true }, shared, deaths);
+      cache.set(scheme, study);
+    }
+    entries.push({ scheme, fits: schemeFitsCohort(scheme, input.born), study });
+  }
+
+  const baseline = entries[0]!.study;
+  const warnings: string[] = [];
+  for (const entry of entries) {
+    for (const message of entry.study.warnings) if (!warnings.includes(message)) warnings.push(message);
+  }
+  const lifespans: number[] = [];
+  for (let lifespan = input.lifespanFrom; lifespan <= input.lifespanTo; lifespan += 1) lifespans.push(lifespan);
+  return {
+    input,
+    entries,
+    ages: baseline.options.map((o) => o.par),
+    reference: baseline.reference,
+    lifespans,
+    warnings,
+  };
+}
+
+/** What a total is measured at: the best alternative for each lifespan, or one retirement age. */
+export type AgeBasis = "best" | number;
+
+export type Metric = "total" | "extra";
+
+/** The alternative a figure is read at: the best one for `lifespan`, or the asked-for age (the reference if it is not offered). */
+function optionAt(entry: AgreementEntry, lifespan: number, basis: AgeBasis): StudyOption {
+  const { options, reference } = entry.study;
+  if (basis !== "best") {
+    const fixed = options.find((o) => o.par === basis);
+    if (fixed !== undefined) return fixed;
+    return options[reference]!;
+  }
+  return options[lifespanRow(options, lifespan).best]!;
+}
+
+/** Kronor paid out before the `lifespan`-year birthday, at the best age or at a fixed one. */
+export function totalFor(entry: AgreementEntry, lifespan: number, basis: AgeBasis): number {
+  return optionAt(entry, lifespan, basis).cumulative[lifespan] ?? 0;
+}
+
+export interface ComparisonRow {
+  readonly entry: AgreementEntry;
+  /** The alternative the row's figures are at. */
+  readonly option: StudyOption;
+  /** The best alternative at this lifespan, whatever the basis. */
+  readonly best: StudyOption;
+  /** The best and the runner-up are within `NEAR_TIE` of each other. */
+  readonly tie: boolean;
+  readonly total: number;
+  /** `total` minus the baseline's at the same basis. */
+  readonly extra: number;
+  /** `extra` as a share of the baseline's total. */
+  readonly extraShare: number;
+  /** The first year's pension per month, at `option`. */
+  readonly monthly: number;
+  /** Of which occupational pension, before tax. */
+  readonly occupationalMonthly: number;
+}
+
+/** One row per entry, the baseline first: what each agreement pays by `lifespan`. */
+export function comparisonRows(comparison: Comparison, lifespan: number, basis: AgeBasis): ComparisonRow[] {
+  const baseline = comparison.entries[0]!;
+  const baselineTotal = totalFor(baseline, lifespan, basis);
+  return comparison.entries.map((entry) => {
+    const row = lifespanRow(entry.study.options, lifespan);
+    const option = optionAt(entry, lifespan, basis);
+    const total = option.cumulative[lifespan] ?? 0;
+    const extra = total - baselineTotal;
+    return {
+      entry,
+      option,
+      best: entry.study.options[row.best]!,
+      tie: row.marginShare < NEAR_TIE,
+      total,
+      extra,
+      extraShare: baselineTotal > 0 ? extra / baselineTotal : 0,
+      monthly: option.firstYearMonthly,
+      occupationalMonthly: (option.occupational[option.par] ?? 0) / 12,
+    };
+  });
+}
+
+export interface AgreementSeries {
+  readonly entry: AgreementEntry;
+  /** (lifespan, kronor): the total, or what the agreement adds to the baseline's. */
+  readonly points: readonly (readonly [number, number])[];
+}
+
+/** One line per agreement over the lifespans. The baseline adds nothing to itself, so it has no line in `extra`. */
+export function totalSeries(comparison: Comparison, basis: AgeBasis, metric: Metric): AgreementSeries[] {
+  const baseline = comparison.entries[0]!;
+  const out: AgreementSeries[] = [];
+  for (const entry of comparison.entries) {
+    if (metric === "extra" && entry === baseline) continue;
+    const points = comparison.lifespans.map((lifespan) => {
+      const total = totalFor(entry, lifespan, basis);
+      return [lifespan, metric === "total" ? total : total - totalFor(baseline, lifespan, basis)] as const;
+    });
+    out.push({ entry, points });
+  }
+  return out;
+}
+
+export interface AgeSpread {
+  readonly lifespan: number;
+  /** The lowest and the highest best age any entry has at this lifespan. */
+  readonly min: number;
+  readonly max: number;
+}
+
+/** How far apart the agreements' best ages are, lifespan by lifespan. */
+export function bestAgeSpread(comparison: Comparison): AgeSpread[] {
+  return comparison.lifespans.map((lifespan) => {
+    const ages = comparison.entries.map((entry) => entry.study.options[lifespanRow(entry.study.options, lifespan).best]!.par);
+    return { lifespan, min: Math.min(...ages), max: Math.max(...ages) };
+  });
 }
 
 // ----------------------------------------------------------------- export ---
@@ -570,6 +863,50 @@ export function seriesToXlsxRows(study: Study, lang: Lang): SheetData {
       ...study.options.map((o) => (age >= o.par ? kronorCell((o.annual[age] ?? 0) / 12) : "")),
       ...study.options.map((o) => (age >= o.par ? kronorCell(o.cumulative[age] ?? 0) : "")),
     ]);
+  }
+  return rows;
+}
+
+/** The comparison's two numbers per agreement and lifespan: its best age, and what it pays in total at that age. */
+function comparisonHeader(comparison: Comparison, lang: Lang): string[] {
+  const tax = comparison.input.afterTax ? say(lang, "efter skatt", "after tax") : say(lang, "före skatt", "before tax");
+  return [
+    say(lang, "Lever till (år)", "Lifespan (years)"),
+    ...comparison.entries.flatMap((entry) => {
+      const name = schemeName(entry.scheme, lang);
+      return [
+        `${name}: ${say(lang, "bästa ålder", "best age")}`,
+        `${name}: ${say(lang, `total ${tax} (kr)`, `total ${tax} (SEK)`)}`,
+      ];
+    }),
+  ];
+}
+
+function comparisonCells(comparison: Comparison, lifespan: number): { age: number; total: number }[] {
+  return comparison.entries.map((entry) => {
+    const option = optionAt(entry, lifespan, "best");
+    return { age: option.par, total: option.cumulative[lifespan] ?? 0 };
+  });
+}
+
+export function comparisonToCsv(comparison: Comparison, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const lines = [csvLine(comparisonHeader(comparison, lang), delimiter)];
+  for (const lifespan of comparison.lifespans) {
+    lines.push(
+      csvLine(
+        [String(lifespan), ...comparisonCells(comparison, lifespan).flatMap((c) => [String(c.age), whole(c.total)])],
+        delimiter,
+      ),
+    );
+  }
+  return lines.join("\r\n");
+}
+
+export function comparisonToXlsxRows(comparison: Comparison, lang: Lang): SheetData {
+  const rows: SheetData = [comparisonHeader(comparison, lang)];
+  for (const lifespan of comparison.lifespans) {
+    rows.push([lifespan, ...comparisonCells(comparison, lifespan).flatMap((c) => [c.age, kronorCell(c.total)])]);
   }
   return rows;
 }

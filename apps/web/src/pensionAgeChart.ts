@@ -1,16 +1,18 @@
 /**
- * "Bästa pensionsålder"'s three line charts, in the frame every other figure
- * here uses (`chart.ts`'s `frame`/`legend`/`newSvg`, the same `.figure`,
- * `.grid`, `.tick`, `.line`, `.tooltip` and `.crosshair` rules in styles.css).
+ * "Bästa pensionsålder"'s line charts (three for one agreement, one more for the
+ * comparison of agreements), in the frame every other figure here uses
+ * (`chart.ts`'s `frame`/`legend`/`newSvg`, the same `.figure`, `.grid`, `.tick`,
+ * `.line`, `.tooltip` and `.crosshair` rules in styles.css).
  *
- * They are line charts with up to seven series that differ only in *when they
- * start* -- one per alternative retirement age -- which none of the existing
- * figures draws: `renderFigure1` plots one run's rows against age, and
- * `renderCompareChart` one row set per scenario, all over the same ages. The
- * hover readout is therefore its own (`chart.ts`'s `hover()` prints every
- * series at every point, and here a series has no value before its start).
+ * The three for one agreement are line charts with up to seven series that
+ * differ only in *when they start* -- one per alternative retirement age --
+ * which none of the existing figures draws: `renderFigure1` plots one run's rows
+ * against age, and `renderCompareChart` one row set per scenario, all over the
+ * same ages. The hover readout is therefore its own (`chart.ts`'s `hover()`
+ * prints every series at every point, and here a series has no value before its
+ * start).
  *
- * Colours are not categorical hues but a diverging scale around the reference
+ * Their colours are not categorical hues but a diverging scale around the reference
  * age: warm steps for alternatives earlier than it, cool steps for later ones,
  * and plain ink (`--text-primary`) for the reference itself -- the same
  * "always-legible ink" reasoning `renderMikrosimChart`'s disposable-income
@@ -30,20 +32,50 @@
  * the labels can be spread apart without moving any of them far from their own
  * line; otherwise only the two extremes and the reference are labelled, rather
  * than nudging seven labels into a column that no longer sits beside its line.
+ *
+ * The agreement comparison draws the same chart with one line per collective
+ * agreement instead of one per retirement age. There the colour is the
+ * agreement's own (`--fig-ag-*`, categorical: identity, not order) and the
+ * baseline is the heavy ink line, so a series says which of the two it is by
+ * giving `colour`/`emphasis`/`essential` itself; a series that gives none of
+ * them behaves exactly as before.
  */
 import { HEIGHT, PLOT, WIDTH, el, frame, label, legend, newSvg } from "./chart.js";
 import type { SeriesMeta } from "./chart.js";
 import type { Lang } from "./i18n.js";
 import type { Slot } from "./pensionAge.js";
 
-/** Room on the right for the end labels the shared `PLOT` leaves none for. */
-const RIGHT = WIDTH - 38;
-const FRAME = { left: PLOT.left, right: RIGHT, top: PLOT.top, bottom: PLOT.bottom } as const;
+/** Room on the right for the end labels the shared `PLOT` leaves none for: a retirement age is two digits. */
+const END_ROOM = 38;
+
+interface Frame {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/** The plot area: the shared `PLOT`, less the room the end labels ask for. */
+const frameOf = (spec: LineChartSpec): Frame => ({
+  left: PLOT.left,
+  right: WIDTH - (spec.endRoom ?? END_ROOM),
+  top: PLOT.top,
+  bottom: PLOT.bottom,
+});
 
 export interface ChartSeries {
-  readonly slot: Slot;
+  /** The retirement-age slot whose colour and weight this line takes (the reference's is heavy). */
+  readonly slot?: Slot;
+  /** A colour token -- a custom property name such as "--fig-ag-4" -- in place of the slot's. */
+  readonly colour?: string;
+  /** Drawn last and heavier than the rest. Defaults to the reference age's slot. */
+  readonly emphasis?: boolean;
+  /** Labelled at its end even where the labels are crowded. Defaults to the two extremes and the reference age. */
+  readonly essential?: boolean;
   /** The retirement age this line is -- a stable handle for tests and the end label. */
-  readonly par: number;
+  readonly par?: number;
+  /** The agreement this line is (a `SchemeId`) -- the same kind of handle, for the comparison. */
+  readonly agreement?: number;
   /** Legend and tooltip text. */
   readonly name: string;
   /** Short label beside the last point. */
@@ -72,6 +104,8 @@ export interface LineChartSpec {
   readonly series: readonly ChartSeries[];
   /** Mark where each line starts (the charts whose lines begin at different ages). */
   readonly startDots?: boolean;
+  /** Pixels (of the 760-wide drawing) kept free on the right for the end labels; a name needs more than an age. */
+  readonly endRoom?: number;
   /** Short notes inside the plot, at its top-left and bottom-left. */
   readonly annotations?: { readonly top?: string; readonly bottom?: string };
 }
@@ -137,10 +171,18 @@ function spread(ys: readonly number[], gap: number): { positions: number[]; shif
 
 const cssVar = (slot: Slot): string => `--fig-pa-${slot}`;
 
+/** The custom property a line is coloured by; ink when it names neither a colour nor a slot. */
+const colourOf = (series: ChartSeries): string =>
+  series.colour ?? (series.slot === undefined ? "--text-primary" : cssVar(series.slot));
+const isHeavy = (series: ChartSeries): boolean => series.emphasis ?? series.slot === "z";
+const isEssential = (series: ChartSeries): boolean =>
+  series.essential ?? (series.slot === "m3" || series.slot === "z" || series.slot === "p3");
+
 // ----------------------------------------------------------------- chart ---
 
 export function renderLineChart(spec: LineChartSpec): HTMLElement {
   const { lang } = spec;
+  const FRAME = frameOf(spec);
   const svg = newSvg(spec.title);
   svg.setAttribute("tabindex", "0");
 
@@ -176,8 +218,8 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
   if (spec.annotations?.top) svg.append(label(spec.annotations.top, FRAME.left + 8, FRAME.top + 14, "tick pa-note"));
   if (spec.annotations?.bottom) svg.append(label(spec.annotations.bottom, FRAME.left + 8, FRAME.bottom - 8, "tick pa-note"));
 
-  // The lines, the reference last so it lies on top of its neighbours.
-  const drawn = [...spec.series].sort((a, b) => Number(a.slot === "z") - Number(b.slot === "z"));
+  // The lines, the heavy one last so it lies on top of its neighbours.
+  const drawn = [...spec.series].sort((a, b) => Number(isHeavy(a)) - Number(isHeavy(b)));
   const ends: { series: ChartSeries; y: number }[] = [];
   for (const series of drawn) {
     if (series.points.length === 0) continue;
@@ -185,21 +227,22 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
     const line = el("polyline", {
       points,
       fill: "none",
-      stroke: `var(${cssVar(series.slot)})`,
-      class: series.slot === "z" ? "line pa-line pa-line-z" : "line pa-line",
+      stroke: `var(${colourOf(series)})`,
+      class: isHeavy(series) ? "line pa-line pa-line-z" : "line pa-line",
     });
-    line.dataset.par = String(series.par);
+    if (series.par !== undefined) line.dataset.par = String(series.par);
+    if (series.agreement !== undefined) line.dataset.agreement = String(series.agreement);
     svg.append(line);
 
     const first = series.points[0]!;
     const last = series.points[series.points.length - 1]!;
-    if (spec.startDots) svg.append(dot(x(first[0]), y(first[1]), series.slot));
-    svg.append(dot(x(last[0]), y(last[1]), series.slot));
+    if (spec.startDots) svg.append(dot(x(first[0]), y(first[1]), colourOf(series)));
+    svg.append(dot(x(last[0]), y(last[1]), colourOf(series)));
     ends.push({ series, y: y(last[1]) });
   }
 
-  // End labels: all of them if they fit with a small nudge, else the extremes and the reference.
-  const sets = [ends, ends.filter((e) => e.series.slot === "m3" || e.series.slot === "z" || e.series.slot === "p3")];
+  // End labels: all of them if they fit with a small nudge, else the essential ones.
+  const sets = [ends, ends.filter((e) => isEssential(e.series))];
   for (const [attempt, set] of sets.entries()) {
     const { positions, shift } = spread(set.map((e) => e.y), 13);
     if (shift > (attempt === 0 ? 5 : 9)) continue;
@@ -207,22 +250,22 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
     break;
   }
 
-  const key: SeriesMeta[] = spec.series.map((s) => ({
-    key: s.slot,
+  const key: SeriesMeta[] = spec.series.map((s, i) => ({
+    key: s.slot ?? `line-${s.agreement ?? i}`,
     name: () => s.name,
-    colour: cssVar(s.slot),
+    colour: colourOf(s),
     mark: "line",
     dashed: false,
   }));
   const figure = frame(spec.title, spec.subtitle, svg, legend(key, lang), spec.note ? [spec.note] : []);
   figure.dataset.role = spec.role;
 
-  attachHover(svg, figure, spec, x, y);
+  attachHover(svg, figure, spec, FRAME, x, y);
   return figure;
 }
 
-function dot(cx: number, cy: number, slot: Slot): SVGCircleElement {
-  return el("circle", { cx, cy, r: 4, fill: `var(${cssVar(slot)})`, stroke: "var(--surface-raised)", "stroke-width": 2 });
+function dot(cx: number, cy: number, colour: string): SVGCircleElement {
+  return el("circle", { cx, cy, r: 4, fill: `var(${colour})`, stroke: "var(--surface-raised)", "stroke-width": 2 });
 }
 
 // ----------------------------------------------------------------- hover ---
@@ -236,6 +279,7 @@ function attachHover(
   svg: SVGSVGElement,
   figure: HTMLElement,
   spec: LineChartSpec,
+  FRAME: Frame,
   x: (age: number) => number,
   y: (value: number) => number,
 ): void {
@@ -280,7 +324,7 @@ function attachHover(
       row.className = "tooltip-row";
       const swatch = document.createElement("span");
       swatch.className = "swatch swatch-line-solid";
-      swatch.style.borderTopColor = `var(${cssVar(series.slot)})`;
+      swatch.style.borderTopColor = `var(${colourOf(series)})`;
       const name = document.createElement("span");
       name.textContent = series.name;
       const amount = document.createElement("span");
@@ -288,7 +332,7 @@ function attachHover(
       amount.textContent = series.format(value);
       row.append(swatch, name, amount);
       tip.append(row);
-      marks.append(dot(px, y(value), series.slot));
+      marks.append(dot(px, y(value), colourOf(series)));
     });
     tip.hidden = false;
 

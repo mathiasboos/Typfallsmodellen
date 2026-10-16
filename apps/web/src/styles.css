@@ -152,6 +152,36 @@
   --fig-pa-on-p2: #ffffff;
   --fig-pa-on-p3: #ffffff;
 
+  /*
+   * pensionAgeCompare.ts's lines -- one per collective agreement. Here the
+   * colour *is* the identity (which agreement), so these are categorical hues,
+   * fixed per agreement and not per position: switching one off does not repaint
+   * the rest. "Saknar tjänstepension" is the baseline and plain ink.
+   *
+   * The seven hues are the `dataviz` skill's documented categorical set (its
+   * light steps here, its dark steps below). Which agreement gets which hue was
+   * chosen by trying all 5 040 assignments and keeping those where the full
+   * list, in the drop-down's order, and each of the four lists a cohort shows
+   * by default (born before 1979, 1979-85, 1986-87, 1988 or later) clear the
+   * hard gates in both themes against this app's own chart surfaces (#ffffff
+   * light, #003824 dark); this one has the best-separated neighbours -- worst
+   * adjacent colour-blind Delta E 9.2 light and 9.4 dark, normal vision 24.0
+   * and 19.7, against the 8 and 15 the method asks for -- and puts the two
+   * agreements every cohort has (SAF-LO, KAP-KL) on blue and green. Four slots
+   * sit below 3:1 against their surface (aqua, magenta and yellow in light,
+   * green in dark): the relief rule applies, and the comparison ships it --
+   * a legend, an end label on the lines that matter, a hover readout naming
+   * every value, and a table with every number.
+   */
+  --fig-ag-1: var(--text-primary);
+  --fig-ag-2: #eb6834;
+  --fig-ag-3: #1baf7a;
+  --fig-ag-4: #2a78d6;
+  --fig-ag-5: #008300;
+  --fig-ag-6: #e87ba4;
+  --fig-ag-7: #6250d6;
+  --fig-ag-8: #eda100;
+
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -216,6 +246,15 @@
     --fig-pa-on-p1: #000000;
     --fig-pa-on-p2: #000000;
     --fig-pa-on-p3: #000000;
+
+    /* pensionAgeCompare.ts's lines, the same hues at the dark steps -- see the light-theme note above. */
+    --fig-ag-2: #d95926;
+    --fig-ag-3: #199e70;
+    --fig-ag-4: #3987e5;
+    --fig-ag-5: #008300;
+    --fig-ag-6: #d55181;
+    --fig-ag-7: #9085e9;
+    --fig-ag-8: #c98500;
   }
 }
 
@@ -1164,6 +1203,100 @@ body {
 .pa-notes { padding: 0 2px; }
 
 /*
+ * "Jämför avtalsområden" (pensionAgeCompare.ts): the switch between the two
+ * views, the agreement picker, the grid of best ages and the table. The picker's
+ * state is never colour alone -- a pressed chip is bold, ringed and carries a
+ * check, an unpressed one a plus -- and a line key names its agreement in text.
+ */
+.pa-view { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pa-view .panel-toggle { margin: 0; }
+.pa-pick-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pa-pick { display: grid; gap: 6px; margin: 0 0 14px; }
+.pa-grid > .pa-metric { grid-column: 1 / -1; margin: 4px 0 0; }
+.pa-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pa-agr {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.pa-agr .pa-key { margin: 0; width: 18px; height: 4px; flex: none; }
+.pa-agr-name { white-space: nowrap; }
+.pa-agr-note { font-size: 0.68rem; font-weight: 400; color: var(--text-muted); }
+button.pa-agr { cursor: pointer; }
+button.pa-agr:hover { background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+button.pa-agr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.pa-agr::before { content: "+"; display: inline-block; width: 0.8em; text-align: center; font-weight: 700; }
+button.pa-agr[aria-pressed="true"] {
+  font-weight: 700;
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--text-primary);
+}
+button.pa-agr[aria-pressed="true"]::before { content: "✓"; }
+/* An agreement written for other birth years: switchable, but visibly a "what if". */
+.pa-agr-off { border-style: dashed; }
+.pa-agr-base { background: var(--surface-sunken); color: var(--text-primary); }
+
+.pa-key-ag1 { background: var(--fig-ag-1); }
+.pa-key-ag2 { background: var(--fig-ag-2); }
+.pa-key-ag3 { background: var(--fig-ag-3); }
+.pa-key-ag4 { background: var(--fig-ag-4); }
+.pa-key-ag5 { background: var(--fig-ag-5); }
+.pa-key-ag6 { background: var(--fig-ag-6); }
+.pa-key-ag7 { background: var(--fig-ag-7); }
+.pa-key-ag8 { background: var(--fig-ag-8); }
+
+.pa-grid-key {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.pa-grid-key .pa-chip { font-size: 0.78rem; min-width: 2em; padding: 0 6px; }
+.pa-gridtable th, .pa-gridtable td { padding: 4px 2px; }
+.table.pa-gridtable thead th:not(:first-child) { text-align: center; }
+.pa-gridtable td.pa-gcell { text-align: center; }
+.pa-gridtable .pa-chip { min-width: 2.1em; padding: 2px 0; font-size: 0.82rem; }
+.pa-chip sup { margin-left: 1px; font-size: 0.6em; font-weight: 600; }
+/* The lifespan the table and the short answer are read at. */
+.pa-gridtable .pa-read { background: color-mix(in srgb, var(--banner) 30%, transparent); }
+
+/* A bounded first column: the sector and cohort line wraps instead of taking the whole width, in English and on a phone. */
+.table td.pa-name { min-width: 150px; max-width: 210px; text-align: left; white-space: normal; }
+.pa-name-line { display: inline-flex; align-items: center; font-weight: 600; white-space: nowrap; }
+.pa-name-line .pa-key { margin-right: 7px; flex: none; }
+.pa-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.pa-tag {
+  font-size: 0.64rem;
+  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--text-secondary);
+  color: var(--text-secondary);
+}
+.pa-tag-off { border-style: dashed; border-color: var(--text-muted); color: var(--text-muted); }
+.pa-agrtable td.num { white-space: nowrap; }
+.pa-agrtable td.pa-top { font-weight: 700; box-shadow: inset 0 0 0 2px var(--accent); }
+.pa-agrtable tr.pa-mine td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.pa-agrtable tr.pa-base-row td { border-bottom: 1px solid var(--rule); }
+
+/*
  * Print.
  *
  * People take a pension forecast to a meeting, so paper is a real output and
@@ -1206,6 +1339,14 @@ body {
     --fig-pa-on-p1: #000000;
     --fig-pa-on-p2: #ffffff;
     --fig-pa-on-p3: #ffffff;
+
+    --fig-ag-2: #eb6834;
+    --fig-ag-3: #1baf7a;
+    --fig-ag-4: #2a78d6;
+    --fig-ag-5: #008300;
+    --fig-ag-6: #e87ba4;
+    --fig-ag-7: #6250d6;
+    --fig-ag-8: #eda100;
   }
 
   body { font-size: 10pt; }

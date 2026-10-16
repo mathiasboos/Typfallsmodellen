@@ -18,30 +18,48 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { Scheme, defaultContext, lowestPensionAge } from "@typfallsmodellen/engine";
+import { SCHEME_CHOICES, Scheme, defaultContext, lowestPensionAge } from "@typfallsmodellen/engine";
 
 import { loadDeathProbabilities } from "../src/deaths.js";
 import {
+  AGREEMENTS,
   LAST_AGE,
   LIFESPAN_BOUNDS,
   NEAR_TIE,
+  SCHEME_COHORTS,
+  SCHEME_ORDER,
   alternativeAges,
+  bestAgeSpread,
   bestRuns,
   breakEven,
   centreBounds,
+  cohortText,
+  comparisonKey,
+  comparisonRows,
+  comparisonToCsv,
+  comparisonToXlsxRows,
+  computeComparison,
   computeStudy,
+  defaultSchemes,
   defaultStudyInput,
   finalSalaryOf,
+  lifespanRow,
   matrixToCsv,
   monthlySalaryForFinalSalary,
   monthlySalaryForTarget,
   referenceAge,
+  schemeFitsCohort,
+  schemeName,
+  schemeSector,
   seriesToCsv,
   slotOf,
   studyContext,
   studyTypfall,
+  totalFor,
+  totalSeries,
 } from "../src/pensionAge.js";
-import type { StudyOption } from "../src/pensionAge.js";
+import type { Study, StudyOption } from "../src/pensionAge.js";
+import { kronorCell } from "../src/xlsx.js";
 
 const deaths = loadDeathProbabilities();
 const context = defaultContext();
@@ -372,5 +390,326 @@ describe("the exports", () => {
   it("keep the lifespan range inside what the study supports", () => {
     expect(LIFESPAN_BOUNDS.max).toBe(LAST_AGE);
     expect(LIFESPAN_BOUNDS.min).toBeLessThan(base.lifespanFrom);
+  });
+});
+
+// ------------------------------------------------------------------ agreements ---
+
+describe("which agreements fit which birth years", () => {
+  it("follows the cohort each label names", () => {
+    const fits = (born: number) => SCHEME_ORDER.filter((scheme) => schemeFitsCohort(scheme, born));
+    // ITP-1 from 1979, ITP-2 before it; PA16 avd 2 before 1988, avd 1 from it; AKAP-KR from 1986.
+    expect(fits(1960)).toEqual([Scheme.None, Scheme.Itp2, Scheme.SafLo, Scheme.KapKl, Scheme.Pa16Avd2]);
+    expect(fits(1978)).toEqual([Scheme.None, Scheme.Itp2, Scheme.SafLo, Scheme.KapKl, Scheme.Pa16Avd2]);
+    expect(fits(1979)).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.Pa16Avd2]);
+    expect(fits(1980)).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.Pa16Avd2]);
+    expect(fits(1986)).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.AkapKr, Scheme.Pa16Avd2]);
+    expect(fits(1987)).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.AkapKr, Scheme.Pa16Avd2]);
+    expect(fits(1988)).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.AkapKr, Scheme.Pa16Avd1]);
+    expect(fits(2000)).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.AkapKr, Scheme.Pa16Avd1]);
+  });
+
+  it("agrees with the workbook's own labels, so the table cannot drift from them", () => {
+    expect(SCHEME_CHOICES.map((c) => c.value)).toEqual([...SCHEME_ORDER]);
+    for (const choice of SCHEME_CHOICES) {
+      const years = choice.label.match(/\b(?:19|20)\d{2}\b/g);
+      const range = SCHEME_COHORTS[choice.value as (typeof SCHEME_ORDER)[number]];
+      // A label that names a year has a range, and one that does not has none.
+      expect(range !== undefined, choice.label).toBe(years !== null);
+      if (range !== undefined) {
+        // "födda 1979-" / "födda 1986 -" / "födda 1988 och senare" name the first birth year;
+        // "födda före 1979" / "före 1988" name the first one *excluded*.
+        const boundary = range.from ?? range.to! + 1;
+        expect(Number(years![0]), choice.label).toBe(boundary);
+        expect(/före/.test(choice.label), choice.label).toBe(range.to !== undefined);
+      }
+    }
+  });
+
+  it("is worded in both languages, and only for agreements that have a cohort", () => {
+    expect(cohortText(Scheme.Itp1, "sv")).toBe("födda 1979 och senare");
+    expect(cohortText(Scheme.Itp1, "en")).toBe("born 1979 or later");
+    expect(cohortText(Scheme.Itp2, "sv")).toBe("födda före 1979");
+    expect(cohortText(Scheme.Pa16Avd2, "en")).toBe("born before 1988");
+    expect(cohortText(Scheme.SafLo, "sv")).toBeUndefined();
+    expect(cohortText(Scheme.None, "en")).toBeUndefined();
+  });
+
+  it("is named briefly, with who it is for", () => {
+    expect(schemeName(Scheme.None, "sv")).toBe("Saknar tjänstepension");
+    expect(schemeName(Scheme.None, "en")).toBe("No occupational pension");
+    expect(schemeName(Scheme.Itp1, "sv")).toBe("ITP-1");
+    expect(schemeName(Scheme.Pa16Avd1, "sv")).toBe("PA16 avd 1");
+    expect(schemeName(Scheme.Pa16Avd1, "en")).toBe("PA16 section 1");
+    expect(schemeSector(Scheme.SafLo, "sv")).toBe("Privatanställda arbetare");
+    expect(schemeSector(Scheme.KapKl, "en")).toBe("Municipal and regional employees");
+    for (const scheme of SCHEME_ORDER) {
+      expect(schemeName(scheme, "sv").length).toBeGreaterThan(0);
+      expect(schemeSector(scheme, "en").length).toBeGreaterThan(0);
+    }
+  });
+
+  it("picks, until someone picks, the agreements the cohort can belong to and the one chosen", () => {
+    expect(defaultSchemes(1980, Scheme.None)).toEqual([Scheme.Itp1, Scheme.SafLo, Scheme.KapKl, Scheme.Pa16Avd2]);
+    expect(defaultSchemes(1960, Scheme.None)).toEqual([Scheme.Itp2, Scheme.SafLo, Scheme.KapKl, Scheme.Pa16Avd2]);
+    expect(defaultSchemes(1990, Scheme.None)).toEqual([
+      Scheme.Itp1,
+      Scheme.SafLo,
+      Scheme.KapKl,
+      Scheme.AkapKr,
+      Scheme.Pa16Avd1,
+    ]);
+    // An agreement chosen in the inputs is shown even if it does not fit -- it is the one being asked about.
+    expect(defaultSchemes(1980, Scheme.AkapKr)).toEqual([
+      Scheme.Itp1,
+      Scheme.SafLo,
+      Scheme.KapKl,
+      Scheme.AkapKr,
+      Scheme.Pa16Avd2,
+    ]);
+    expect(AGREEMENTS).not.toContain(Scheme.None);
+    expect(AGREEMENTS).toHaveLength(7);
+  });
+});
+
+// ------------------------------------------------------------------ comparison ---
+
+const everyAgreement = computeComparison(base, AGREEMENTS, context, deaths);
+const best = (entry: { study: Study }) =>
+  bestRuns(entry.study)
+    .map((r) => `${r.from === r.to ? r.from : `${r.from}-${r.to}`}:${r.option.par}`)
+    .join(" ");
+const entryFor = (scheme: (typeof SCHEME_ORDER)[number]) => everyAgreement.entries.find((e) => e.scheme === scheme)!;
+
+describe("a comparison of agreements", () => {
+  it("runs the baseline first and then the chosen agreements in the workbook's order", () => {
+    expect(everyAgreement.entries.map((e) => e.scheme)).toEqual([...SCHEME_ORDER]);
+    expect(everyAgreement.entries.map((e) => e.fits)).toEqual([true, true, false, true, true, false, true, false]);
+    const some = computeComparison(base, [Scheme.Pa16Avd2, Scheme.Itp1, Scheme.Pa16Avd2], context, deaths);
+    expect(some.entries.map((e) => e.scheme)).toEqual([Scheme.None, Scheme.Itp1, Scheme.Pa16Avd2]);
+    // The baseline is always there, whether or not it is asked for.
+    expect(computeComparison(base, [], context, deaths).entries.map((e) => e.scheme)).toEqual([Scheme.None]);
+    expect(computeComparison(base, [Scheme.None], context, deaths).entries).toHaveLength(1);
+  });
+
+  it("offers the same alternatives under every agreement, and the lifespans asked for", () => {
+    expect(everyAgreement.ages).toEqual([65, 66, 67, 68, 69, 70, 71]);
+    expect(everyAgreement.ages[everyAgreement.reference]).toBe(68);
+    expect(everyAgreement.lifespans[0]).toBe(80);
+    expect(everyAgreement.lifespans).toHaveLength(16);
+    for (const input of [
+      base,
+      { ...base, born: 1960, centre: 66 },
+      { ...base, born: 1990, centre: 68 },
+      { ...base, centre: 66, lifespanFrom: 84, lifespanTo: 88 },
+    ]) {
+      const comparison = computeComparison(input, AGREEMENTS, context, deaths);
+      for (const entry of comparison.entries) {
+        expect(entry.study.options.map((o) => o.par)).toEqual([...comparison.ages]);
+      }
+    }
+  });
+
+  it("is, for the baseline, exactly the single study with no agreement", () => {
+    const baseline = everyAgreement.entries[0]!;
+    expect(baseline.study.rows.map((r) => r.totals)).toEqual(study.rows.map((r) => r.totals));
+    expect(best(baseline)).toBe("80-82:65 83:66 84-86:68 87-95:71");
+  });
+
+  it("is, for an agreement, the single study with that agreement -- whatever the occupational switch says", () => {
+    const single = computeStudy({ ...base, scheme: Scheme.Itp1 }, context, deaths);
+    expect(entryFor(Scheme.Itp1).study.rows.map((r) => r.totals)).toEqual(single.rows.map((r) => r.totals));
+    // The switch belongs to the single view; a comparison is about the agreements themselves.
+    const off = computeComparison({ ...base, includeOccupational: false }, [Scheme.Itp1], context, deaths);
+    expect(off.entries[1]!.study.rows.map((r) => r.totals)).toEqual(single.rows.map((r) => r.totals));
+  });
+
+  it("finds each agreement's best age per lifespan", () => {
+    expect(best(entryFor(Scheme.Itp1))).toBe("80-82:65 83-84:66 85-87:68 88-95:71");
+    expect(best(entryFor(Scheme.Itp2))).toBe("80-81:65 82:67 83-85:68 86-88:70 89-95:71");
+    expect(best(entryFor(Scheme.SafLo))).toBe("80-83:65 84:66 85-87:68 88-95:71");
+    expect(best(entryFor(Scheme.KapKl))).toBe("80-82:65 83:66 84:67 85-87:68 88-95:71");
+    expect(best(entryFor(Scheme.AkapKr))).toBe("80-82:65 83:66 84-85:68 86-95:71");
+    expect(best(entryFor(Scheme.Pa16Avd2))).toBe("80-82:65 83:66 84-85:68 86-87:69 88-95:71");
+    expect(best(entryFor(Scheme.Pa16Avd1))).toBe("80-82:65 83:66 84-85:67 86-87:68 88-95:71");
+  });
+
+  it("totals what each agreement pays by 80 if retiring at 65, to the krona", () => {
+    const at80 = (scheme: (typeof SCHEME_ORDER)[number]) => Math.round(totalFor(entryFor(scheme), 80, 65));
+    expect(at80(Scheme.None)).toBe(2_972_916);
+    expect(at80(Scheme.Itp1)).toBe(4_238_496);
+    expect(at80(Scheme.Itp2)).toBe(4_181_256);
+    expect(at80(Scheme.SafLo)).toBe(4_207_176);
+    expect(at80(Scheme.KapKl)).toBe(4_222_116);
+    expect(at80(Scheme.AkapKr)).toBe(4_352_796);
+    expect(at80(Scheme.Pa16Avd2)).toBe(4_305_816);
+    expect(at80(Scheme.Pa16Avd1)).toBe(4_675_356);
+  });
+
+  it("is a lifespan row of the study that was computed", () => {
+    const options = study.options;
+    expect(lifespanRow(options, 85)).toEqual(study.rows[5]);
+    expect(lifespanRow(options, 80)).toEqual(study.rows[0]);
+  });
+
+  it("reuses studies it was handed, and only computes the rest", () => {
+    const cache = new Map<(typeof SCHEME_ORDER)[number], Study>();
+    const first = computeComparison(base, [Scheme.Itp1, Scheme.SafLo], context, deaths, cache);
+    expect([...cache.keys()].sort()).toEqual([Scheme.None, Scheme.Itp1, Scheme.SafLo]);
+    const again = computeComparison(base, [Scheme.Itp1, Scheme.SafLo, Scheme.KapKl], context, deaths, cache);
+    expect(cache.size).toBe(4);
+    // The studies it already had are the very same objects, not recomputed copies.
+    expect(again.entries[0]!.study).toBe(first.entries[0]!.study);
+    expect(again.entries[1]!.study).toBe(first.entries[1]!.study);
+    expect(again.entries[2]!.study).toBe(first.entries[2]!.study);
+  });
+
+  it("keys the cache on everything but the agreement", () => {
+    const key = comparisonKey(base);
+    expect(comparisonKey({ ...base, scheme: Scheme.Itp2 })).toBe(key);
+    expect(comparisonKey({ ...base, includeOccupational: false })).toBe(key);
+    for (const changed of [
+      { monthlySalary: 41_000 },
+      { born: 1979 },
+      { startWorkAge: 26 },
+      { yearlyInflation: 0.02 },
+      { realGrowth: 0.018 },
+      { realReturn: 0.02 },
+      { centre: 67 },
+      { lifespanFrom: 81 },
+      { lifespanTo: 90 },
+      { afterTax: true },
+    ]) {
+      expect(comparisonKey({ ...base, ...changed }), JSON.stringify(changed)).not.toBe(key);
+    }
+  });
+
+  it("carries the distinct warnings of every run", () => {
+    expect(everyAgreement.warnings).toEqual([]);
+  });
+});
+
+describe("reading a comparison", () => {
+  it("ranks the agreements at 85 by what each pays at its own best age", () => {
+    const rows = comparisonRows(everyAgreement, 85, "best");
+    const row = (scheme: (typeof SCHEME_ORDER)[number]) => rows.find((r) => r.entry.scheme === scheme)!;
+    expect(rows.map((r) => r.entry.scheme)).toEqual([...SCHEME_ORDER]);
+    expect(Math.round(row(Scheme.None).total)).toBe(3_988_140);
+    expect(row(Scheme.None).extra).toBe(0);
+    expect(row(Scheme.None).extraShare).toBe(0);
+    expect(Math.round(row(Scheme.Itp1).total)).toBe(5_662_368);
+    expect(Math.round(row(Scheme.Itp1).extra)).toBe(1_674_228);
+    expect(row(Scheme.Itp1).extraShare).toBeCloseTo(0.4198, 4);
+    expect(Math.round(row(Scheme.Itp1).occupationalMonthly)).toBe(8207);
+    expect(Math.round(row(Scheme.Itp1).monthly)).toBe(28_401);
+    // PA16 avd 1 is the best of them, and at 67 rather than 68.
+    expect(row(Scheme.Pa16Avd1).option.par).toBe(67);
+    expect(Math.round(row(Scheme.Pa16Avd1).total)).toBe(6_272_268);
+    const totals = rows.map((r) => r.total);
+    expect(rows[totals.indexOf(Math.max(...totals))]!.entry.scheme).toBe(Scheme.Pa16Avd1);
+    expect(rows[totals.indexOf(Math.min(...totals))]!.entry.scheme).toBe(Scheme.None);
+    // At 85 the 66, 67 and 68 totals are within a percent of each other under every agreement.
+    expect(rows.every((r) => r.tie)).toBe(true);
+  });
+
+  it("reads every agreement at one retirement age when asked to", () => {
+    const rows = comparisonRows(everyAgreement, 85, 65);
+    expect(rows.every((r) => r.option.par === 65)).toBe(true);
+    expect(Math.round(rows[0]!.total)).toBe(3_931_176);
+    expect(Math.round(rows[1]!.total)).toBe(5_618_616);
+    expect(Math.round(rows[1]!.extra)).toBe(1_687_440);
+    // The best age is still what it was, whichever age the figures are read at.
+    expect(rows.map((r) => r.best.par)).toEqual([68, 68, 68, 68, 68, 68, 68, 67]);
+    expect(Math.round(rows[1]!.monthly)).toBe(23_529);
+    expect(Math.round(rows[1]!.occupationalMonthly)).toBe(7031);
+  });
+
+  it("falls back to the reference age for a retirement age the study does not offer", () => {
+    const offered = comparisonRows(everyAgreement, 85, 68).map((r) => Math.round(r.total));
+    expect(comparisonRows(everyAgreement, 85, 90).map((r) => Math.round(r.total))).toEqual(offered);
+    expect(comparisonRows(everyAgreement, 85, 90).every((r) => r.option.par === 68)).toBe(true);
+  });
+
+  it("draws one line per agreement over the lifespans", () => {
+    const totals = totalSeries(everyAgreement, "best", "total");
+    expect(totals.map((s) => s.entry.scheme)).toEqual([...SCHEME_ORDER]);
+    expect(totals.every((s) => s.points.length === 16)).toBe(true);
+    expect(totals[1]!.points[0]).toEqual([80, totalFor(entryFor(Scheme.Itp1), 80, "best")]);
+    expect(Math.round(totals[1]!.points[0]![1])).toBe(4_238_496);
+    // Paid-out totals never fall as the lifespan grows.
+    for (const series of totals) {
+      series.points.forEach((point, i) => {
+        if (i > 0) expect(point[1]).toBeGreaterThanOrEqual(series.points[i - 1]![1]);
+      });
+    }
+  });
+
+  it("draws what an agreement adds, with no line for the baseline", () => {
+    const extra = totalSeries(everyAgreement, "best", "extra");
+    expect(extra.map((s) => s.entry.scheme)).toEqual([...AGREEMENTS]);
+    const itp1 = extra[0]!.points.find(([lifespan]) => lifespan === 85)!;
+    expect(Math.round(itp1[1])).toBe(1_674_228);
+    // The same number the table reads for it.
+    expect(itp1[1]).toBe(comparisonRows(everyAgreement, 85, "best")[1]!.extra);
+    // And at a fixed age it is the difference at that age.
+    const fixed = totalSeries(everyAgreement, 65, "extra")[0]!.points.find(([lifespan]) => lifespan === 85)!;
+    expect(Math.round(fixed[1])).toBe(1_687_440);
+  });
+
+  it("shows how far apart the agreements' best ages are at each lifespan", () => {
+    const spread = bestAgeSpread(everyAgreement);
+    expect(spread).toHaveLength(16);
+    const at = (lifespan: number) => spread.find((s) => s.lifespan === lifespan)!;
+    expect([at(80).min, at(80).max]).toEqual([65, 65]);
+    expect([at(83).min, at(83).max]).toEqual([65, 68]);
+    expect([at(85).min, at(85).max]).toEqual([67, 68]);
+    expect([at(86).min, at(86).max]).toEqual([68, 71]);
+    expect([at(95).min, at(95).max]).toEqual([71, 71]);
+    expect(spread.filter((s) => s.min === s.max).map((s) => s.lifespan)).toEqual([80, 81, 89, 90, 91, 92, 93, 94, 95]);
+  });
+
+  it("reads after tax too, where an agreement still adds something", () => {
+    const net = computeComparison({ ...base, afterTax: true }, [Scheme.Itp1], context, deaths);
+    const gross = computeComparison(base, [Scheme.Itp1], context, deaths);
+    const netRows = comparisonRows(net, 85, "best");
+    const grossRows = comparisonRows(gross, 85, "best");
+    expect(netRows[0]!.total).toBeLessThan(grossRows[0]!.total);
+    expect(netRows[1]!.extra).toBeGreaterThan(0);
+    expect(netRows[1]!.extra).toBeLessThan(grossRows[1]!.extra);
+  });
+});
+
+describe("the comparison's exports", () => {
+  it("write each agreement's best age and total, per lifespan", () => {
+    const lines = comparisonToCsv(everyAgreement, "sv").split("\r\n");
+    expect(lines).toHaveLength(17);
+    const header = lines[0]!.split(";");
+    expect(header).toHaveLength(1 + 2 * 8);
+    expect(header.slice(0, 5)).toEqual([
+      "Lever till (år)",
+      "Saknar tjänstepension: bästa ålder",
+      "Saknar tjänstepension: total före skatt (kr)",
+      "ITP-1: bästa ålder",
+      "ITP-1: total före skatt (kr)",
+    ]);
+    expect(lines[1]).toBe("80;65;2972916;65;4238496;65;4181256;65;4207176;65;4222116;65;4352796;65;4305816;65;4675356");
+    expect(lines[16]!.split(";").filter((_, i) => i > 0 && i % 2 === 1).every((age) => age === "71")).toBe(true);
+  });
+
+  it("use the other language's wording and delimiter, and say when it is after tax", () => {
+    const en = comparisonToCsv({ ...everyAgreement, input: { ...base, afterTax: true } }, "en").split("\r\n");
+    expect(en[0]!.split(",").slice(0, 3)).toEqual([
+      "Lifespan (years)",
+      "No occupational pension: best age",
+      "No occupational pension: total after tax (SEK)",
+    ]);
+    expect(en[1]!.startsWith("80,65,2972916,")).toBe(true);
+  });
+
+  it("write the same figures as spreadsheet rows", () => {
+    const rows = comparisonToXlsxRows(everyAgreement, "sv");
+    expect(rows).toHaveLength(17);
+    expect(rows[0]).toHaveLength(17);
+    expect(rows[1]!.slice(0, 5)).toEqual([80, 65, kronorCell(2_972_916), 65, kronorCell(4_238_496)]);
   });
 });

@@ -2533,6 +2533,297 @@ if (paRibbonRows < 2) problems.push("the sixteen answer boxes did not wrap onto 
 await tab.setViewportSize({ width: 1280, height: 1000 });
 await tab.waitForTimeout(100);
 
+// ---- Jämför avtalsområden ---------------------------------------------------
+//
+// The tab's second view: the same person under each collective agreement,
+// side by side. What is checked is that the switch reaches it, that the
+// agreements are the ones the cohort can belong to until somebody picks, that
+// every number on the page is the engine's (the totals below are what
+// `pensionAge.test.ts` pins against it, and the ITP-1 line reproduces the
+// single view's 80/65 total above to the krona), and that each control --
+// agreement chips, retirement age, the lifespan to read at, the chart toggle --
+// reaches the figure, the grid and the table it should.
+
+const expandRuns = (text) =>
+  text.split(" ").flatMap((run) => {
+    const [range, age] = run.split(":");
+    const [from, to = from] = range.split("-").map(Number);
+    return Array.from({ length: to - from + 1 }, () => Number(age));
+  });
+// Each agreement's best age at lifespans 80..95, born 1980, the workbook's assumptions.
+const PA_AG_RUNS = {
+  1: "80-82:65 83:66 84-86:68 87-95:71",
+  2: "80-82:65 83-84:66 85-87:68 88-95:71",
+  3: "80-81:65 82:67 83-85:68 86-88:70 89-95:71",
+  4: "80-83:65 84:66 85-87:68 88-95:71",
+  5: "80-82:65 83:66 84:67 85-87:68 88-95:71",
+  6: "80-82:65 83:66 84-85:68 86-95:71",
+  7: "80-82:65 83:66 84-85:68 86-87:69 88-95:71",
+  8: "80-82:65 83:66 84-85:67 86-87:68 88-95:71",
+};
+// Total / added over having no agreement, in kronor, at the best age, by agreement (1 = none, 2 = ITP-1, 4 = SAF-LO, 5 = KAP-KL, 7 = PA16 avd 2).
+const PA_AG_AT_85 = { 1: [3988140, 0], 2: [5662368, 1674228], 4: [5606472, 1618332], 5: [5661348, 1673208], 7: [5813328, 1825188] };
+const PA_AG_AT_90 = { 1: [5233356, 0], 2: [7422612, 2189256], 4: [7353072, 2119716], 5: [7421244, 2187888], 7: [7655400, 2422044] };
+const PA_AG_AT_85_RETIRING_65 = { 1: [3931176, 0], 2: [5618616, 1687440], 4: [5576856, 1645680], 5: [5596776, 1665600], 7: [5708376, 1777200] };
+
+const cmpControls = pa.locator('[data-role="pa-compare-controls"]');
+const cmpPressed = () =>
+  cmpControls
+    .locator("button.pa-agr")
+    .evaluateAll((buttons) => buttons.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => Number(b.dataset.scheme)));
+const cmpGrid = () =>
+  pa.locator('[data-role="pa-compare-grid"] tbody tr').evaluateAll((rows) =>
+    rows.map((tr) => ({ scheme: Number(tr.dataset.scheme), best: [...tr.querySelectorAll("td.pa-gcell")].map((td) => Number(td.dataset.best)) })),
+  );
+const cmpRow = (scheme) => pa.locator(`[data-role="pa-compare-table"] tr[data-scheme="${scheme}"]`);
+const cmpKr = async (scheme, nth) => Number(await cmpRow(scheme).locator("td[data-kr]").nth(nth).getAttribute("data-kr"));
+const cmpFigures = async (expected, label) => {
+  const got = {};
+  for (const scheme of Object.keys(expected)) got[scheme] = [await cmpKr(scheme, 0), await cmpKr(scheme, 1)];
+  if (JSON.stringify(got) !== JSON.stringify(expected)) {
+    problems.push(`${label}: the table reads ${JSON.stringify(got)}, expected ${JSON.stringify(expected)}`);
+  }
+};
+const cmpLines = () => pa.locator('[data-role="pa-fig-compare"] svg polyline.pa-line').evaluateAll((lines) => lines.map((l) => Number(l.dataset.agreement)));
+const cmpTitle = (role) => pa.locator(`[data-role="${role}"] > h2 span, [data-role="${role}"] figcaption`).first().textContent();
+
+// The switch: closed by default, the single view's boxes gone once it is open.
+const cmpHiddenAtFirst = await cmpControls.isHidden();
+const cmpViewButtons = await pa.locator(".pa-view .panel-btn").count();
+await pa.locator('.pa-view .panel-btn[data-view="compare"]').click();
+await tab.waitForTimeout(150);
+const cmpShown = await cmpControls.isVisible();
+const cmpRibbonGone = (await pa.locator('[data-role="pa-ribbon"]').count()) === 0;
+console.log(`agreements      : switch ${cmpViewButtons} buttons, controls hidden at first ${cmpHiddenAtFirst}, shown ${cmpShown}, single boxes gone ${cmpRibbonGone}`);
+if (cmpViewButtons !== 2 || !cmpHiddenAtFirst || !cmpShown || !cmpRibbonGone) {
+  problems.push("the Jämför avtalsområden switch does not open and close the comparison");
+}
+
+// Until somebody picks: the agreements a 1980 cohort can belong to.
+const cmpDefault = await cmpPressed();
+const cmpOffCohort = await cmpControls.locator("button.pa-agr.pa-agr-off").evaluateAll((buttons) => buttons.map((b) => Number(b.dataset.scheme)));
+console.log(`agreements      : picked ${cmpDefault.join(",")}, marked "what if" ${cmpOffCohort.join(",")}`);
+if (cmpDefault.join(",") !== "2,4,5,7" || cmpOffCohort.join(",") !== "3,6,8") {
+  problems.push(`a 1980 cohort starts with agreements ${cmpDefault.join(",")} picked and ${cmpOffCohort.join(",")} marked "what if", expected 2,4,5,7 and 3,6,8`);
+}
+
+// The grid: every agreement's best age at every lifespan, to the engine's.
+const cmpRows = await cmpGrid();
+console.log(`agreements      : grid rows ${cmpRows.map((r) => r.scheme).join(",")}`);
+if (cmpRows.map((r) => r.scheme).join(",") !== "1,2,4,5,7") {
+  problems.push(`the grid has rows for ${cmpRows.map((r) => r.scheme).join(",")}, expected the baseline and 2,4,5,7`);
+}
+for (const row of cmpRows) {
+  if (!sameList(row.best, expandRuns(PA_AG_RUNS[row.scheme]))) {
+    problems.push(`agreement ${row.scheme}'s best ages read ${row.best.join(",")}, expected ${expandRuns(PA_AG_RUNS[row.scheme]).join(",")}`);
+  }
+}
+if (!sameList(cmpRows[0].best, PA_BEST_DEFAULT)) problems.push("the baseline row does not match the single view's short answer");
+
+// The table, read at 85 by default: what each pays and what it adds, to the krona.
+const cmpTitle85 = (await cmpTitle("pa-compare-table-panel")) ?? "";
+await cmpFigures(PA_AG_AT_85, "at 85, best age");
+console.log(`agreements      : "${cmpTitle85.trim()}", ITP-1 ${await cmpKr(2, 0)} / +${await cmpKr(2, 1)}`);
+if (!/85/.test(cmpTitle85)) problems.push(`the table is titled "${cmpTitle85}", expected it to read at 85`);
+// The ITP-1 line is the single view's 80/65 total, the same engine number reached by another route.
+const cmpCsvLike = await pa.locator('[data-role="pa-compare-grid"] tr[data-scheme="2"] td[data-lifespan="80"]').getAttribute("title");
+if (!/bäst är pension vid 65 \(4\s238\stkr\)/.test(cmpCsvLike ?? "")) problems.push(`the grid cell for ITP-1 at 80 carries "${cmpCsvLike}", expected its best age (65) and total (4 238 tkr)`);
+
+// The figure: one line per row, the baseline heavy, keyed by agreement; the lines are the agreements' own colours.
+const cmpLinesDefault = await cmpLines();
+const cmpHeavy = await pa.locator('[data-role="pa-fig-compare"] svg polyline.pa-line-z').evaluateAll((lines) => lines.map((l) => Number(l.dataset.agreement)));
+const cmpLegend = await pa.locator('[data-role="pa-fig-compare"] .legend li').count();
+console.log(`agreements      : lines ${cmpLinesDefault.join(",")}, heavy ${cmpHeavy.join(",")}, legend ${cmpLegend}`);
+if ([...cmpLinesDefault].sort().join(",") !== "1,2,4,5,7" || cmpHeavy.join(",") !== "1" || cmpLegend !== 5) {
+  problems.push(`the comparison figure draws ${cmpLinesDefault.join(",")} (heavy ${cmpHeavy.join(",")}, ${cmpLegend} legend entries), expected 1,2,4,5,7 with the baseline heavy`);
+}
+const cmpStroke = (scheme) =>
+  pa.locator(`[data-role="pa-fig-compare"] svg polyline[data-agreement="${scheme}"]`).evaluate((line) => getComputedStyle(line).stroke);
+const cmpKey = (scheme) => cmpControls.locator(`.pa-key-ag${scheme}`).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+const cmpBlueLight = await cmpStroke(4);
+const cmpInkLight = await cmpStroke(1);
+const cmpKeyLight = await cmpKey(4);
+await tab.emulateMedia({ colorScheme: "dark" });
+const cmpBlueDark = await cmpStroke(4);
+const cmpInkDark = await cmpStroke(1);
+const cmpKeyDark = await cmpKey(4);
+await tab.emulateMedia({ colorScheme: "light" });
+console.log(`agreements      : SAF-LO ${cmpBlueLight} light, ${cmpBlueDark} dark; baseline ${cmpInkLight} / ${cmpInkDark}`);
+if (cmpBlueLight !== "rgb(42, 120, 214)" || cmpBlueDark !== "rgb(57, 135, 229)" || cmpKeyLight !== cmpBlueLight || cmpKeyDark !== cmpBlueDark) {
+  problems.push(`SAF-LO's line reads ${cmpBlueLight}/${cmpBlueDark} (key ${cmpKeyLight}/${cmpKeyDark}) on light/dark, expected rgb(42, 120, 214) and rgb(57, 135, 229)`);
+}
+if (cmpInkLight !== "rgb(0, 0, 0)" || cmpInkDark !== "rgb(255, 255, 255)") {
+  problems.push(`the baseline line is ${cmpInkLight}/${cmpInkDark} on light/dark, expected black/white`);
+}
+
+// Hover: one row per line, named by text.
+const cmpFigure = pa.locator('[data-role="pa-fig-compare"]');
+await cmpFigure.scrollIntoViewIfNeeded();
+const cmpBox = await cmpFigure.locator("svg").boundingBox();
+await tab.mouse.move(cmpBox.x + cmpBox.width * 0.4, cmpBox.y + cmpBox.height * 0.5);
+await tab.mouse.move(cmpBox.x + cmpBox.width * 0.45, cmpBox.y + cmpBox.height * 0.5);
+await tab.waitForTimeout(100);
+const cmpTipRows = await cmpFigure.locator(".tooltip .tooltip-row").allTextContents();
+const cmpTipHead = (await cmpFigure.locator(".tooltip strong").textContent()) ?? "";
+console.log(`agreements      : hover "${cmpTipHead}", ${cmpTipRows.length} rows`);
+if (cmpTipRows.length !== 5 || !/^Lever till \d+$/.test(cmpTipHead) || !cmpTipRows.some((text) => /ITP-1/.test(text) && /Mkr/.test(text))) {
+  problems.push(`hovering the comparison figure shows "${cmpTipHead}" with ${cmpTipRows.length} rows, expected one per line naming the agreement`);
+}
+await tab.mouse.move(5, 5);
+
+// The agreement chosen in the inputs is shown whether or not the cohort fits it, and marked.
+await paSetting("paScheme").selectOption("6");
+await tab.waitForTimeout(150);
+const cmpWithMine = await cmpPressed();
+const cmpMineRow = await cmpRow(6).evaluate((tr) => tr.classList.contains("pa-mine"));
+const cmpMineText = (await pa.locator('[data-role="pa-compare-answer"]').textContent()) ?? "";
+console.log(`agreements      : AKAP-KR chosen -> picked ${cmpWithMine.join(",")}, marked row ${cmpMineRow}`);
+if (cmpWithMine.join(",") !== "2,4,5,6,7" || !cmpMineRow || !/Ditt val/.test(cmpMineText) || (await cmpKr(6, 0)) !== 5872080) {
+  problems.push(`choosing AKAP-KR above gives picked ${cmpWithMine.join(",")}, marked row ${cmpMineRow}, total ${await cmpKr(6, 0)}; expected 2,4,5,6,7, marked, 5872080`);
+}
+await paSetting("paScheme").selectOption("1");
+await tab.waitForTimeout(100);
+
+// The cohort decides what is shown until somebody picks: born 1990 swaps the agreements.
+await paType("paBorn", 1990);
+const cmp1990 = await cmpPressed();
+console.log(`agreements      : born 1990 -> picked ${cmp1990.join(",")}`);
+if (cmp1990.join(",") !== "2,4,5,6,8") problems.push(`born 1990 starts with agreements ${cmp1990.join(",")}, expected 2,4,5,6,8`);
+await paType("paBorn", 1980);
+if ((await cmpPressed()).join(",") !== "2,4,5,7") problems.push("going back to 1980 did not bring back the 1980 cohort's agreements");
+
+// Picking: a chip switches an agreement on, and a "what if" is labelled as one.
+await cmpControls.locator('button.pa-agr[data-scheme="3"]').click();
+await tab.waitForTimeout(150);
+const cmpWith3 = await cmpGrid();
+const cmpItp2 = cmpWith3.find((r) => r.scheme === 3);
+const cmpWhatIfTag = await cmpRow(3).locator(".pa-tag-off").count();
+console.log(`agreements      : ITP-2 on -> rows ${cmpWith3.map((r) => r.scheme).join(",")}, "what if" tags ${cmpWhatIfTag}, lines ${(await cmpLines()).length}`);
+if (cmpWith3.map((r) => r.scheme).join(",") !== "1,2,3,4,5,7" || !cmpItp2 || !sameList(cmpItp2.best, expandRuns(PA_AG_RUNS[3])) || cmpWhatIfTag !== 1) {
+  problems.push("switching ITP-2 on did not add its row, its best ages or its \"what if\" tag");
+}
+if ((await cmpLines()).length !== 6) problems.push("switching ITP-2 on did not add its line to the figure");
+await cmpControls.locator('button.pa-agr[data-scheme="3"]').click();
+await tab.waitForTimeout(100);
+await cmpControls.locator('button.pa-agr[data-scheme="2"]').click();
+await tab.waitForTimeout(100);
+const cmpWithout2 = (await cmpGrid()).map((r) => r.scheme).join(",");
+if (cmpWithout2 !== "1,4,5,7" || (await cmpPressed()).join(",") !== "4,5,7") {
+  problems.push(`switching ITP-2 back off and ITP-1 off leaves rows ${cmpWithout2}, expected 1,4,5,7`);
+}
+// A colour follows its agreement, not its position: SAF-LO is still blue with ITP-1 gone.
+if ((await cmpStroke(4)) !== cmpBlueLight) problems.push("switching an agreement off repainted the others");
+await cmpControls.locator('button.pa-agr[data-scheme="2"]').click();
+await tab.waitForTimeout(100);
+
+// The retirement age the totals are read at.
+await paSetting("paCompareBasis").selectOption("65");
+await tab.waitForTimeout(150);
+await cmpFigures(PA_AG_AT_85_RETIRING_65, "at 85, retiring at 65");
+const cmpAgeCells = await pa.locator('[data-role="pa-compare-table"] tbody tr').evaluateAll((rows) => rows.map((tr) => Number(tr.dataset.age)));
+const cmpFixedHead = (await pa.locator('[data-role="pa-compare-table"] thead th').allTextContents()).join("|");
+console.log(`agreements      : retiring at 65 -> ages ${cmpAgeCells.join(",")}, columns ${cmpFixedHead.length > 0}`);
+if (!cmpAgeCells.every((age) => age === 65) || !/Bästa ålder vid 85/.test(cmpFixedHead)) {
+  problems.push(`reading at retirement age 65 gives ages ${cmpAgeCells.join(",")} and columns "${cmpFixedHead}", expected all 65 and a best-age column`);
+}
+await paSetting("paCompareBasis").selectOption("best");
+await tab.waitForTimeout(150);
+await cmpFigures(PA_AG_AT_85, "back to the best age");
+
+// The lifespan the table and the answer are read at.
+await paType("paCompareLifespan", 90);
+await cmpFigures(PA_AG_AT_90, "at 90, best age");
+const cmpTitle90 = (await cmpTitle("pa-compare-table-panel")) ?? "";
+const cmpReadColumns = await pa.locator('[data-role="pa-compare-grid"] th.pa-read').evaluateAll((cells) => cells.map((th) => th.textContent));
+console.log(`agreements      : read at 90 -> "${cmpTitle90.trim()}", highlighted column ${cmpReadColumns.join(",")}`);
+if (!/90/.test(cmpTitle90) || cmpReadColumns.join(",") !== "90") problems.push("reading at 90 did not move the table's title and the grid's highlighted column");
+await paType("paCompareLifespan", 85);
+
+// The chart toggle: what each agreement adds, no line for the baseline.
+await cmpControls.locator('button[data-metric="extra"]').click();
+await tab.waitForTimeout(150);
+const cmpExtraLines = await cmpLines();
+const cmpExtraTitle = (await cmpTitle("pa-fig-compare")) ?? "";
+const cmpExtraTicks = await cmpFigure.locator("svg text.tick-y").allTextContents();
+console.log(`agreements      : added -> lines ${cmpExtraLines.join(",")}, "${cmpExtraTitle.trim()}", ticks ${cmpExtraTicks.slice(0, 3).join(" ")}`);
+if (cmpExtraLines.join(",") !== "2,4,5,7" || !cmpExtraTicks.some((text) => text.startsWith("+"))) {
+  problems.push(`the "added" chart draws ${cmpExtraLines.join(",")} with ticks ${cmpExtraTicks.join(" ")}, expected 2,4,5,7 and "+" ticks`);
+}
+await cmpControls.locator('button[data-metric="total"]').click();
+await tab.waitForTimeout(100);
+
+// After tax: the figure drops the occupational column (it cannot be split out of net income) and the totals fall.
+await pa.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(150);
+const cmpNetHead = (await pa.locator('[data-role="pa-compare-table"] thead th').allTextContents()).join("|");
+const cmpNetBaseline = await cmpKr(1, 0);
+const cmpNetBest = await cmpGrid();
+console.log(`agreements      : after tax -> baseline ${cmpNetBaseline}, split column ${/varav/.test(cmpNetHead)}`);
+if (/varav/.test(cmpNetHead) || !(cmpNetBaseline > 0 && cmpNetBaseline < PA_AG_AT_85[1][0]) || cmpNetBest.length !== 5) {
+  problems.push(`after tax the comparison reads baseline ${cmpNetBaseline} with columns "${cmpNetHead}", expected a lower total and no occupational column`);
+}
+await pa.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(150);
+
+// The exports: best ages and totals per agreement and lifespan, whole kronor.
+const cmpActions = pa.locator('[data-role="pa-compare-grid-panel"] .panel-actions');
+const cmpCsv = await download(cmpActions.getByRole("button", { name: "Ladda ner CSV" }));
+const cmpCsvLines = cmpCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`agreements      : CSV ${cmpCsv.filename}, ${cmpCsvLines.length} lines`);
+if (cmpCsvLines.length !== 17 || !cmpCsvLines[0].startsWith("Lever till (år);Saknar tjänstepension: bästa ålder;Saknar tjänstepension: total före skatt (kr);ITP-1: bästa ålder;")) {
+  problems.push(`the comparison CSV starts "${cmpCsvLines[0]}" and has ${cmpCsvLines.length} lines, expected the 17-line per-agreement table`);
+}
+if (cmpCsvLines[1] !== "80;65;2972916;65;4238496;65;4207176;65;4222116;65;4305816") {
+  problems.push(`the comparison CSV's first row reads "${cmpCsvLines[1]}"`);
+}
+const cmpXlsx = await download(cmpActions.getByRole("button", { name: "Ladda ner Excel" }));
+if (!looksLikeXlsx(cmpXlsx.buffer)) problems.push(`the comparison's Excel download ("${cmpXlsx.filename}") isn't a real .xlsx file`);
+
+// Swedish and English; the numbers do not move with the language.
+const cmpHeadSv = (await cmpTitle("pa-compare-controls")) ?? "";
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(150);
+const cmpHeadEn = (await cmpTitle("pa-compare-controls")) ?? "";
+const cmpTableEn = (await cmpTitle("pa-compare-table-panel")) ?? "";
+const cmpNameEn = (await cmpRow(7).locator(".pa-name-text").textContent()) ?? "";
+const cmpViewEn = (await pa.locator('.pa-view .panel-btn[data-view="compare"]').textContent()) ?? "";
+console.log(`agreements      : "${cmpHeadSv.trim()}" / "${cmpHeadEn.trim()}", "${cmpTableEn.trim()}", PA16 as "${cmpNameEn}", switch "${cmpViewEn}"`);
+if (cmpHeadSv.trim() !== "Jämför avtalsområden" || cmpHeadEn.trim() !== "Compare agreements" || cmpTableEn.trim() !== "The agreements at 85" || cmpNameEn !== "PA16 section 2" || cmpViewEn !== "Compare agreements") {
+  problems.push(`the comparison's language switch reads "${cmpHeadSv}"/"${cmpHeadEn}"/"${cmpTableEn}"/"${cmpNameEn}"/"${cmpViewEn}"`);
+}
+await cmpFigures(PA_AG_AT_85, "in English");
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(150);
+
+// A phone: nothing widens the page; the grid scrolls inside its own box and the chips wrap.
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(150);
+const cmpOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const cmpGridScrolls = await pa.locator('[data-role="pa-compare-grid-panel"] .scroll').evaluate((box) => box.scrollWidth > box.clientWidth);
+const cmpChipRows = await cmpControls.locator(".pa-chips > *").evaluateAll((items) => new Set(items.map((el) => Math.round(el.getBoundingClientRect().top))).size);
+console.log(`agreements @375px: page overflow ${cmpOverflow}px, grid scrolls ${cmpGridScrolls}, chips in ${cmpChipRows} rows`);
+if (cmpOverflow > 1 || !cmpGridScrolls || cmpChipRows < 2) {
+  problems.push(`at 375px the comparison widens the page by ${cmpOverflow}px (grid scrolls ${cmpGridScrolls}, chips in ${cmpChipRows} rows)`);
+}
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
+
+// Reset puts the picks, the age, the lifespan and the chart back; the single view still says what it did.
+await cmpControls.locator('button.pa-agr[data-scheme="8"]').click();
+await paSetting("paCompareBasis").selectOption("66");
+await cmpControls.locator('button[data-metric="extra"]').click();
+await tab.waitForTimeout(100);
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(150);
+const cmpAfterReset = [(await cmpPressed()).join(","), await paSetting("paCompareBasis").inputValue(), await paSetting("paCompareLifespan").inputValue(), (await cmpLines()).length];
+console.log(`agreements      : after reset ${cmpAfterReset.join(" / ")}`);
+if (cmpAfterReset.join("/") !== "2,4,5,7/best/85/5") problems.push(`Återställ left the comparison at ${cmpAfterReset.join("/")}, expected 2,4,5,7/best/85/5`);
+await pa.locator('.pa-view .panel-btn[data-view="single"]').click();
+await tab.waitForTimeout(150);
+if (!sameList(await paBest(), PA_BEST_DEFAULT) || !(await cmpControls.isHidden())) {
+  problems.push("going back to the single view did not restore its short answer and hide the comparison's controls");
+}
+
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 

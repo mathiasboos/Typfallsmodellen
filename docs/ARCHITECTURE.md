@@ -1080,20 +1080,29 @@ answers with a table of "if you live to D" instead of one number. There is no su
 workbook; it began as a static report on one typfall (born 1980, working from 25, 38 500 kr/month)
 and this is that report made interactive, with the collective agreements added.
 
-Three modules and one test file, split the way the other new tabs are:
+Five modules and one test file, split the way the other new tabs are:
 
 - `pensionAge.ts` -- everything that is arithmetic, with no DOM: the alternatives, the runs, the
-  sums, the winners, the break-evens, the final-salary inversion and the CSV/Excel rows.
-- `pensionAgeChart.ts` -- the three line charts, in `chart.ts`'s own frame (its `frame`, `legend`,
-  `newSvg` and drawing helpers are exported for this one reuse).
-- `pensionAgePanel.ts` -- the inputs, the short answer, the tables and the exports.
-- `apps/web/test/pensionAge.test.ts` -- 31 tests, the same split `kpis.test.ts` and
-  `compare.test.ts` already make (the panel itself is checked in the built page).
+  sums, the winners, the break-evens, the final-salary inversion, the comparison of agreements
+  (`computeComparison` and what reads it) and the CSV/Excel rows.
+- `pensionAgeChart.ts` -- the line charts, in `chart.ts`'s own frame (its `frame`, `legend`,
+  `newSvg` and drawing helpers are exported for this one reuse). One chart, two kinds of series: one
+  line per retirement age, or one per agreement.
+- `pensionAgePanel.ts` -- the inputs, the switch between the two views, and the single-agreement
+  view: the short answer, the tables and the exports.
+- `pensionAgeCompare.ts` -- the second view, side by side across the agreements (below), with its own
+  controls.
+- `pensionAgeUi.ts` -- the small stateless pieces the two panels share (element and table builders,
+  number formats, the phrases that describe a study); a module of its own because the panels would
+  otherwise import each other.
+- `apps/web/test/pensionAge.test.ts` -- 56 tests, the same split `kpis.test.ts` and
+  `compare.test.ts` already make (the panels themselves are checked in the built page).
 
 **The method.** One `run()` per alternative retirement age -- the reference age and three years
 either side, ascending, clamped to the cohort's lowest permitted age (`lowestPensionAge`) and the
-sheet's highest (80). A run is well under a millisecond, so seven of them per keystroke needs no
-worker or memoisation, the stance `main.ts`'s own header comment already takes. The pension summed
+sheet's highest (80). A run takes a couple of milliseconds, so seven of them per keystroke needs no
+worker or debounce, the stance `main.ts`'s own header comment already takes. (It took nine until the
+engine began to share the annuity factors between runs of one cohort; see `docs/VBA-MAPPING.md`.) The pension summed
 is the per-age matrix the tables and figures are drawn from (`result.rows`): income, supplementary and
 premium pension, guarantee pension and the income-pension supplement, plus occupational pension --
 before tax, or `netto` after it -- in whatever price basis the shared context asks for (fixed
@@ -1180,12 +1189,71 @@ final year's pension right at once; the per-age matrix picks it up from the seco
 own order). The short answer's one-line summary quotes Table 1 (so it matches Prognos); every sum and
 chart is built on the per-age flow, which is what a lifetime total has to be built on.
 
-**Left out on purpose:** married/unmarried (the report's typfall is single), private saving, discounting,
-a probability-weighted expected total, and comparing all eight agreement areas side by side -- the
-agreement is a select, so comparing areas is a matter of changing it. `tjpPar`-style early occupational
-pension is the one Avancerat setting the tab refuses (see above).
+**The second view: all the agreements side by side.** A switch below the inputs ("Ett avtalsområde" /
+"Jämför avtalsområden") chooses what the results are. The comparison (`pensionAgeCompare.ts`, over
+`pensionAge.ts`'s `computeComparison`) runs the same person and the same seven alternatives once per
+collective agreement, so the *only* thing that varies is the agreement -- not the retirement age,
+which every agreement shares. "Saknar tjänstepension" is the baseline, always present, and what an
+agreement adds is measured against it (`extra`: its total minus the baseline's at the same
+retirement age, or at each one's own best age): a figure that reads as "what this agreement is
+worth" and not as a level that mixes the public pension in. It shows
 
-**Checked** by the 31 unit tests -- the default study reproduces the static report to the krona
+- a short answer: who pays most and least at the lifespan being read, where the agreement chosen in
+  the inputs ranks, the best age per agreement at that lifespan and across the range, and which
+  agreements are "what if"s;
+- a grid of the best retirement age for every agreement and every lifespan, in the single view's own
+  diverging colours (≈ where the two best ages are within 1 %), the lifespan being read highlighted;
+- one chart of the total, or of what each agreement adds, per lifespan, at the best age for each
+  lifespan or at a chosen age; and a table at the lifespan being read (best age, total, addition in
+  kronor and per cent, monthly pension at the start, of which occupational before tax).
+
+It takes the person, the assumptions, the lifespan range and before/after tax from the tab's own
+inputs, so the two views always describe the same person. The agreement chosen there and "Räkna med
+tjänstepension" belong to the single view -- a comparison is *about* the agreements -- but the chosen
+agreement is shown until somebody picks, marked "ditt val".
+
+**Which agreements: the cohort's own, until somebody picks.** Some agreements are written for particular
+birth years -- the workbook's own labels say so (`SCHEME_COHORTS`: ITP-1 from 1979, ITP-2 before it,
+AKAP-KR from 1986, PA16 avd 2 before 1988, avd 1 from it; a test reads the labels and fails if the table
+drifts from them). The engine does not stop a 1980 cohort from being given ITP-2, and neither does the
+tab: such an agreement can be switched on, but it is dashed in the picker, tagged "vad om" everywhere
+it appears, named as one in the short answer, and left out of the default selection -- born 1980 starts
+with ITP-1, SAF-LO, KAP-KL and PA16 avd 2. Picking any chip freezes the selection as it stands; a
+changed birth year then no longer swaps it. The labels are a rule of thumb rather than a law (KAP-KL and
+AKAP-KR overlap for those who chose to switch), which is why they only ever mark, never remove.
+
+**Cost, and what is kept.** One study is seven runs, so all eight agreements are 56 runs -- about 60 ms
+once the engine shares the annuity factors (about 450 ms before; the engine change is what made a live
+comparison reasonable). They are only computed while the view is showing, and the studies are cached by
+`comparisonKey` (every input but the agreement) and the *identity* of the shared context: `main.ts` builds
+a fresh context object on every render, so anything outside the tab that could matter empties the cache,
+while picking an agreement, choosing a retirement age, moving the lifespan to read at and the chart
+toggle reuse it and are instant. The controls are built once, like the inputs, and only synchronised;
+the result panels are rebuilt.
+
+**Colours here are identity, so they are categorical.** One line per agreement, fixed per agreement and
+not per position (switching one off must not repaint the rest), "Saknar tjänstepension" in plain ink.
+The seven hues are the `dataviz` skill's documented categorical set -- light and dark steps -- and the
+assignment of hue to agreement was found by trying all 5 040 orders against the validator: the full list in
+the drop-down's order and each of the four lists a cohort shows by default (born before 1979,
+1979-85, 1986-87, 1988 or later) have to clear the hard gates in both themes against this app's own chart
+surfaces (`#ffffff`, `#003824`). The order used has worst adjacent colour-blind Delta E 9.2 (light) and
+9.4 (dark) against the 8 the method asks for, and normal-vision 24.0 and 19.7 against 15, and puts the
+two agreements every cohort has (SAF-LO, KAP-KL) on blue and green; the documented order itself fell to
+6.9 on a default list in dark. Four slots sit below 3:1 against their surface (aqua, magenta and yellow in
+light, green in dark), so the relief rule applies and is met: a legend, an end label on the lines that
+matter (the two extremes, the baseline and the agreement chosen above), a hover readout naming every value,
+and a table with every number. Where two lines lie within 1.5 % of the axis of each other everywhere --
+ITP-1 and KAP-KL differ by a few kronor a month -- the chart says so under itself, since an orange legend
+key with no orange line is a puzzle: the figure's note names the lines that hide each other.
+The warm/cool of the best-age boxes (earlier/later than the reference) and the hues of the agreement
+lines never share a legend, and the agreement is always named in text beside its key.
+
+**Left out on purpose:** married/unmarried (the report's typfall is single), private saving, discounting
+and a probability-weighted expected total. `tjpPar`-style early occupational pension is the one
+Avancerat setting the tab refuses (see above).
+
+**Checked** by the 56 unit tests -- the default study reproduces the static report to the krona
 (totals, winners, break-evens, near-ties), a collective agreement adds exactly its occupational
 pension and nothing else, the two overridden settings cannot be moved from outside, the after-tax
 view is the net income from retirement, the break-even maths is exact on hand-built options -- and,
@@ -1194,7 +1262,14 @@ matrix and the short answer, a chosen agreement, both presets, after tax, the re
 clamped and re-locked to the riktålder, the riktålder following the birth year, a typed final
 salary, the linked lifespan range, reset and the one-time import from Prognos, the matrix's CSV and
 Excel downloads and the per-age CSV, the theme tokens, both languages, the hover and the arrow keys,
-and the page not widening at 375px.
+and the page not widening at 375px. The comparison has tests of its own: which agreements fit which
+birth years (against the workbook's labels), every agreement's best age and total to the krona, the
+baseline equal to the single study, the cache reused rather than recomputed, the cache key, what an
+agreement adds, the spread of best ages, and the exports; and in the built page the switch, the
+default picks, the grid, the table, the lines and their colours in both themes, the hover, picking
+and un-picking, the retirement age, the lifespan to read at, the chart toggle, after tax, the
+chosen agreement marked, the cohort swapping the defaults, both downloads, both languages, reset and
+375px.
 
 ### Table 2's own column tooltips, and Ordlista
 
