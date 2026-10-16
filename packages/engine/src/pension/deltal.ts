@@ -25,7 +25,7 @@
 
 import type { ModelContext } from "../model/context.js";
 import { vbaInt, vbaRound } from "../vba/math.js";
-import type { DeathProbabilities } from "./mortality.js";
+import type { AnnuityFactors, DeathProbabilities } from "./mortality.js";
 import { calculateDeltal } from "./mortality.js";
 
 /** A published cohort-by-age table from the Nyckeltal sheet. */
@@ -60,25 +60,46 @@ function lookupPublished(table: PublishedTable, cohort: number, age: number): nu
 }
 
 /**
+ * The model's own annuity factors, shared by every `DeltalTables` built on the
+ * same death-risk table.
+ *
+ * `calculateDeltal` is a pure function of the cohort and the table, and it is by
+ * far the most expensive thing a model run does -- about two thirds of the run
+ * (6 ms of 9, measured). Each run builds its own `DeltalTables`, so without this
+ * every run recomputed the figures for the same cohort, and a caller that runs
+ * the model dozens of times for one person (the web app's "Bästa pensionsålder"
+ * runs it seven times per agreement and compares up to eight agreements) paid
+ * for that every time. Keyed by the table object rather than by its contents: a
+ * different table is a different key, and nothing is kept once a table is
+ * dropped. The figures are only ever read after `calculateDeltal` returns them
+ * (the interface is `readonly` and the three readers below index into it), so
+ * sharing the arrays is safe.
+ */
+const sharedFigures = new WeakMap<DeathProbabilities, Map<number, AnnuityFactors>>();
+
+/**
  * The assembled delningstal tables for one model run.
  *
  * Holds the published values and, lazily, the model's own figures for whichever
  * cohorts get asked for.
  */
 export class DeltalTables {
-  private readonly computed = new Map<number, ReturnType<typeof calculateDeltal>>();
-
   constructor(
     private readonly published: AnnuityTablesData,
     private readonly deaths: DeathProbabilities,
     private readonly context: ModelContext,
   ) {}
 
-  private ownFigures(cohort: number): ReturnType<typeof calculateDeltal> {
-    let factors = this.computed.get(cohort);
+  private ownFigures(cohort: number): AnnuityFactors {
+    let byCohort = sharedFigures.get(this.deaths);
+    if (byCohort === undefined) {
+      byCohort = new Map();
+      sharedFigures.set(this.deaths, byCohort);
+    }
+    let factors = byCohort.get(cohort);
     if (factors === undefined) {
       factors = calculateDeltal(cohort, this.deaths);
-      this.computed.set(cohort, factors);
+      byCohort.set(cohort, factors);
     }
     return factors;
   }
