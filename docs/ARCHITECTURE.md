@@ -1069,6 +1069,132 @@ subscribe to either view's state the rest of the time. Importing from Jämför s
 rows as fit under `MAX_ROWS` rather than refusing the whole import over the cap, matching CSV import's
 own best-effort stance on a partial problem.
 
+### Bästa pensionsålder
+
+A fourth top-level view, on request, that answers the one question a single forecast cannot: *which
+retirement age pays out the most over a lifetime?* Every year of delay raises the monthly pension
+and costs a year of payments, so which age wins depends on how long the person lives -- which the
+model deliberately does not know (its annuity divisors are population averages). The tab therefore
+answers with a table of "if you live to D" instead of one number. There is no such sheet in the
+workbook; it began as a static report on one typfall (born 1980, working from 25, 38 500 kr/month)
+and this is that report made interactive, with the collective agreements added.
+
+Three modules and one test file, split the way the other new tabs are:
+
+- `pensionAge.ts` -- everything that is arithmetic, with no DOM: the alternatives, the runs, the
+  sums, the winners, the break-evens, the final-salary inversion and the CSV/Excel rows.
+- `pensionAgeChart.ts` -- the three line charts, in `chart.ts`'s own frame (its `frame`, `legend`,
+  `newSvg` and drawing helpers are exported for this one reuse).
+- `pensionAgePanel.ts` -- the inputs, the short answer, the tables and the exports.
+- `apps/web/test/pensionAge.test.ts` -- 31 tests, the same split `kpis.test.ts` and
+  `compare.test.ts` already make (the panel itself is checked in the built page).
+
+**The method.** One `run()` per alternative retirement age -- the reference age and three years
+either side, ascending, clamped to the cohort's lowest permitted age (`lowestPensionAge`) and the
+sheet's highest (80). A run is well under a millisecond, so seven of them per keystroke needs no
+worker or memoisation, the stance `main.ts`'s own header comment already takes. The pension summed
+is the per-age matrix the tables and figures are drawn from (`result.rows`): income, supplementary and
+premium pension, guarantee pension and the income-pension supplement, plus occupational pension --
+before tax, or `netto` after it -- in whatever price basis the shared context asks for (fixed
+reference-year prices by default), **not discounted**: a krona at 90 counts as much as one at 70.
+
+**"Lever till D år" is D − retirement age whole years.** The model's row for age `a` is the year in
+which the person turns `a` (an integer birth year means 1 January, so a full year of payments), so
+`cumulative[x]` is the sum of rows `par … x−1`: pension is paid up to the year before the D-year
+birthday. The benefit itself does not depend on how long the person lives; the lifespan only decides
+how many years are added up, and there is no probability weighting. The model's own `lifeIncome` is a
+different thing -- a sum discounted at `discountRate` through the *expected* age at death -- and is
+left alone.
+
+**Break-even is exact, not searched.** Payments are monthly, so a running total is linear inside a
+year; the lifespan at which a later start has caught up with an earlier one is found by walking the
+integer ages to the first crossing and interpolating. Each alternative is compared with the
+reference, and each with the one a year earlier. "Practically equal" is the two best totals within
+1 % of each other (`NEAR_TIE`), marked ≈ in the short answer's boxes and the matrix.
+
+**Two shared-context settings are overridden on purpose.** `studyContext` forces `tjpPar: 0`
+(occupational pension follows each alternative's own retirement age) and `ipsMonthly`/`pbhIps: 0`
+(private saving is out of scope). An Avancerat "draw occupational pension from age X" would
+otherwise pay it before the public pension for some alternatives and not others -- and `netto`, which
+still contains salary before retirement, could not be summed from that age. Every other shared
+setting applies as in the other tabs: tax, wage profile, price basis, the temporary-withdrawal
+years. The engine itself never checks that an agreement fits the birth year (ITP-2 for someone born
+1980 runs without a warning), so neither does the tab; the select's own labels carry the cohort.
+
+**Its own inputs, a one-time pull from Prognos.** Like Mikrosim's rows, the tab is not a diff against
+the form on the left and does not follow it. "Hämta från Prognos" copies the form's birth year, start
+of work, salary, agreement and economic assumptions across once, at the click (`main.ts` hands the
+panel a `getForecastInput` getter); "Återställ" returns the report's typfall. The inputs are built
+once and never rebuilt -- only the results area is replaced on a change -- so a field being typed into
+keeps its focus. `setContext` stashes the shared context and redraws, as Mikrosim's does.
+
+**Salary as monthly salary or as final salary, on request.** The model's input is a monthly salary;
+the final salary (Table 1's "Slutlön") is what comes out. The "Ange lön som" switch lets either be
+typed. A typed final salary is turned into the monthly salary behind it by running the model
+(`monthlySalaryForFinalSalary`): final salary is linear in the monthly salary, so a couple of secant
+steps land within a krona (checked for 30 000 to 80 000). The figure is matched at the *reference*
+age; the other alternatives can end up with a slightly different final salary once wages grow, and
+the per-age table shows each one's own. Both numbers are shown beside the field.
+
+**Colours: a diverging scale around the reference age, not seven categorical hues.** Seven lines
+that differ only in *when they start* cannot be told apart by seven hues (the data-visualisation
+method caps a fixed categorical order well below that and says to fold or facet past it), and what the
+reader needs is the order -- how much earlier or later than the reference an alternative is. So
+warm steps (this palette's own red-orange, `--fig-wage-level`) are earlier, cool steps (its blue,
+`--fig-salary`) later, and the reference itself is plain ink (`--text-primary`, the same "always
+legible" choice the Mikrosim disposable-income line makes). Each arm is one hue stepped in OKLCH
+lightness (0.62 / 0.53 / 0.43 in light, 0.62 / 0.71 / 0.80 in dark), validated with the `dataviz`
+skill's `validate_palette.js` as an ordinal ramp per arm against this app's *own* chart surfaces
+(`#ffffff`, `#003824`): monotone lightness, every adjacent step at least 0.06 apart, the lightest
+step 3.61:1 (light) and 3.29:1 (dark) against its surface, one hue per arm. The unvalidated
+alternative -- stepping the documented blue ramp seven times -- fails the same check (adjacent
+steps only 0.047 apart). Distance from the reference reads as contrast against the surface in both
+themes, so the extremes stand out and the alternatives next to the reference recede; the `--fig-pa-on-*`
+tokens give each filled box its text colour (white or black, whichever contrasts more), and the print
+block resets the six steps so a dark-theme page still prints on a white ground.
+
+Identity does not rest on hue alone: every chart has a legend and a hover readout that names every
+value, the short answer and the matrix carry the winner's number in each box, and the two tables
+beside the charts hold every number plotted (the per-age CSV holds the rest). `pensionAgeChart.ts`
+has its own hover, because `chart.ts`'s `hover()` prints every series at every point and here a line
+has no value before its start; it also works from the keyboard (focus the chart, arrow keys, Escape).
+End labels (the retirement age) are spread apart with the least total movement; if that would move one
+more than a few pixels from its own line, only the two extremes and the reference are labelled
+instead, rather than nudging seven labels into a column no longer beside its lines.
+
+**Two presets for the economic assumptions, because the answer depends on them.** Under the model's
+own defaults (no inflation, no real wage growth -- "results in today's price and wage level") the
+income pension, indexed with the income index minus the 1.6 % norm, falls about 1.6 % a year in
+constant prices, and the guarantee pension, which follows prices, tops it up more and more in old
+age. For the report's typfall that moves the break-evens against the riktålder to 83.4-83.8 years
+(earlier starts) and 86.6-87.2 (later ones); with 2 % inflation and 1.8 % real wage growth the income
+pension keeps its value, no guarantee pension is paid, and the same break-evens are 79.5-80.2 and
+81.1-81.8 -- four to six years earlier. Without the guarantee pension the default case's break-evens
+would rise smoothly from 80.3 to 83.8; it is what makes the pattern uneven (the step from the
+riktålder to one year later needs a *longer* life than the next one does). The tab says so in its own
+notes and puts the two assumption sets one click apart rather than choosing for the user.
+
+**Table 1 and the yearly flow differ by up to about 2 %, and the tab says so.** Table 1 counts the
+final year's pension right at once; the per-age matrix picks it up from the second year (the model's
+own order). The short answer's one-line summary quotes Table 1 (so it matches Prognos); every sum and
+chart is built on the per-age flow, which is what a lifetime total has to be built on.
+
+**Left out on purpose:** married/unmarried (the report's typfall is single), private saving, discounting,
+a probability-weighted expected total, and comparing all eight agreement areas side by side -- the
+agreement is a select, so comparing areas is a matter of changing it. `tjpPar`-style early occupational
+pension is the one Avancerat setting the tab refuses (see above).
+
+**Checked** by the 31 unit tests -- the default study reproduces the static report to the krona
+(totals, winners, break-evens, near-ties), a collective agreement adds exactly its occupational
+pension and nothing else, the two overridden settings cannot be moved from outside, the after-tax
+view is the net income from retirement, the break-even maths is exact on hand-built options -- and,
+in the built page, by `verify-offline.mjs`'s own block: the report's numbers read back out of the
+matrix and the short answer, a chosen agreement, both presets, after tax, the reference age moved,
+clamped and re-locked to the riktålder, the riktålder following the birth year, a typed final
+salary, the linked lifespan range, reset and the one-time import from Prognos, the matrix's CSV and
+Excel downloads and the per-age CSV, the theme tokens, both languages, the hover and the arrow keys,
+and the page not widening at 375px.
+
 ### Table 2's own column tooltips, and Ordlista
 
 Two follow-on requests, both about explaining terms rather than adding a new calculation:

@@ -46,10 +46,12 @@ import type { ScenarioColumn } from "./tables.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 
-const WIDTH = 760;
-const HEIGHT = 330;
+// `WIDTH`/`HEIGHT`/`PLOT` and the small drawing helpers below are exported for
+// `pensionAgeChart.ts`, which draws its own line charts in the same frame.
+export const WIDTH = 760;
+export const HEIGHT = 330;
 const PAD = { top: 26, right: 14, bottom: 42, left: 68 } as const;
-const PLOT = {
+export const PLOT = {
   left: PAD.left,
   right: WIDTH - PAD.right,
   top: PAD.top,
@@ -79,7 +81,7 @@ export interface FigureView {
 /** What a series needs for its legend/tooltip key, regardless of what shape
  * of row it reads -- `legend()` and `lineSwatchClass()` never call `get`, so
  * they take this rather than the full generic `Series` below. */
-interface SeriesMeta {
+export interface SeriesMeta {
   /** Stable across languages, so it can name a CSS class. */
   readonly key: string;
   /** Composed rather than a plain key: `Y8` concatenates two of the sheet's. */
@@ -110,7 +112,7 @@ interface Series<T = MvaluesRow> extends SeriesMeta {
   readonly get: (row: T) => number;
 }
 
-function el<K extends keyof SVGElementTagNameMap>(
+export function el<K extends keyof SVGElementTagNameMap>(
   name: K,
   attrs: Record<string, string | number> = {},
 ): SVGElementTagNameMap[K] {
@@ -124,7 +126,7 @@ function ipt(lang: Lang, result: TypfallResult): string {
   return t("iptFull", lang).replace(/\(\d+\/40\)/, `(${Math.min(result.qualifyingYears, 40)}/40)`);
 }
 
-function label(text: string, x: number, y: number, className: string): SVGTextElement {
+export function label(text: string, x: number, y: number, className: string): SVGTextElement {
   const node = el("text", { x, y, class: className });
   node.textContent = text;
   return node;
@@ -194,7 +196,7 @@ function lineSwatchClass(item: SeriesMeta): string {
   return item.dashed === false ? "swatch swatch-line-solid" : "swatch swatch-line";
 }
 
-function legend(series: readonly SeriesMeta[], lang: Lang): HTMLElement {
+export function legend(series: readonly SeriesMeta[], lang: Lang): HTMLElement {
   const box = document.createElement("ul");
   box.className = "legend";
   for (const item of series) {
@@ -278,7 +280,7 @@ function hover<T>(
   });
 }
 
-function newSvg(title: string): SVGSVGElement {
+export function newSvg(title: string): SVGSVGElement {
   return el("svg", {
     viewBox: `0 0 ${WIDTH} ${HEIGHT}`,
     role: "img",
@@ -287,7 +289,7 @@ function newSvg(title: string): SVGSVGElement {
   });
 }
 
-function frame(
+export function frame(
   title: string,
   subtitle: string | undefined,
   svg: SVGSVGElement,

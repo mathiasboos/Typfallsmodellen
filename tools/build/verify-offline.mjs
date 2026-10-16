@@ -1483,8 +1483,10 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 3) {
-  problems.push(`screen toggle has ${screenButtons} buttons, expected 3 (Prognos / Jämför scenarier / Mikrosim)`);
+if (screenButtons !== 4) {
+  problems.push(
+    `screen toggle has ${screenButtons} buttons, expected 4 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder)`,
+  );
 }
 
 await tab.locator('.screen-toggle .panel-btn[data-screen="compare"]').click();
@@ -2222,6 +2224,315 @@ if (mikrosimDisposableLinesOver10 !== 1) {
 
 // Back to the single-scenario view for the screenshots, and to leave the
 // page as found.
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
+// ---- Bästa pensionsålder ---------------------------------------------------
+//
+// A fourth top-level view: seven retirement ages around a reference age, run
+// as one typfall each, summed over a lifespan and compared. The point of each
+// check, as above, is that a control reaches the runs it should and the page
+// says what the engine said. The numbers pinned here are the ones a static
+// report on this very typfall (born 1980, work from 25, 38 500 kr/month, the
+// workbook's own assumptions, no agreement) printed first -- the tab has to
+// reproduce that report to the krona -- and `pensionAge.test.ts` pins the
+// same ones against the engine without a browser.
+
+const paRiktalderTable = JSON.parse(readFileSync(join(repo, "packages/data/retirement-ages.json"), "utf8"));
+const paRiktalder = (born) => paRiktalderTable.riktalder[born - paRiktalderTable.firstCohort];
+
+const PA_BEST_DEFAULT = [65, 65, 65, 66, 68, 68, 68, 71, 71, 71, 71, 71, 71, 71, 71, 71];
+const PA_BEST_ITP1 = [65, 65, 65, 66, 66, 68, 68, 68, 71, 71, 71, 71, 71, 71, 71, 71];
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').click();
+await tab.waitForTimeout(100);
+
+const pa = tab.locator('[data-role="pension-age-panel"]');
+const paSetting = (name) => pa.locator(`[data-setting="${name}"]`);
+const paType = async (name, value) => {
+  const field = paSetting(name);
+  await field.fill(String(value));
+  await field.dispatchEvent("change");
+  await tab.waitForTimeout(60);
+};
+const paBest = () =>
+  pa.locator('[data-role="pa-ribbon"] li').evaluateAll((items) => items.map((li) => Number(li.dataset.best)));
+const paTies = () =>
+  pa.locator('[data-role="pa-ribbon"] li').evaluateAll((items) => items.map((li) => li.dataset.tie));
+const paCell = async (lifespan, par) =>
+  Number(await pa.locator(`[data-role="pa-matrix"] tr[data-lifespan="${lifespan}"] td[data-par="${par}"]`).getAttribute("data-kr"));
+const paLines = (figure) => pa.locator(`[data-role="${figure}"] svg polyline.pa-line`).evaluateAll((lines) => lines.map((l) => Number(l.dataset.par)));
+const sameList = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
+
+if ((await pa.count()) !== 1) problems.push("the Bästa pensionsålder tab did not open");
+
+// The inputs start as the report's typfall, centred on the cohort's riktålder.
+const paStart = {
+  born: await paSetting("paBorn").inputValue(),
+  start: await paSetting("paStartWork").inputValue(),
+  salary: await paSetting("paSalary").inputValue(),
+  centre: await paSetting("paCentre").inputValue(),
+  centreDisabled: await paSetting("paCentre").isDisabled(),
+  riktalder: await paSetting("paRiktalder").isChecked(),
+};
+console.log(`pension age     : inputs ${JSON.stringify(paStart)}`);
+if (paStart.born !== "1980" || paStart.start !== "25" || paStart.salary !== "38500" || paStart.centre !== "68") {
+  problems.push(`the Bästa pensionsålder inputs start at ${JSON.stringify(paStart)}, expected 1980/25/38500 around 68`);
+}
+if (!paStart.centreDisabled || !paStart.riktalder) {
+  problems.push("the reference age is not locked to the riktålder as loaded");
+}
+
+// The short answer: sixteen lifespans, the report's winners, its near-ties.
+const paBestDefault = await paBest();
+console.log(`pension age     : best per lifespan ${paBestDefault.join(",")}`);
+if (!sameList(paBestDefault, PA_BEST_DEFAULT)) {
+  problems.push(`the short answer picks ${paBestDefault.join(",")} for lifespans 80-95, expected ${PA_BEST_DEFAULT.join(",")}`);
+}
+const paTiesDefault = (await paTies()).join("");
+if (paTiesDefault !== "0111111111000000") {
+  problems.push(`the short answer flags near-ties as ${paTiesDefault}, expected 0111111111000000 (81-89)`);
+}
+
+// The matrix: the report's totals to the krona, the winner marked.
+const paMatrixRows = await pa.locator('[data-role="pa-matrix"] tbody tr').count();
+const paTotal80 = await paCell(80, 65);
+const paTotal83 = await paCell(83, 66);
+console.log(`pension age     : matrix ${paMatrixRows} rows, 80/65=${paTotal80}, 83/66=${paTotal83}`);
+if (paMatrixRows !== 16) problems.push(`the matrix has ${paMatrixRows} rows, expected 16 (lifespans 80-95)`);
+if (paTotal80 !== 2972916) problems.push(`the matrix says ${paTotal80} for living to 80 with a start at 65, the report says 2972916`);
+if (paTotal83 !== 3552168) problems.push(`the matrix says ${paTotal83} for living to 83 with a start at 66, the report says 3552168`);
+const paBestCells = await pa.locator('[data-role="pa-matrix"] td.pa-best').count();
+if (paBestCells !== 16) problems.push(`the matrix marks ${paBestCells} winning cells, expected one per row (16)`);
+
+// The three charts: one line per alternative, the reference drawn heavier.
+const paMonthlyLines = await paLines("pa-fig-monthly");
+const paTotalLines = await paLines("pa-fig-total");
+const paDeltaLines = await paLines("pa-fig-delta");
+console.log(`pension age     : lines monthly ${paMonthlyLines.length}, total ${paTotalLines.length}, delta ${paDeltaLines.length}`);
+for (const [name, lines] of [["monthly", paMonthlyLines], ["total", paTotalLines], ["difference", paDeltaLines]]) {
+  if (!sameList([...lines].sort((a, b) => a - b), [65, 66, 67, 68, 69, 70, 71])) {
+    problems.push(`the ${name} chart draws lines for ${lines.join(",")}, expected 65-71`);
+  }
+}
+const paHeavy = await pa.locator("svg polyline.pa-line-z").evaluateAll((lines) => [...new Set(lines.map((l) => Number(l.dataset.par)))]);
+if (!sameList(paHeavy, [68])) problems.push(`the heavy reference line is ${paHeavy.join(",")}, expected 68 only`);
+
+// The hover readout names every line that has a value at the pointer's age.
+const paTotalFigure = pa.locator('[data-role="pa-fig-total"]');
+await paTotalFigure.scrollIntoViewIfNeeded();
+const paBox = await paTotalFigure.locator("svg").boundingBox();
+if (paBox) {
+  const k = paBox.width / 760;
+  // 80 of 65-95, in the chart's own geometry (68 left, 722 right of 760).
+  await tab.mouse.move(paBox.x + 300 * k, paBox.y + 150 * k);
+  await tab.mouse.move(paBox.x + (68 + 0.5 * (722 - 68)) * k, paBox.y + 150 * k);
+  await tab.waitForTimeout(100);
+}
+const paTooltipRows = await paTotalFigure.locator(".tooltip .tooltip-row").count();
+const paTooltipHead = (await paTotalFigure.locator(".tooltip strong").textContent()) ?? "";
+console.log(`pension age     : hover "${paTooltipHead}", ${paTooltipRows} rows`);
+if (paTooltipRows !== 7 || !/80/.test(paTooltipHead)) {
+  problems.push(`the total chart's hover shows "${paTooltipHead}" with ${paTooltipRows} rows at age 80, expected 7 rows`);
+}
+// The same readout from the keyboard.
+await paTotalFigure.locator("svg").focus();
+await tab.keyboard.press("ArrowRight");
+const paKeyHead = (await paTotalFigure.locator(".tooltip strong").textContent()) ?? "";
+if (!/81/.test(paKeyHead)) problems.push(`the arrow key moved the readout to "${paKeyHead}", expected age 81`);
+await tab.keyboard.press("Escape");
+
+// A collective agreement adds exactly its occupational pension, and can move the winners.
+await paSetting("paScheme").selectOption("2"); // ITP-1
+await tab.waitForTimeout(80);
+const paItpBest = await paBest();
+const paItpTotal = await paCell(80, 65);
+console.log(`pension age     : ITP-1 best ${paItpBest.join(",")}, 80/65=${paItpTotal}`);
+if (paItpTotal !== 4238496) problems.push(`with ITP-1 the total for 80/65 is ${paItpTotal}, expected 4238496`);
+if (!sameList(paItpBest, PA_BEST_ITP1)) {
+  problems.push(`with ITP-1 the short answer picks ${paItpBest.join(",")}, expected ${PA_BEST_ITP1.join(",")}`);
+}
+const paTimeHeads = await pa.locator('[data-role="pa-time-table"] thead th').allTextContents();
+if (!paTimeHeads.some((text) => /tjänstepension/i.test(text))) {
+  problems.push(`the per-age table has no occupational-pension column with ITP-1 chosen (${paTimeHeads.join(" | ")})`);
+}
+if (await paSetting("paIncludeOccupational").isDisabled()) {
+  problems.push("the include-occupational box is still disabled with an agreement chosen");
+}
+// ...and switching it off is the same as choosing no agreement.
+await paSetting("paIncludeOccupational").uncheck();
+await tab.waitForTimeout(80);
+const paOffTotal = await paCell(80, 65);
+if (paOffTotal !== 2972916) problems.push(`with occupational pension switched off the total for 80/65 is ${paOffTotal}, expected 2972916`);
+await paSetting("paIncludeOccupational").check();
+await paSetting("paScheme").selectOption("1");
+await tab.waitForTimeout(80);
+
+// The economic assumptions: the second preset moves the break-evens years earlier.
+await pa.locator('button[data-preset="growth"]').click();
+await tab.waitForTimeout(80);
+const paGrowthBest = await paBest();
+const paGrowthActive = await pa.locator('button[data-preset="growth"]').evaluate((b) => b.classList.contains("active"));
+const paGrowthFields = [await paSetting("paInflation").inputValue(), await paSetting("paGrowth").inputValue()];
+console.log(`pension age     : growth best ${paGrowthBest.slice(0, 4).join(",")}..., fields ${paGrowthFields.join("/")}`);
+if (!sameList(paGrowthBest.slice(0, 4), [67, 68, 70, 71]) || !paGrowthBest.slice(3).every((par) => par === 71)) {
+  problems.push(`with 2 %/1.8 % assumptions the short answer picks ${paGrowthBest.join(",")}, expected 67,68,70 then 71 from 83`);
+}
+if (!paGrowthActive || paGrowthFields[0] !== "2" || paGrowthFields[1] !== "1,8") {
+  problems.push(`the growth preset reads active=${paGrowthActive}, fields ${paGrowthFields.join("/")}, expected active 2/1,8`);
+}
+await pa.locator('button[data-preset="standard"]').click();
+await tab.waitForTimeout(80);
+if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("the standard preset did not restore the default short answer");
+
+// After tax sums the model's net income.
+await pa.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(80);
+const paNetTotal = await paCell(80, 65);
+const paNetBest = await paBest();
+console.log(`pension age     : after tax 80/65=${paNetTotal}, best ${paNetBest[0]}..${paNetBest[paNetBest.length - 1]}`);
+if (paNetTotal !== 2449482) problems.push(`after tax the total for 80/65 is ${paNetTotal}, expected 2449482`);
+if (paNetBest[0] !== 65 || paNetBest[paNetBest.length - 1] !== 71) {
+  problems.push(`after tax the winners run ${paNetBest[0]}..${paNetBest[paNetBest.length - 1]}, expected 65..71`);
+}
+await pa.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(80);
+
+// The reference age: unlock the riktålder and move it; ages outside the cohort's range are clamped.
+await paSetting("paRiktalder").uncheck();
+await paType("paCentre", 72);
+const paShifted = await paLines("pa-fig-total");
+if (!sameList([...paShifted].sort((a, b) => a - b), [69, 70, 71, 72, 73, 74, 75])) {
+  problems.push(`a reference age of 72 draws lines for ${paShifted.join(",")}, expected 69-75`);
+}
+await paType("paCentre", 62);
+const paClamped = await paLines("pa-fig-total");
+const paCentreShown = await paSetting("paCentre").inputValue();
+console.log(`pension age     : reference 62 -> shows ${paCentreShown}, lines ${paClamped.join(",")}`);
+if (paCentreShown !== "65" || !sameList([...paClamped].sort((a, b) => a - b), [65, 66, 67, 68])) {
+  problems.push(`a reference age of 62 (cohort's lowest is 65) shows ${paCentreShown} with lines ${paClamped.join(",")}, expected 65 and 65-68`);
+}
+await paSetting("paRiktalder").check();
+await tab.waitForTimeout(80);
+if ((await paSetting("paCentre").inputValue()) !== "68") problems.push("ticking the riktålder box did not put the reference age back on 68");
+
+// The riktålder follows the birth year while its box is ticked.
+await paType("paBorn", 1990);
+const paCentre1990 = await paSetting("paCentre").inputValue();
+if (paCentre1990 !== String(paRiktalder(1990))) {
+  problems.push(`born 1990 puts the reference age at ${paCentre1990}, the cohort table says ${paRiktalder(1990)}`);
+}
+await paType("paBorn", 1980);
+
+// A final salary as the input: the monthly salary behind it is worked out and shown.
+await paSetting("paSalaryAs").selectOption("1");
+await tab.waitForTimeout(80);
+const paFinalShown = await paSetting("paSalary").inputValue();
+await paType("paSalary", 40000);
+const paMonthlyHint = (await pa.locator('label:has([data-setting="paSalary"]) .field-hint').textContent()) ?? "";
+console.log(`pension age     : final salary shown ${paFinalShown}, hint "${paMonthlyHint}"`);
+if (paFinalShown !== "39872") problems.push(`switching to final salary shows ${paFinalShown}, expected 39872 (the model's own final salary)`);
+if (!/38\D?623/.test(paMonthlyHint)) {
+  problems.push(`typing a final salary of 40000 gives the hint "${paMonthlyHint}", expected the monthly salary 38 623`);
+}
+const paFinalRaised = await paCell(80, 65);
+if (!(paFinalRaised > 2972916)) problems.push("a higher final salary did not raise the totals");
+await paSetting("paSalaryAs").selectOption("0");
+await tab.waitForTimeout(80);
+if ((await paSetting("paSalary").inputValue()) !== "38623") {
+  problems.push(`switching back to monthly salary shows ${await paSetting("paSalary").inputValue()}, expected the derived 38623`);
+}
+await paType("paSalary", 38500);
+
+// The lifespan range, linked so it never inverts; a single lifespan has no difference chart.
+await paType("paLifespanFrom", 85);
+await paType("paLifespanTo", 90);
+const paItems = await pa.locator('[data-role="pa-ribbon"] li').count();
+if (paItems !== 6) problems.push(`lifespans 85-90 give ${paItems} answer boxes, expected 6`);
+await paType("paLifespanFrom", 92);
+const paToLinked = await paSetting("paLifespanTo").inputValue();
+const paDeltaWhenOne = await pa.locator('[data-role="pa-fig-delta"]').count();
+if (paToLinked !== "92" || paDeltaWhenOne !== 0) {
+  problems.push(`raising "from" to 92 left "to" at ${paToLinked} and ${paDeltaWhenOne} difference chart(s), expected 92 and none`);
+}
+
+// Reset puts everything back; "Hämta från Prognos" copies the form's person once.
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(80);
+if (!sameList(await paBest(), PA_BEST_DEFAULT) || (await paSetting("paLifespanFrom").inputValue()) !== "80") {
+  problems.push("Återställ did not restore the default typfall");
+}
+await pa.locator('[data-action="pa-import-forecast"]').click();
+await tab.waitForTimeout(80);
+const paImported = [
+  await paSetting("paBorn").inputValue(),
+  await paSetting("paStartWork").inputValue(),
+  await paSetting("paSalary").inputValue(),
+  await paSetting("paCentre").inputValue(),
+];
+console.log(`pension age     : from Prognos ${paImported.join("/")}`);
+if (paImported.join("/") !== `1959/23/38500/${paRiktalder(1959)}`) {
+  problems.push(`"Hämta från Prognos" gives ${paImported.join("/")}, expected 1959/23/38500/${paRiktalder(1959)}`);
+}
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(80);
+
+// The exports: the matrix as CSV (whole kronor, Swedish delimiter) and a real .xlsx.
+const paMatrixActions = pa.locator('[data-role="pa-matrix-panel"] .panel-actions');
+const paCsv = await download(paMatrixActions.getByRole("button", { name: "Ladda ner CSV" }));
+const paCsvLines = paCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`pension age     : CSV ${paCsv.filename}, ${paCsvLines.length} lines`);
+if (paCsvLines.length !== 17 || paCsvLines[0] !== "Lever till (år);65;66;67;68;69;70;71;Bäst;Försprång mot näst bäst (kr)") {
+  problems.push(`the matrix CSV starts "${paCsvLines[0]}" and has ${paCsvLines.length} lines, expected the 17-line lifespan matrix`);
+}
+if (paCsvLines[1] !== "80;2972916;2942724;2901684;2851104;2760972;2668008;2568324;65;30192") {
+  problems.push(`the matrix CSV's first row reads "${paCsvLines[1]}"`);
+}
+const paXlsx = await download(paMatrixActions.getByRole("button", { name: "Ladda ner Excel" }));
+if (!looksLikeXlsx(paXlsx.buffer)) problems.push(`the matrix's Excel download ("${paXlsx.filename}") isn't a real .xlsx file`);
+const paSeries = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const paSeriesLines = paSeries.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+if (paSeriesLines.length !== 32 || !paSeriesLines[1]?.startsWith("65;16498;")) {
+  problems.push(`the per-age CSV has ${paSeriesLines.length} lines starting "${paSeriesLines[1]}", expected 32 lines from age 65 at 16498`);
+}
+
+// The theme tokens reach the boxes: the reference age is ink, black on light and white on dark.
+const paInk = async () => pa.locator(".pa-ribbon .pa-chip-z").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+const paInkLight = await paInk();
+await tab.emulateMedia({ colorScheme: "dark" });
+const paInkDark = await paInk();
+await tab.emulateMedia({ colorScheme: "light" });
+console.log(`pension age     : reference chip ${paInkLight} light, ${paInkDark} dark`);
+if (paInkLight !== "rgb(0, 0, 0)" || paInkDark !== "rgb(255, 255, 255)") {
+  problems.push(`the reference chip is ${paInkLight}/${paInkDark} on light/dark, expected black/white`);
+}
+
+// Swedish and English.
+const paHeadSv = (await pa.locator("section.panel > h2 span").first().textContent()) ?? "";
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paHeadEn = (await pa.locator("section.panel > h2 span").first().textContent()) ?? "";
+const paLabelEn = (await pa.locator(".pa-ribbon-label").textContent()) ?? "";
+const paButtonEn = (await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').textContent()) ?? "";
+console.log(`pension age     : "${paHeadSv}" / "${paHeadEn}", "${paLabelEn}", button "${paButtonEn}"`);
+if (paHeadSv !== "Bästa pensionsålder" || paHeadEn !== "Best retirement age" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "Best retirement age") {
+  problems.push(`the tab's language switch reads "${paHeadSv}"/"${paHeadEn}"/"${paLabelEn}"/"${paButtonEn}"`);
+}
+if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("switching language changed the short answer");
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+
+// A phone: nothing widens the page, and the sixteen boxes wrap instead of overflowing.
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(100);
+const paOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const paRibbonRows = await pa.locator(".pa-ribbon li").evaluateAll((items) => new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size);
+console.log(`pension age @375px: page overflow ${paOverflow}px, ribbon in ${paRibbonRows} rows`);
+if (paOverflow > 1) problems.push(`the Bästa pensionsålder tab widens the page by ${paOverflow}px at 375px`);
+if (paRibbonRows < 2) problems.push("the sixteen answer boxes did not wrap onto several rows at 375px");
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
+
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 

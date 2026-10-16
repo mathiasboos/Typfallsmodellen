@@ -118,6 +118,40 @@
      subtle guide on white, and plenty visible on the dark surfaces too. */
   --fig-retirement-line: #dfdfdf;
 
+  /*
+   * pensionAgeChart.ts's seven lines -- "Bästa pensionsålder" compares one
+   * retirement age against the others, so the colour says how much earlier
+   * (warm) or later (cool) than the reference age a line is, and the reference
+   * itself is plain ink. A diverging scale, not seven categorical hues: the
+   * order is what the reader needs, and the dataviz method caps a fixed
+   * categorical order well below what seven series could be told apart by.
+   *
+   * Each arm is one hue stepped in OKLCH lightness at fixed spacing (0.62,
+   * 0.53, 0.43 in light; 0.62, 0.71, 0.80 in dark), the hues taken from this
+   * palette's own red-orange (`--fig-wage-level`) and blue (`--fig-salary`),
+   * so distance from the reference reads as contrast against the surface in
+   * both themes. Validated with the `dataviz` skill's `validate_palette.js`
+   * as an ordinal ramp per arm, against this app's own chart surfaces
+   * (`#ffffff` light, `#003824` dark): monotone lightness, every adjacent
+   * step >= 0.06 apart, lightest step >= 3:1 against the surface (3.61:1
+   * light, 3.29:1 dark), one hue per arm. `--fig-pa-on-*` is the text colour
+   * (white or black, whichever contrasts more) for a chip filled with the step.
+   */
+  --fig-pa-m3: #902402;
+  --fig-pa-m2: #bd3100;
+  --fig-pa-m1: #e84514;
+  --fig-pa-z: var(--text-primary);
+  --fig-pa-p1: #4d8acb;
+  --fig-pa-p2: #306eac;
+  --fig-pa-p3: #10528e;
+  --fig-pa-on-m3: #ffffff;
+  --fig-pa-on-m2: #ffffff;
+  --fig-pa-on-m1: #000000;
+  --fig-pa-on-z: #ffffff;
+  --fig-pa-on-p1: #000000;
+  --fig-pa-on-p2: #ffffff;
+  --fig-pa-on-p3: #ffffff;
+
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -166,6 +200,22 @@
     --fig-scenario-1: #48b866;
     --fig-scenario-2: #d3c5a6;
     --fig-scenario-3: #4885c5;
+
+    /* pensionAgeChart.ts's lines, stepped for the dark surface: the further
+       from the reference, the lighter -- see the light-theme note above. */
+    --fig-pa-m3: #fea28a;
+    --fig-pa-m2: #ff6e49;
+    --fig-pa-m1: #e74413;
+    --fig-pa-p1: #4d8aca;
+    --fig-pa-p2: #68a6e8;
+    --fig-pa-p3: #8cc2fe;
+    --fig-pa-on-m3: #000000;
+    --fig-pa-on-m2: #000000;
+    --fig-pa-on-m1: #000000;
+    --fig-pa-on-z: #000000;
+    --fig-pa-on-p1: #000000;
+    --fig-pa-on-p2: #000000;
+    --fig-pa-on-p3: #000000;
   }
 }
 
@@ -354,6 +404,7 @@ body {
 .inputs { display: grid; gap: 10px; }
 
 .mode-row { display: flex; }
+.screen-toggle { flex-wrap: wrap; }
 .mode-toggle { flex: 1; }
 .mode-toggle .panel-btn { flex: 1; text-align: center; }
 
@@ -1014,6 +1065,105 @@ body {
 .footnote { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
 
 /*
+ * "Bästa pensionsålder" (pensionAgePanel.ts / pensionAgeChart.ts): its own
+ * inputs, a short answer built around a row of coloured boxes, three line
+ * charts and a handful of tables. Everything else it needs is already here --
+ * `.panel`, `.field`, `.figure`, `.table`, `.legend`, `.tooltip`.
+ */
+.pension-age-panel { display: grid; gap: 20px; min-width: 0; }
+.pa-results { display: grid; gap: 20px; min-width: 0; }
+.pa-results > * { min-width: 0; }
+.pa-body { display: grid; gap: 12px; min-width: 0; }
+.pa-body > * { min-width: 0; }
+
+.pa-intro { margin: 0 0 12px; font-size: 0.8rem; color: var(--text-muted); max-width: 80ch; }
+/* Eight to fourteen controls, so a grid of fields rather than one long column;
+   each `.field` keeps its own caption-left, box-right layout. */
+.pa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px 28px;
+  align-items: start;
+}
+.pa-group {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pa-group:first-child { margin-top: 0; }
+.pa-toggle { grid-column: 1 / -1; flex-wrap: wrap; }
+.pa-lead { margin: 0; font-size: 0.8rem; color: var(--text-muted); max-width: 90ch; }
+.pa-answer .pa-lead { font-size: 0.88rem; color: var(--text-secondary); }
+
+/* The short answer: one box per lifespan, filled with the best alternative's
+   own line colour, and the lead over the runner-up underneath. */
+.pa-ribbon-box { display: grid; gap: 4px; min-width: 0; }
+.pa-ribbon-label { font-size: 0.72rem; color: var(--text-muted); }
+.pa-ribbon {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  /* All sixteen in one row on a normal screen, wrapping onto more rows on a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  gap: 6px;
+}
+.pa-ribbon-item { display: flex; flex-direction: column; min-width: 0; text-align: center; }
+.pa-ribbon-d { font-size: 0.75rem; color: var(--text-secondary); }
+.pa-ribbon-m { font-size: 0.72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pa-chip { display: inline-block; min-width: 2.2em; padding: 1px 8px; border-radius: 6px; font-weight: 700; text-align: center; }
+.pa-ribbon-item .pa-chip { margin: 3px 0; padding: 6px 0; border-radius: 8px; font-size: 0.95rem; }
+.pa-chip-m3 { background: var(--fig-pa-m3); color: var(--fig-pa-on-m3); }
+.pa-chip-m2 { background: var(--fig-pa-m2); color: var(--fig-pa-on-m2); }
+.pa-chip-m1 { background: var(--fig-pa-m1); color: var(--fig-pa-on-m1); }
+.pa-chip-z { background: var(--fig-pa-z); color: var(--fig-pa-on-z); }
+.pa-chip-p1 { background: var(--fig-pa-p1); color: var(--fig-pa-on-p1); }
+.pa-chip-p2 { background: var(--fig-pa-p2); color: var(--fig-pa-on-p2); }
+.pa-chip-p3 { background: var(--fig-pa-p3); color: var(--fig-pa-on-p3); }
+.pa-kpi { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+.pa-points { display: grid; gap: 6px; margin: 0; padding-left: 18px; font-size: 0.88rem; max-width: 100ch; }
+
+/* The charts' own marks. The reference line is heavier than the rest, and a
+   chart's end labels are plain secondary ink next to the dot that carries the colour. */
+.pa-line { stroke-width: 2; }
+.pa-line-z { stroke-width: 3; }
+.pa-end { fill: var(--text-secondary); font-weight: 600; }
+.pa-note { fill: var(--text-muted); }
+
+/* A short line key beside a table label or header -- the table's counterpart
+   of the legend swatch. */
+.pa-key { display: inline-block; width: 16px; height: 3px; margin-right: 7px; border-radius: 2px; vertical-align: middle; }
+.pa-key-m3 { background: var(--fig-pa-m3); }
+.pa-key-m2 { background: var(--fig-pa-m2); }
+.pa-key-m1 { background: var(--fig-pa-m1); }
+.pa-key-z { background: var(--fig-pa-z); }
+.pa-key-p1 { background: var(--fig-pa-p1); }
+.pa-key-p2 { background: var(--fig-pa-p2); }
+.pa-key-p3 { background: var(--fig-pa-p3); }
+
+.pa-table th, .pa-table td { padding: 5px 8px; }
+.pa-table small { display: block; font-size: 0.68rem; font-weight: 400; color: var(--text-muted); }
+.pa-matrix td.pa-best { font-weight: 700; box-shadow: inset 0 0 0 2px var(--pa-best, var(--accent)); }
+.pa-best-m3 { --pa-best: var(--fig-pa-m3); }
+.pa-best-m2 { --pa-best: var(--fig-pa-m2); }
+.pa-best-m1 { --pa-best: var(--fig-pa-m1); }
+.pa-best-z { --pa-best: var(--fig-pa-z); }
+.pa-best-p1 { --pa-best: var(--fig-pa-p1); }
+.pa-best-p2 { --pa-best: var(--fig-pa-p2); }
+.pa-best-p3 { --pa-best: var(--fig-pa-p3); }
+.pa-table td.txt { min-width: 240px; text-align: left; white-space: normal; }
+.pa-breakeven thead th:last-child { text-align: left; }
+.pa-narrow { max-width: 480px; }
+.pa-notes { padding: 0 2px; }
+
+/*
  * Print.
  *
  * People take a pension forecast to a meeting, so paper is a real output and
@@ -1042,6 +1192,20 @@ body {
     --retired: #efefef;
     --banner: #fbc111;
     --banner-ink: #000000;
+
+    --fig-pa-m3: #902402;
+    --fig-pa-m2: #bd3100;
+    --fig-pa-m1: #e84514;
+    --fig-pa-p1: #4d8acb;
+    --fig-pa-p2: #306eac;
+    --fig-pa-p3: #10528e;
+    --fig-pa-on-m3: #ffffff;
+    --fig-pa-on-m2: #ffffff;
+    --fig-pa-on-m1: #000000;
+    --fig-pa-on-z: #ffffff;
+    --fig-pa-on-p1: #000000;
+    --fig-pa-on-p2: #ffffff;
+    --fig-pa-on-p3: #ffffff;
   }
 
   body { font-size: 10pt; }

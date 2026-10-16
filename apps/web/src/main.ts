@@ -30,6 +30,7 @@ import { LANGS, dropHeadingNumber, t } from "./i18n.js";
 import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis, retirementAge } from "./kpis.js";
 import { createMikrosimPanel } from "./mikrosim.js";
+import { createPensionAgePanel } from "./pensionAgePanel.js";
 import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
 import {
@@ -57,9 +58,9 @@ interface View {
 /** The workbook's two radio circles: `Normalt` and `Avancerat`. */
 type Mode = "normal" | "advanced";
 
-/** Not a workbook mode -- a second and third top-level view alongside the
- * forecast. */
-type Screen = "single" | "compare" | "mikrosim";
+/** Not a workbook mode -- a second, third and fourth top-level view alongside
+ * the forecast. */
+type Screen = "single" | "compare" | "mikrosim" | "retirement";
 
 const deaths = loadDeathProbabilities();
 
@@ -153,6 +154,9 @@ const mikrosimPanel = createMikrosimPanel(
   () => runInput(),
   () => comparePanel.scenarioInputs(runInput()),
 );
+// Own inputs, like Mikrosim's rows: "Hämta från Prognos" pulls the form's
+// current typfall across once, on the click, rather than this tab following it.
+const pensionAgePanel = createPensionAgePanel(view.lang, () => runInput());
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");
@@ -236,6 +240,7 @@ function screenToggle(): HTMLElement {
     // A proper noun from the workbook's own sheet name -- the same word in
     // both languages, so no `say()`-style branching is needed here.
     { screen: "mikrosim", label: () => "Mikrosim" },
+    { screen: "retirement", label: (l) => (l === "sv" ? "Bästa pensionsålder" : "Best retirement age") },
   ];
   for (const choice of choices) {
     const button = document.createElement("button");
@@ -302,6 +307,7 @@ function renderHeading(): void {
       pgbGrid.relabel(lang);
       comparePanel.relabel(lang);
       mikrosimPanel.relabel(lang);
+      pensionAgePanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -438,6 +444,15 @@ function render(): void {
     // every Mikrosim row is independent of the baseline form (see
     // mikrosim.ts's own file comment).
     mikrosimPanel.setContext(context, deaths);
+    return;
+  }
+
+  if (screen === "retirement") {
+    results.append(pensionAgePanel.element);
+    // Like Mikrosim, nothing here depends on `typfall` or the month/year
+    // switch: the tab has its own person and always shows kronor per month.
+    // What it does read live is the shared context (Avancerat).
+    pensionAgePanel.setContext(context, deaths);
     return;
   }
 
