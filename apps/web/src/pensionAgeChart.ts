@@ -39,6 +39,12 @@
  * baseline is the heavy ink line, so a series says which of the two it is by
  * giving `colour`/`emphasis`/`essential` itself; a series that gives none of
  * them behaves exactly as before.
+ *
+ * "Hur länge räcker pensionen?" draws it a third way: one line per payout period
+ * (an ordinal ramp, `--fig-pu-*`) and a dashed line for the budget. A line that
+ * ends its payout part-way -- and then falls onto the public pension alone,
+ * where all of them meet -- is marked and labelled where the payout ends
+ * (`endAt`), not at the right edge where the labels would pile on one another.
  */
 import { HEIGHT, PLOT, WIDTH, el, frame, label, legend, newSvg } from "./chart.js";
 import type { SeriesMeta } from "./chart.js";
@@ -76,6 +82,15 @@ export interface ChartSeries {
   readonly par?: number;
   /** The agreement this line is (a `SchemeId`) -- the same kind of handle, for the comparison. */
   readonly agreement?: number;
+  /** The payout period this line is (0 is lifelong) -- the same kind of handle, for "Hur länge räcker pensionen?". */
+  readonly payout?: number;
+  /** A dashed line, for a level to measure the rest against: a budget. */
+  readonly dashed?: boolean;
+  /**
+   * The age the line is marked and labelled at, where that is not its last point:
+   * the end of a payout, after which the line falls to where the others are.
+   */
+  readonly endAt?: number;
   /** Legend and tooltip text. */
   readonly name: string;
   /** Short label beside the last point. */
@@ -221,6 +236,7 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
   // The lines, the heavy one last so it lies on top of its neighbours.
   const drawn = [...spec.series].sort((a, b) => Number(isHeavy(a)) - Number(isHeavy(b)));
   const ends: { series: ChartSeries; y: number }[] = [];
+  const own: { series: ChartSeries; x: number; y: number }[] = [];
   for (const series of drawn) {
     if (series.points.length === 0) continue;
     const points = series.points.map(([age, value]) => `${x(age)},${y(value)}`).join(" ");
@@ -228,17 +244,21 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
       points,
       fill: "none",
       stroke: `var(${colourOf(series)})`,
-      class: isHeavy(series) ? "line pa-line pa-line-z" : "line pa-line",
+      class: `${isHeavy(series) ? "line pa-line pa-line-z" : "line pa-line"}${series.dashed ? " pa-line-dashed" : ""}`,
     });
     if (series.par !== undefined) line.dataset.par = String(series.par);
     if (series.agreement !== undefined) line.dataset.agreement = String(series.agreement);
+    if (series.payout !== undefined) line.dataset.payout = String(series.payout);
     svg.append(line);
 
     const first = series.points[0]!;
     const last = series.points[series.points.length - 1]!;
+    // Where the line is marked and labelled: its last point, or the end of a payout that stops before it.
+    const marked = (series.endAt !== undefined && series.points.find(([age]) => age === series.endAt)) || last;
     if (spec.startDots) svg.append(dot(x(first[0]), y(first[1]), colourOf(series)));
-    svg.append(dot(x(last[0]), y(last[1]), colourOf(series)));
-    ends.push({ series, y: y(last[1]) });
+    if (!series.dashed) svg.append(dot(x(marked[0]), y(marked[1]), colourOf(series)));
+    if (marked === last) ends.push({ series, y: y(last[1]) });
+    else own.push({ series, x: x(marked[0]), y: y(marked[1]) });
   }
 
   // End labels: all of them if they fit with a small nudge, else the essential ones.
@@ -249,13 +269,15 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
     set.forEach((e, i) => svg.append(label(e.series.end, FRAME.right + 9, positions[i]! + 4, "tick pa-end")));
     break;
   }
+  // A label beside the end of a payout sits at its own point, where nothing else is.
+  for (const e of own) svg.append(label(e.series.end, e.x + 9, e.y - 6, "tick pa-end"));
 
   const key: SeriesMeta[] = spec.series.map((s, i) => ({
-    key: s.slot ?? `line-${s.agreement ?? i}`,
+    key: s.slot ?? `line-${s.agreement ?? s.payout ?? i}`,
     name: () => s.name,
     colour: colourOf(s),
     mark: "line",
-    dashed: false,
+    dashed: s.dashed === true,
   }));
   const figure = frame(spec.title, spec.subtitle, svg, legend(key, lang), spec.note ? [spec.note] : []);
   figure.dataset.role = spec.role;
@@ -323,7 +345,7 @@ function attachHover(
       const row = document.createElement("div");
       row.className = "tooltip-row";
       const swatch = document.createElement("span");
-      swatch.className = "swatch swatch-line-solid";
+      swatch.className = series.dashed ? "swatch swatch-line" : "swatch swatch-line-solid";
       swatch.style.borderTopColor = `var(${colourOf(series)})`;
       const name = document.createElement("span");
       name.textContent = series.name;
@@ -332,7 +354,7 @@ function attachHover(
       amount.textContent = series.format(value);
       row.append(swatch, name, amount);
       tip.append(row);
-      marks.append(dot(px, y(value), colourOf(series)));
+      if (!series.dashed) marks.append(dot(px, y(value), colourOf(series)));
     });
     tip.hidden = false;
 

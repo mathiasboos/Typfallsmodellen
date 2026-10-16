@@ -595,6 +595,17 @@ export function closeBalances(run: Run, age: number, utgyear: number): void {
     if (vector.get(age) < 0) vector.set(age, 0);
   }
 
+  // Capital that was already saved when the saving starts, credited at the end of
+  // the year before so that it earns the return from the first year on. Not in the
+  // workbook, which can only replace every pot at once (below). It goes into the pot
+  // the saving's kind builds -- `ipsPbh` for an IPS, `ppsPbh` for a KF or an ISK --
+  // and only that one: both pay out from retirement, so crediting both would pay
+  // the same capital twice, once as taxed income and once as `pps`.
+  if (context.ipsOpening > 0 && year === context.ipsStart - 1) {
+    const pot = context.privateSavingKind === 1 || context.privateSavingKind === 2 ? s.ppsPbh : s.ipsPbh;
+    pot.set(age, pot.get(age) + context.ipsOpening);
+  }
+
   // An opening balance typed in for one income year replaces what was built.
   if (context.pbhYear > 0 && year === context.pbhYear) {
     // NOTE: a division, where the commented-out alternative is a multiplication

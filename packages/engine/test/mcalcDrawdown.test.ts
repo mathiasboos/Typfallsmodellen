@@ -143,6 +143,87 @@ describe("balances", () => {
   });
 });
 
+describe("capital already in the private saving", () => {
+  // Born 1980: the year before the saving starts, 2029, is age 49.
+  const born = { born: 1980, scheme: Scheme.Itp1 };
+  const saving = { ipsStart: 2030, tjpPar: 0 };
+  const without = plain(born, saving).state;
+  const withCapital = plain(born, { ...saving, ipsOpening: 200_000 }).state;
+
+  it("is credited at the end of the year before the saving starts, and not earlier", () => {
+    expect(withCapital.ipsPbh.get(48)).toBe(0);
+    expect(withCapital.ipsPbh.get(49)).toBe(200_000);
+    expect(without.ipsPbh.get(49)).toBe(0);
+  });
+
+  it("goes into the pot the kind of saving builds, and into no other", () => {
+    // An IPS builds `ipsPbh`; a kapitalförsäkring or an ISK builds `ppsPbh`.
+    expect(withCapital.ppsPbh.get(49)).toBe(0);
+    for (const kind of [1, 2]) {
+      const { state } = plain(born, { ...saving, ipsOpening: 200_000, privateSavingKind: kind });
+      expect(state.ppsPbh.get(48), `pps before, kind ${kind}`).toBe(0);
+      expect(state.ppsPbh.get(49), `pps, kind ${kind}`).toBe(200_000);
+      expect(state.ipsPbh.get(49), `ips, kind ${kind}`).toBe(0);
+    }
+  });
+
+  it("then earns a return, and is paid out as private saving from the retirement age", () => {
+    expect(withCapital.ipsPbh.get(60)).toBeGreaterThan(200_000);
+    const par = 66;
+    expect(without.ips.get(par)).toBe(0);
+    expect(withCapital.ips.get(par)).toBeGreaterThan(0);
+  });
+
+  it("adds to monthly saving, one for one before tax on the return", () => {
+    const monthly = plain(born, { ...saving, ipsMonthly: 1_000 }).state;
+    const both = plain(born, { ...saving, ipsMonthly: 1_000, ipsOpening: 200_000 }).state;
+    expect(both.ipsPbh.get(60)).toBeGreaterThan(monthly.ipsPbh.get(60) + 200_000);
+    expect(both.ips.get(66)).toBeGreaterThan(monthly.ips.get(66));
+  });
+
+  it("is drawn over the temporary withdrawal years, then stops", () => {
+    const { state } = plain(born, { ...saving, ipsOpening: 200_000, tempIpsUttag: 10 });
+    expect(state.ips.get(66)).toBeGreaterThan(0);
+    expect(state.ips.get(75)).toBeGreaterThan(0);
+    expect(state.ips.get(77)).toBe(0);
+  });
+
+  it("is paid out once: as private saving in an IPS, as `pps` in a KF or an ISK, never as both", () => {
+    // Someone who retires at 66 with the saving starting the year they do: the credit lands at
+    // 65, in the last year before the payout, and the same capital must not be paid out twice.
+    const retired = { ...born, retirementAge: 66 };
+    const late = { ipsStart: 1980 + 66, tjpPar: 0 };
+    const ips = plain(retired, { ...late, ipsOpening: 200_000, privateSavingKind: 0 }).state;
+    expect(ips.ips.get(66)).toBeGreaterThan(0);
+    for (let age = 60; age <= 100; age += 1) expect(ips.pps.get(age), `pps at ${age}`).toBe(0);
+    for (const kind of [1, 2]) {
+      const { state } = plain(retired, { ...late, ipsOpening: 200_000, privateSavingKind: kind });
+      expect(state.pps.get(66), `kind ${kind}`).toBeGreaterThan(0);
+      for (let age = 60; age <= 100; age += 1) expect(state.ips.get(age), `ips at ${age}, kind ${kind}`).toBe(0);
+    }
+  });
+
+  it("touches no other pot", () => {
+    for (const age of [49, 60, 66, 80]) {
+      expect(withCapital.ipPbh.get(age), `ipPbh at ${age}`).toBe(without.ipPbh.get(age));
+      expect(withCapital.ppPbh.get(age), `ppPbh at ${age}`).toBe(without.ppPbh.get(age));
+      expect(withCapital.tjpPbh.get(age), `tjpPbh at ${age}`).toBe(without.tjpPbh.get(age));
+      expect(withCapital.gpPbh.get(age), `gpPbh at ${age}`).toBe(without.gpPbh.get(age));
+      expect(withCapital.ip.get(age), `ip at ${age}`).toBe(without.ip.get(age));
+      expect(withCapital.garp.get(age), `garp at ${age}`).toBe(without.garp.get(age));
+    }
+  });
+
+  it("changes nothing at all when it is 0, which is its default", () => {
+    expect(defaultContext().ipsOpening).toBe(0);
+    const explicit = plain(born, { ...saving, ipsOpening: 0 }).state;
+    for (const age of [49, 60, 66, 80, 95]) {
+      expect(explicit.ipsPbh.get(age)).toBe(without.ipsPbh.get(age));
+      expect(explicit.ips.get(age)).toBe(without.ips.get(age));
+    }
+  });
+});
+
 describe("the ATP cohorts", () => {
   it("pay no ATP to a cohort entirely in the new system", () => {
     const { run, state } = plain();

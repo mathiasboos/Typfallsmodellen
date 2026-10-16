@@ -182,6 +182,32 @@
   --fig-ag-7: #6250d6;
   --fig-ag-8: #eda100;
 
+  /*
+   * pensionLastsPanel.ts's lines -- "Hur länge räcker pensionen?" sets one pension
+   * against a budget under several ways of taking the occupational pension out, 5,
+   * 10, 15 or 20 years or for life. The payout periods are ordered, so the colour
+   * is a ramp, not four hues: SEB's gold stepped in OKLCH lightness at fixed spacing
+   * (0.40, 0.48, 0.55, 0.63 in light; 0.86, 0.78, 0.70, 0.62 in dark), the shortest
+   * payout the strongest against its surface, and lifelong -- the one that does not
+   * run out -- plain ink, as the reference age is in "Bästa pensionsålder". Validated
+   * with the `dataviz` skill's `validate_palette.js` as an ordinal ramp against this
+   * app's own chart surfaces (`#ffffff` light, `#003824` dark): monotone lightness,
+   * every adjacent step >= 0.06 apart, lightest step >= 3:1 against the surface
+   * (3.54:1 light, 3.60:1 dark), one hue; ink is >= 39 apart from the darkest step
+   * under colour-blind simulation. `--fig-pu-on-*` is the text colour (white or black,
+   * whichever contrasts more) for a chip filled with the step.
+   */
+  --fig-pu-y5: #5b4400;
+  --fig-pu-y10: #755800;
+  --fig-pu-y15: #8f6d06;
+  --fig-pu-y20: #ab8206;
+  --fig-pu-life: var(--text-primary);
+  --fig-pu-on-y5: #ffffff;
+  --fig-pu-on-y10: #ffffff;
+  --fig-pu-on-y15: #ffffff;
+  --fig-pu-on-y20: #000000;
+  --fig-pu-on-life: #ffffff;
+
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -255,6 +281,17 @@
     --fig-ag-6: #d55181;
     --fig-ag-7: #9085e9;
     --fig-ag-8: #c98500;
+
+    /* pensionLastsPanel.ts's lines, the same gold at the dark steps: the shortest payout the lightest -- see the light-theme note above. */
+    --fig-pu-y5: #ffc83b;
+    --fig-pu-y10: #e4ae00;
+    --fig-pu-y15: #c59709;
+    --fig-pu-y20: #a78005;
+    --fig-pu-on-y5: #000000;
+    --fig-pu-on-y10: #000000;
+    --fig-pu-on-y15: #000000;
+    --fig-pu-on-y20: #000000;
+    --fig-pu-on-life: #000000;
   }
 }
 
@@ -1297,6 +1334,77 @@ button.pa-agr[aria-pressed="true"]::before { content: "✓"; }
 .pa-agrtable tr.pa-base-row td { border-bottom: 1px solid var(--rule); }
 
 /*
+ * "Hur länge räcker pensionen?" (pensionLastsPanel.ts): the same panel, charts and
+ * tables as "Bästa pensionsålder" (it reuses their classes), with its own payout
+ * period colours, a short answer built around a row of boxes -- one per way of taking
+ * the pension out, with how long the budget lasts underneath -- and tables whose cells
+ * say how a budget stands. Status is never colour alone: the text says it, and a
+ * check mark or a cross comes with it.
+ */
+.pa-chip-y5 { background: var(--fig-pu-y5); color: var(--fig-pu-on-y5); }
+.pa-chip-y10 { background: var(--fig-pu-y10); color: var(--fig-pu-on-y10); }
+.pa-chip-y15 { background: var(--fig-pu-y15); color: var(--fig-pu-on-y15); }
+.pa-chip-y20 { background: var(--fig-pu-y20); color: var(--fig-pu-on-y20); }
+.pa-chip-life { background: var(--fig-pu-life); color: var(--fig-pu-on-life); }
+.pa-chip-none { background: var(--surface-sunken); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border); }
+.pa-key-y5 { background: var(--fig-pu-y5); }
+.pa-key-y10 { background: var(--fig-pu-y10); }
+.pa-key-y15 { background: var(--fig-pu-y15); }
+.pa-key-y20 { background: var(--fig-pu-y20); }
+.pa-key-life { background: var(--fig-pu-life); }
+/* The budget: a dashed line, in a chart and in its table key. */
+.pa-line-dashed { stroke-dasharray: 7 5; }
+.pl-key-budget { display: inline-block; width: 16px; height: 0; margin-right: 7px; border-top: 2px dashed var(--text-muted); vertical-align: middle; }
+
+.pl-ribbon { grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); gap: 12px 10px; }
+.pl-ribbon-item {
+  position: relative;
+  align-items: stretch;
+  gap: 2px;
+  padding: 10px 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+.pl-ribbon-item .pa-chip { display: block; margin: 0 0 4px; padding: 6px 0; }
+.pl-ribbon-item[data-best="1"] { border-color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--text-primary); }
+.pl-best-tag {
+  position: absolute;
+  top: -9px;
+  left: 8px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--text-primary);
+  color: var(--surface-raised);
+}
+.pl-ribbon-d { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); }
+.pl-ribbon-ok::before, .pl-cell-ok::before { content: "✓ "; font-weight: 700; }
+.pl-ribbon-no::before, .pl-cell-no::before { content: "✕ "; font-weight: 700; }
+.pl-ribbon-no { color: var(--text-muted); }
+
+.pl-cell { white-space: nowrap; min-width: 118px; }
+.pl-cell-ok { font-weight: 600; }
+.pl-cell-no { color: var(--text-muted); }
+/* How long the budget lasts, as a bar over the years from the retirement age to the lifespan. */
+.pl-bar {
+  display: block;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background-color: var(--grid);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.pl-options td.num, .pl-matrix td.num, .pl-time td.num { white-space: nowrap; }
+.pl-options tr.pl-best td { background: color-mix(in srgb, var(--accent) 9%, transparent); font-weight: 600; }
+.pl-options tr.pl-best td.pl-cell-ok { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+td.pl-floor-name { font-style: italic; }
+.pl-options tr[data-payout="floor"] td { border-bottom: 1px solid var(--rule); }
+
+/*
  * Print.
  *
  * People take a pension forecast to a meeting, so paper is a real output and
@@ -1347,6 +1455,16 @@ button.pa-agr[aria-pressed="true"]::before { content: "✓"; }
     --fig-ag-6: #e87ba4;
     --fig-ag-7: #6250d6;
     --fig-ag-8: #eda100;
+
+    --fig-pu-y5: #5b4400;
+    --fig-pu-y10: #755800;
+    --fig-pu-y15: #8f6d06;
+    --fig-pu-y20: #ab8206;
+    --fig-pu-on-y5: #ffffff;
+    --fig-pu-on-y10: #ffffff;
+    --fig-pu-on-y15: #ffffff;
+    --fig-pu-on-y20: #000000;
+    --fig-pu-on-life: #ffffff;
   }
 
   body { font-size: 10pt; }

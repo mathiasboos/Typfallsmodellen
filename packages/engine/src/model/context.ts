@@ -196,6 +196,15 @@ export interface ModelContext {
   readonly privateSavingKind: number;
   /** `rng_Fondförsäkring`: fund insurance rather than traditional. */
   readonly fundInsurance: number;
+  /**
+   * Capital that is already in the private saving when the saving starts. Not an
+   * Adv_settings entry: the workbook can only inject a known balance through
+   * `pbhYear`, which replaces every pot at once (and divides the guarantee
+   * base by the income pension's balance, see `closeBalances`). This one adds
+   * to the private pot alone. It is credited at the end of the year before
+   * `ipsStart`, so it earns the return from `ipsStart` on. 0 for none.
+   */
+  readonly ipsOpening: number;
 
   // ---- Taxes and fees ------------------------------------------------------
 
@@ -398,6 +407,7 @@ function buildContext(
     ipsStart: workbookDefault("IPS_start", 2026),
     privateSavingKind: workbookDefault("rng_Kapitalförsäkring", 0),
     fundInsurance: workbookDefault("rng_Fondförsäkring", 1),
+    ipsOpening: 0,
 
     kommunalskatt: workbookDefault("rng_Kommunalskatt", 0),
     begravningsavgift: workbookDefault("rng_Begravningsavgift", 0),

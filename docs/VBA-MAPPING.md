@@ -765,6 +765,33 @@ The original is one long procedure, so its loop locals are still in scope when t
 second pass reads several of them. `RunState.leftovers` keeps exactly those, which is why splitting
 `Mcalc` into functions did not lose them.
 
+### Two additions that are not in the workbook
+
+Both are off or inert unless a caller asks, so the golden comparison (299 typfall) and every other
+test are untouched.
+
+- **`ipsOpening`** (`ModelContext`, default 0): capital already in the private saving when the saving
+  starts. The workbook can only inject a known balance through `rng_PBHYear`, which replaces *every*
+  pot for that year -- income pension, premium pension, occupational pension and private saving -- and
+  divides the guarantee base by the income pension's balance (the last of the quirks below), so it cannot be used
+  to say "I have 300 000 kr in a private pension" without also zeroing the rest. `ipsOpening` is added to
+  the pot the kind of saving builds -- `ipsPbh` for an IPS, `ppsPbh` for a KF or an ISK, and only that
+  one, since both pay out from retirement and crediting both would pay the same capital twice -- at the
+  end of the year before `ipsStart`, in `closeBalances`, so it earns the return from `ipsStart` on and is
+  paid out like any other part of the pot. Born so far back that the payout has already begun, the
+  caller counts it from the payout year; and the year has to be one the run covers, or the capital is
+  never booked (the tab's `savingYear` holds it to the first year after the run's first age).
+- **`runWithTaxProbe`** (`netProbe.ts`): `run()` and then the tax section run again at any age with
+  another gross income -- `netAt(age, gross)`, and `grossFor(age, net)` by bisection -- with everything
+  it writes (`brutto`, `netto`, the two tax splits and `leftovers`) put back afterwards, so the run is
+  left exactly as `run()` leaves it. It needed `priceFactor` pulled out of `recordRow` (the same
+  expression, now shared) so the probe speaks in the units the rows do. `test/netProbe.test.ts` shows it
+  is the same section: given the income a run had it returns the net the run reported at every age
+  from the retirement age on (the first pension year included), under every price basis and with capital
+  income in the model, and it is monotone and invertible. It also snapshots the whole run state -- every
+  age array, running scalar, the leftovers and the output rows -- before and after probing, so a stray
+  write cannot hide.
+
 ### Quirks kept on purpose
 
 **`kvoten` opens at 1 always.** Its first guard reads `If Iyear < slutage`, comparing a calendar

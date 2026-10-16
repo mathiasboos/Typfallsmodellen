@@ -3,7 +3,10 @@
  * tab's own panel (`pensionAgePanel.ts`) and by the agreement comparison
  * (`pensionAgeCompare.ts`): element and table builders, the number formats the
  * two use, and the few phrases both need to describe a study ("fasta priser
- * (2025)", "allmän pension, före skatt").
+ * (2025)", "allmän pension, före skatt"). "Hur länge räcker pensionen?"
+ * (`pensionLastsPanel.ts`) builds its own panels from the same element, table and
+ * number helpers; the phrases and the line keys are about retirement ages and stay
+ * here.
  *
  * Nothing here holds state. It lives in a module of its own because the two
  * panels would otherwise have to import each other.

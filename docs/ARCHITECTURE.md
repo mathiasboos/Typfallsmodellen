@@ -1271,6 +1271,130 @@ and un-picking, the retirement age, the lifespan to read at, the chart toggle, a
 chosen agreement marked, the cohort swapping the defaults, both downloads, both languages, reset and
 375px.
 
+### Hur länge räcker pensionen?
+
+A fifth top-level view, on request, for the question the other tabs leave open: *given a budget, how
+long does the pension last?* The public pension is paid for life and nothing the person chooses
+changes that. The occupational pension and private pension saving are different -- the person can
+often choose to have them paid out over 5 to 20 years, or for life -- so a short payout is a larger
+amount for a shorter time and a lifelong one a smaller amount for as long as the person lives. Whether
+that pays for the life one wants is a question of a budget, so the tab sets the pension, under every way
+of taking it out, against one. There is no such sheet in the workbook; it is built on two settings the
+workbook does have, `rng_Temp_Tjp_Uttag` and `rng_Temp_IPS_Uttag` ("temporary withdrawal, in years; 0 is
+lifelong"), run once per payout period.
+
+Three modules and one test file, split the way "Bästa pensionsålder" is:
+
+- `pensionLasts.ts` -- everything that is arithmetic, with no DOM: the payout periods, the budgets, the
+  seventeen runs, the assessment of a pension against a budget, the budgets matrix, the final-salary
+  inversion and the CSV/Excel rows.
+- `pensionLastsPanel.ts` -- the inputs, the short answer, the tables and the exports.
+- `pensionAgeChart.ts` -- the same line chart "Bästa pensionsålder" draws, asked for two more things (a
+  dashed line, and a label where a payout ends instead of at the right edge).
+- `apps/web/test/pensionLasts.test.ts` -- 59 tests; the engine side has `test/netProbe.test.ts` and a
+  block in `test/mcalcDrawdown.test.ts`.
+
+**The method.** One `runWithTaxProbe()` per payout period: every whole year from 5 to 20, and lifelong
+-- seventeen runs, about 20 ms for the lot, so there is no worker and no debounce. The runs depend on
+the person, the pensions and the assumptions and *not* on the budget, the lifespan or before/after tax,
+so `PayoutRuns` is kept (keyed by `runsKey`, and the identity of the shared context, as the agreement
+comparison's cache is) while only those change, and `evaluate` does the rest. The pension is the per-age
+matrix (`result.rows`): public pension, occupational pension and the individual pension separately
+(`ip + tp + pp + garp + ptillagg`, `tjp`, `ips`), the model's net income (`netto`) beside them, all in
+fixed prices.
+
+**The individual occupational pension is the model's private saving** -- IPS, taxed as income when paid
+out, like an occupational pension -- with a capital already saved and a monthly saving until retirement,
+paid out over the same period as the agreement's pension (`tempIpsUttag` = `tempTjpUttag`). The model
+has no place for the capital: the workbook can only inject a known balance through `pbhYear`, which
+replaces every pot at once *and* divides the guarantee base by the income pension's balance (a quirk
+the engine keeps and tests). So the engine got `ipsOpening`, a setting of its own -- see
+`docs/VBA-MAPPING.md`. Capital and saving count from the year Avancerat calls "Sparandet börjar år"
+(`ipsStart`, the model's idea of today), or from the retirement year if that has passed -- and never
+from before the run's own first years, where the capital could not be booked. The monthly saving is a
+fixed number of kronor, as in the model; it is not raised with inflation.
+
+**The budget is after tax.** minPension's three examples (Baspensionär 17 600, Medelpensionär 18 400,
+Pluspensionär 27 300 kr a month -- the amounts the site's Pensionsöversikt uses, so a change there
+should be made here) or one's own, in the reference year's money. Everything is in fixed prices
+(`priceBasis: 1`) whatever Avancerat says, since a budget is purchasing power; benefits such as housing
+supplement are not counted.
+
+**Before tax, the budget is what the model's tax turns into it -- not a rate.** Tax is progressive and
+its rules change with the person's age (the higher grundavdrag for the old begins at an age of its own),
+so grossing a budget up with an average rate would be wrong in both directions. `runWithTaxProbe`
+(engine) runs the loop as `run()` does and keeps the run, so the tax section can be run again at any
+age with another gross income and everything it touches put back: `netAt(age, gross)`, and
+`grossFor(age, net)` by bisection (tax never leaves less for more). The tests prove it is the same
+section by handing it the income a run actually had and getting back the net that run reported, at
+every age from the retirement age on and under every price basis, and with capital income in the model;
+a snapshot of the whole run state before and after probing shows it leaves nothing behind. Because net
+never falls as gross rises, a pension covers the budget before tax exactly when it covers it after
+(tested for five budgets), so the before-tax view only changes the units.
+
+**Two readings of "lasts", both reported.** *Month by month*: an age is covered if the pension then is
+at least the budget; the answer is the stretches of covered ages ("Till 73 år", "69-78 år", "Från 69 år",
+"Hela vägen"). A 5-year payout covers the budget with room to spare for five years and then leaves only
+the public pension. *Added up*: if what is left over in the good years is saved (without interest, after
+tax), the money lasts until the running total of pension minus budget turns negative for the last time,
+interpolated inside the year as `breakEven` does. The first is the plain answer to "can I live on it
+each month"; the second says whether a short payout, saved with discipline, still gets the person
+through. The default person shows the difference: a 5-year payout covers the budget to 73 month by
+month, and to 90 if the surplus is saved.
+
+**The recommended payout** is the one that covers the budget in the most years, the longer payout on a
+tie (lifelong being the longest in time), and none when no payout covers it in any year. Payouts pay more
+and more for fewer years as they shorten, so the count rises up to the longest payout that still reaches
+the budget and then falls -- for a Pluspensionär it is 11 years, the first year apart (see below).
+Lifelong is not always the *smallest* amount: at a late retirement age the remaining life expectancy is
+short enough that a lifelong payout pays more a month than 20 years -- a sweep over eight agreements,
+seven cohorts and three retirement ages found it at 78 to 80 -- which the unit tests, run at 68, do not meet.
+
+**The model's tax steps are shown as they are.** The higher grundavdrag for the old begins at the
+riktålder plus one for the cohorts to come, so the years before it are taxed harder and leave less -- the
+first year as a pensioner at the riktålder, four years for someone who retires at 65. Table 2 shows the
+same. The tab does not smooth it away: an age that falls short only for that reason is reported as
+short, but as a stretch ("från 69 år") and not as a failure of the whole, and the running total is not
+"gone in year one" because year one fell a little short.
+
+**Its own inputs, a one-time pull from Prognos**, as the other new tabs; the shared context
+(Avancerat: tax, wage profile, ...) is read live. Overridden on purpose: the occupational pension starts
+with the public one (`tjpPar: 0`), the payout periods (`tempTjpUttag`, `tempIpsUttag`), private saving
+(`privateSavingKind: 0`, `ipsMonthly`, `ipsStart`, `ipsOpening`) and fixed prices. Known capital values
+typed into Avancerat apply here too, and replace the private pot at their year.
+
+**Colours: an ordinal ramp, and ink for lifelong.** The payout periods are ordered, so the colour is one
+hue stepped in OKLCH lightness (`--fig-pu-*`), not four hues: SEB's gold at 0.40 / 0.48 / 0.55 / 0.63 in
+light and 0.86 / 0.78 / 0.70 / 0.62 in dark, the shortest payout the strongest against its surface, and
+lifelong -- the one that does not run out -- plain ink, as the reference age is in "Bästa pensionsålder".
+Gold is a hue nothing else in the tab wears, and stays clear of ink under colour-blind simulation (ΔE
+39 to 62 against black). Validated with the `dataviz` skill's `validate_palette.js` as an ordinal ramp against
+this app's own chart surfaces (`#ffffff`, `#003824`): monotone lightness, every step at least 0.06
+apart, the lightest step 3.54:1 (light) and 3.60:1 (dark), one hue. The budget is a dashed line in the
+muted text colour, which no series wears; the chips' text is white or black, whichever contrasts more.
+Identity does not rest on hue alone: a legend, labels where each payout ends, a hover readout and the
+arrow keys, and a table with every number plotted. Status in the tables is never colour alone -- the
+cell says it in words, a check mark or a cross comes with it, and a thin bar over the years from
+retirement to the lifespan shows at a glance how long each budget lasts.
+
+**Left out on purpose:** married/unmarried, interest on saved surplus, discounting, a probability-weighted
+lifespan, benefits (housing supplement), and choosing the payout period of one pension separately from
+the other's. A composition chart (how much of the pension is public, occupational, individual) is the
+natural next step; the before-tax table already splits it.
+
+**Checked** by the 57 unit tests -- the payout periods and budgets, the input held inside what the cohort
+may draw, what each context setting is overridden to, that a fixed payout stops after its years and pays
+more the shorter it is, that the lifelong run is a plain run of the model, capital and saving added
+separately and together, the assessment on hand-built incomes (stretches, the first year short, the
+running total's interpolation, the phases), before and after tax covering the same years, the budget
+before tax taxed back to the budget, the budgets matrix, a final salary, and the exports -- and, in the
+built page, by `verify-offline.mjs`'s own block: the answer boxes, the options table, both charts (lines,
+the heavy and the dashed one, labels, legend, hover and arrow keys), the per-age table, the budgets
+table, each of minPension's budgets and an own one, before tax, the individual pension, no agreement,
+the retirement age moved and clamped, the lifespan, a typed final salary, the riktålder following the
+birth year, a preset, reset and the import from Prognos, the three CSV downloads and an Excel one, the
+theme tokens in both themes, both languages, and the page not widening at 375px.
+
 ### Table 2's own column tooltips, and Ordlista
 
 Two follow-on requests, both about explaining terms rather than adding a new calculation:
