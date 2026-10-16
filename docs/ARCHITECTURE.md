@@ -745,8 +745,9 @@ which is exactly what the historical-average path it just left would have used a
 `apps/web/src/compare.ts` is a second top-level view, toggled by a third `.panel-toggle` beside
 Normalt/Avancerat, that runs the baseline typfall alongside up to three variants. It has no workbook
 equivalent — the same class of addition as the tax-per-year chart — but it adds almost no new
-machinery: `run()` is confirmed cheap (well under a millisecond; `main.ts` already calls it twice per
-render in Avancerat with no debounce), so running it up to four times per change costs nothing extra.
+machinery: `run()` is cheap (a few milliseconds; `main.ts` already calls it twice per render in
+Avancerat with no debounce), so running it up to four times per change still costs only a few tens of
+milliseconds.
 
 A variant is **not** an inherit/override state machine — `undefined` fields, a placeholder empty
 state, and so on. `newVariant` copies the baseline's salary, retirement age, start-of-work age and

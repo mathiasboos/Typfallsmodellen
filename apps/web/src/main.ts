@@ -1,7 +1,8 @@
 /**
  * The page: inputs on the left, results on the right, recomputed on every change.
  *
- * One model run is about ninety ages of arithmetic, well under a millisecond, so
+ * One model run is about ninety ages of arithmetic, a few milliseconds (most of
+ * it the annuity factors, which the engine keeps between runs of one cohort), so
  * there is no debounce and no incremental update -- every change re-runs the
  * model and rebuilds the results. That keeps the state in one place: whatever is
  * on screen is what `run()` returned for what the form says.
@@ -419,7 +420,7 @@ function render(): void {
   // The salary grid fills from, and resets to, the path the model derives for
   // the Start sheet as it currently stands. Once an own path is in use the
   // run's own `wagePath` just echoes it back, so the baseline has to come from
-  // a run without it. A run is well under a millisecond, and this second one
+  // a run without it. A run takes a few milliseconds, and this second one
   // only happens in advanced mode.
   if (mode === "advanced") {
     const { ownIncome, ...withoutOwnIncome } = typfall;

@@ -4,8 +4,8 @@
  *
  * There is no equivalent sheet in the workbook -- this is genuinely new UI,
  * the same class of addition as the tax-per-year chart. What it reuses is
- * everything downstream of a `TypfallInput`: `run()` itself (confirmed cheap,
- * well under a millisecond, the same reasoning `main.ts` already gives for
+ * everything downstream of a `TypfallInput`: `run()` itself (cheap, a few
+ * milliseconds, the same reasoning `main.ts` already gives for
  * running it twice per render in Avancerat), and `renderCompareTable`/
  * `renderCompareChart` (`tables.ts`/`chart.ts`), which take no more work to
  * run against four scenarios than one.
