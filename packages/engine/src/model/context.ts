@@ -192,7 +192,11 @@ export interface ModelContext {
   readonly ipsMonthly: number;
   /** `IPS_start`: the year that saving starts. The sheet holds `=YEAR(TODAY())`. */
   readonly ipsStart: number;
-  /** `rng_Kapitalförsäkring`: 0 IPS, 1 kapitalförsäkring, 2 ISK. */
+  /**
+   * `rng_Kapitalförsäkring`: 0 IPS, 1 kapitalförsäkring, 2 ISK. 3, an ordinary
+   * securities account (depå, VP-konto, fondkonto), is not in the workbook: a KF, an
+   * ISK and a depot are built up in the `pps` pot and paid out untaxed as income.
+   */
   readonly privateSavingKind: number;
   /** `rng_Fondförsäkring`: fund insurance rather than traditional. */
   readonly fundInsurance: number;

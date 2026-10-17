@@ -370,6 +370,22 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   field(schemeSelect.element, (l) => ({ label: t("occupational", l) }), "field field-wide");
 
   /**
+   * A line of small print across the grid, under the field it explains; the returned function
+   * redoes it. `prompt` marks one that asks the person to do something, which is set in ink.
+   */
+  function noteLine(text: (l: Lang) => string, prompt: () => boolean = () => false): { element: HTMLElement; relabel: (l: Lang) => void } {
+    const element = h("p", "pl-field-note");
+    const relabel = (l: Lang): void => {
+      element.textContent = text(l);
+      element.classList.toggle("pl-field-note-prompt", prompt());
+    };
+    relabel(lang);
+    relabels.push(relabel);
+    grid.append(element);
+    return { element, relabel };
+  }
+
+  /**
    * Capital and monthly saving of one kind of saving, side by side. The grid would
    * put two fields wherever its columns happen to fall; a pair is one row at every
    * width, each caption over its own box, and is relabelled by `caption`.
@@ -378,6 +394,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     caption: (l: Lang) => { capital: string; monthly: string },
     capital: { value: number; set: (value: number) => Partial<LastsInput>; setting: string },
     monthly: { value: number; set: (value: number) => Partial<LastsInput>; setting: string },
+    capitalHint: (l: Lang) => string = (l) => say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
   ) {
     const pair = h("div", "field-pair");
     grid.append(pair);
@@ -386,10 +403,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     capitalField.element.dataset.setting = capital.setting;
     const relabelCapital = own.field(
       capitalField.element,
-      (l) => ({
-        label: caption(l).capital,
-        hint: say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
-      }),
+      (l) => ({ label: caption(l).capital, hint: capitalHint(l) }),
       "field field-stack",
     );
     const monthlyField = own.number(monthly.value, SAVING, (value) => update(monthly.set(value)));
@@ -423,6 +437,13 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     { value: input.privateCapital, set: (privateCapital) => ({ privateCapital }), setting: "plPrivCapital" },
     { value: input.privateMonthly, set: (privateMonthly) => ({ privateMonthly }), setting: "plPrivSaving" },
   );
+  noteLine((l) =>
+    say(
+      l,
+      "Privat pension är en pensionsförsäkring eller IPS (individuellt pensionssparande), och beskattas som inkomst när den betalas ut.",
+      "Private pension is a pension insurance or an IPS (individual pension saving), and is taxed as income when paid out.",
+    ),
+  );
 
   // Private saving: what it is held in decides how it is taxed, and names the two fields.
   group("Privat sparande", "Private savings");
@@ -434,6 +455,22 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   kindSelect.element.dataset.setting = "plSavingsKind";
   relabels.push(kindSelect.relabel);
   field(kindSelect.element, (l) => ({ label: say(l, "Typ av sparande", "Type of saving") }), "field field-wide");
+  // What each kind means for the tax; for a depot the capital is asked for after the tax on its gain.
+  const kindNote = noteLine(
+    (l) =>
+      input.savingsKind === "depot"
+        ? say(
+            l,
+            "Vinsten beskattas med 30 % reavinstskatt när du säljer. Ange kapitalvärdet efter reavinstskatt – det du har att leva av.",
+            "The gain is taxed at 30% when you sell. Enter the capital value after capital gains tax – what you have to live on.",
+          )
+        : say(
+            l,
+            "Schablonbeskattat: skatten tas ut på kapitalet varje år, och utbetalningen är skattefri.",
+            "Taxed on a standard return: the tax is taken on the capital each year, and the payout is tax-free.",
+          ),
+    () => input.savingsKind === "depot",
+  );
   const savings = savingPair(
     (l) => ({
       capital: `${savingsKindName(input.savingsKind, l)}, ${say(l, "kapital", "capital")}`,
@@ -441,6 +478,14 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     }),
     { value: input.savingsCapital, set: (savingsCapital) => ({ savingsCapital }), setting: "plSavingsCapital" },
     { value: input.savingsMonthly, set: (savingsMonthly) => ({ savingsMonthly }), setting: "plSavingsMonthly" },
+    (l) =>
+      input.savingsKind === "depot"
+        ? say(
+            l,
+            `kr · efter reavinstskatt, värde vid ${savingStart()} års början`,
+            `SEK · after capital gains tax, value at the start of ${savingStart()}`,
+          )
+        : say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
   );
 
   // Assumptions: two ready-made sets, then the three numbers behind them.
@@ -543,6 +588,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       individual.relabel,
       privatePension.relabel,
       savings.relabel,
+      kindNote.relabel,
     ]) {
       relabel(currentLang);
     }
@@ -1009,17 +1055,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
             headCell(say(l, "varav allmän", "of which public")),
             headCell(say(l, "varav tjänstepension", "of which occupational")),
             headCell(say(l, "varav individuell och privat", "of which individual and private")),
-            ...(lasts.taxFree
-              ? [
-                  headCell(
-                    say(
-                      l,
-                      `varav ${savingsKindName(lasts.input.savingsKind, "sv")}, uppräknat`,
-                      `of which ${savingsKindName(lasts.input.savingsKind, "en")}, grossed up`,
-                    ),
-                  ),
-                ]
-              : []),
+            ...(lasts.taxFree ? [headCell(say(l, "varav privat sparande, uppräknat", "of which private savings, grossed up"))] : []),
           ]),
       headCell(say(l, "Efter utbetalningen", "After the payout")),
       headCell(say(l, "Mot budgeten under / efter", "Against the budget during / after")),
@@ -1147,8 +1183,13 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       ),
       say(
         l,
-        `Individuell tjänstepension och privat pension räknas som modellens privata pensionssparande (IPS) och beskattas som inkomst vid utbetalning, precis som tjänstepension. De behandlas lika och läggs därför ihop, och det gör även Annat inkomstskattat sparande under Privat sparande. ISK och kapitalförsäkring beskattas i stället på en schablonintäkt medan du sparar och betalas ut skattefritt. Kapitalet du har, och månadssparandet fram till pensionen, räknas från ${lasts.runs.savingYear} (Avancerat > Sparandet börjar år; har pensionen redan börjat räknas kapitalet vid pensionsstart). Månadssparandet är ett fast belopp i kronor och räknas inte upp med inflationen. Allt betalas ut över samma period som avtalets tjänstepension.`,
-        `Individual occupational pension and private pension are counted as the model's private pension saving (IPS) and are taxed as income when paid out, like an occupational pension. They are treated alike and so are added together, and so is Other income-taxed saving under Private savings. An ISK or an endowment insurance is instead taxed on a standard return while you save and paid out tax-free. The capital you have, and the monthly saving until retirement, count from ${lasts.runs.savingYear} (Advanced > Saving starts in; if the pension has already started, the capital counts at the start). The monthly saving is a fixed number of kronor and is not raised with inflation. Everything is paid out over the same period as the agreement's occupational pension.`,
+        `Individuell tjänstepension och privat pension (en pensionsförsäkring eller IPS) räknas som modellens privata pensionssparande (IPS) och beskattas som inkomst vid utbetalning, precis som tjänstepension. De behandlas lika och läggs därför ihop. Kapitalet du har, och månadssparandet fram till pensionen, räknas från ${lasts.runs.savingYear} (Avancerat > Sparandet börjar år; har pensionen redan börjat räknas kapitalet vid pensionsstart). Månadssparandet är ett fast belopp i kronor och räknas inte upp med inflationen. Allt betalas ut över samma period som avtalets tjänstepension.`,
+        `Individual occupational pension and private pension (a pension insurance or an IPS) are counted as the model's private pension saving (IPS) and are taxed as income when paid out, like an occupational pension. They are treated alike and so are added together. The capital you have, and the monthly saving until retirement, count from ${lasts.runs.savingYear} (Advanced > Saving starts in; if the pension has already started, the capital counts at the start). The monthly saving is a fixed number of kronor and is not raised with inflation. Everything is paid out over the same period as the agreement's occupational pension.`,
+      ),
+      say(
+        l,
+        `Privat sparande är pengar som redan är inkomstbeskattade, och betalas ut skattefritt. På ISK, kapitalförsäkring och depåförsäkring tas en schablonskatt ut på kapitalet varje år (modellens ISK). På depå, VP-konto och fondkonto beskattas vinsten med 30 % när du säljer: ange därför kapitalvärdet efter reavinstskatt, det du har att leva av. Avkastningen på det beskattas med 30 % varje år, som om vinsten realiserades då. Månadssparandet sätts av efter skatt.`,
+        `Private savings are money that has already been taxed as income, and are paid out tax-free. An ISK, an endowment insurance or a depot insurance pays a standard tax on the capital each year (the model's ISK). On a securities account or a fund account the gain is taxed at 30% when you sell: enter the capital value after capital gains tax, what you have to live on. Its return is taxed at 30% each year, as if the gain were realised then. The monthly saving is put aside after tax.`,
       ),
       say(
         l,
@@ -1169,13 +1210,13 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
         ? [
             say(
               l,
-              `${savingsKindName(lasts.input.savingsKind, "sv")} har ingen utbetalning för livet: Livsvarigt betyder här att pengarna fördelas över din förväntade återstående livslängd (modellens regel), och sedan är de slut. En pension betalas i stället ut så länge du lever.`,
-              `${savingsKindName(lasts.input.savingsKind, "en")} has no payout for life: Lifelong here means the money is spread over your expected remaining life (the model's rule), and then it is gone. A pension, by contrast, is paid for as long as you live.`,
+              "Privat sparande har ingen utbetalning för livet: Livsvarigt betyder här att pengarna fördelas över din förväntade återstående livslängd (modellens regel), och sedan är de slut. En pension betalas i stället ut så länge du lever.",
+              "Private savings have no payout for life: Lifelong here means the money is spread over your expected remaining life (the model's rule), and then it is gone. A pension, by contrast, is paid for as long as you live.",
             ),
             say(
               l,
-              `Före skatt räknas utbetalningen från ${savingsKindName(lasts.input.savingsKind, "sv")} upp till den bruttoinkomst som ger lika mycket efter skatt (med modellens skatt, år för år). Annars skulle en skattefri krona räknas som en beskattad och vyerna före och efter skatt ge olika svar. Efter skatt visas utbetalningen som den är.`,
-              `Before tax, the payout from ${savingsKindName(lasts.input.savingsKind, "en")} is grossed up to the gross income that leaves the same amount after tax (with the model's tax, year by year). Otherwise an untaxed krona would count as a taxed one and the views before and after tax would give different answers. After tax the payout is shown as it is.`,
+              "Före skatt räknas utbetalningen från det privata sparandet upp till den bruttoinkomst som ger lika mycket efter skatt (med modellens skatt, år för år). Annars skulle en skattefri krona räknas som en beskattad och vyerna före och efter skatt ge olika svar. Efter skatt visas utbetalningen som den är.",
+              "Before tax, the payout from the private savings is grossed up to the gross income that leaves the same amount after tax (with the model's tax, year by year). Otherwise an untaxed krona would count as a taxed one and the views before and after tax would give different answers. After tax the payout is shown as it is.",
             ),
           ]
         : []),

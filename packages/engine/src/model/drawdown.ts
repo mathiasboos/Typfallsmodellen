@@ -18,8 +18,7 @@ import { fnDeltalIp } from "../pension/deltal.js";
 import { ppmavg } from "../pension/contributions.js";
 import { tp, tpFaktor } from "../pension/atp.js";
 import { gp, tillagg } from "../bidrag/garantipension.js";
-import { PrivatSpar } from "../saving/privateSaving.js";
-import type { SavingTypeId } from "../saving/privateSaving.js";
+import { PrivatSpar, isUntaxedSaving } from "../saving/privateSaving.js";
 import { avkskatt } from "../skatt/reduktioner.js";
 import { FTJP, tjpkassa } from "../tjanstepension/index.js";
 import type { SchemeContext, SchemeId } from "../tjanstepension/types.js";
@@ -572,10 +571,10 @@ export function closeBalances(run: Run, age: number, utgyear: number): void {
     s.tjpPbh.set(age, s.tjpPbh.get(age) - kskatt - s.tjp.get(age) * half);
 
     const spar = context.privateSavingKind;
-    if (spar === 1 || spar === 2) {
+    if (isUntaxedSaving(spar)) {
       s.ppsPbh.set(
         age,
-        PrivatSpar(s.ppsPbh.getOrZero(age - 1), s.ipsRatt, v.yieldFactor.get(age), year, spar as SavingTypeId) -
+        PrivatSpar(s.ppsPbh.getOrZero(age - 1), s.ipsRatt, v.yieldFactor.get(age), year, spar) -
           s.pps.get(age) * half,
       );
     } else {
@@ -598,11 +597,11 @@ export function closeBalances(run: Run, age: number, utgyear: number): void {
   // Capital that was already saved when the saving starts, credited at the end of
   // the year before so that it earns the return from the first year on. Not in the
   // workbook, which can only replace every pot at once (below). It goes into the pot
-  // the saving's kind builds -- `ipsPbh` for an IPS, `ppsPbh` for a KF or an ISK --
-  // and only that one: both pay out from retirement, so crediting both would pay
-  // the same capital twice, once as taxed income and once as `pps`.
+  // the saving's kind builds -- `ipsPbh` for an IPS, `ppsPbh` for a KF, an ISK or a
+  // depot -- and only that one: both pay out from retirement, so crediting both would
+  // pay the same capital twice, once as taxed income and once as `pps`.
   if (context.ipsOpening > 0 && year === context.ipsStart - 1) {
-    const pot = context.privateSavingKind === 1 || context.privateSavingKind === 2 ? s.ppsPbh : s.ipsPbh;
+    const pot = isUntaxedSaving(context.privateSavingKind) ? s.ppsPbh : s.ipsPbh;
     pot.set(age, pot.get(age) + context.ipsOpening);
   }
 

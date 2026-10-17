@@ -3106,14 +3106,14 @@ const plPairRows = () =>
     }),
   );
 const plSeq = await plSequence();
-const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "#Privat sparande", "plSavingsKind", "plSavingsCapital+plSavingsMonthly", "#Antaganden"];
+const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "pl-field-note", "#Privat sparande", "plSavingsKind", "pl-field-note", "plSavingsCapital+plSavingsMonthly", "#Antaganden"];
 const plSeqAt = plSeq.indexOf("#Pension");
 if (plSeqAt === -1 || !sameList(plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length), plWantedSeq)) {
   problems.push(`the input order from "Pension" on is ${plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length).join(" > ")}, expected ${plWantedSeq.join(" > ")}`);
 }
 const plLabelsSv = [await plLabel("plCapital"), await plLabel("plSaving"), await plLabel("plPrivCapital"), await plLabel("plPrivSaving"), await plLabel("plSavingsCapital"), await plLabel("plSavingsMonthly")];
 console.log(`pension lasts   : labels ${plLabelsSv.join(" | ")}`);
-if (!sameList(plLabelsSv, ["Individuelltjänstepension,kapital", "Individuelltjänstepension,månadssparande", "Privatpension,kapital", "Privatpension,månadssparande", "ISK,kapital", "ISK,månadssparande"])) {
+if (!sameList(plLabelsSv, ["Individuelltjänstepension,kapital", "Individuelltjänstepension,månadssparande", "Privatpension,kapital", "Privatpension,månadssparande", "ISK/Kapitalförsäkring/Depåförsäkring,kapital", "ISK/Kapitalförsäkring/Depåförsäkring,månadssparande"])) {
   problems.push(`the capital and saving fields are labelled ${plLabelsSv.join(" | ")}`);
 }
 const plPairsDesktop = await plPairRows();
@@ -3121,8 +3121,17 @@ if (plPairsDesktop.length !== 3 || !plPairsDesktop.every((pair) => pair.sameRow 
   problems.push(`at 1280px the capital and monthly saving are not side by side on one row: ${JSON.stringify(plPairsDesktop)}`);
 }
 const plKindOptions = (await plSetting("plSavingsKind").locator("option").allTextContents()).map((text) => text.trim());
-if (!sameList(plKindOptions, ["ISK", "Kapitalförsäkring", "Annat inkomstskattat sparande"])) {
-  problems.push(`the kind of saving offers ${plKindOptions.join(" | ")}, expected ISK, Kapitalförsäkring and Annat inkomstskattat sparande`);
+if (!sameList(plKindOptions, ["ISK / Kapitalförsäkring / Depåförsäkring", "Depå / VP-konto / Fondkonto"])) {
+  problems.push(`the kind of saving offers ${plKindOptions.join(" | ")}, expected the two tax categories: ISK / Kapitalförsäkring / Depåförsäkring and Depå / VP-konto / Fondkonto`);
+}
+// What the person is told: a private pension is a pension insurance or an IPS; each kind of saving says how it is taxed.
+const plNotes = async () => (await pl.locator(".pa-grid .pl-field-note").allTextContents()).map(plNorm);
+const plNotesStart = await plNotes();
+if (!/Privatpensionärenpensionsförsäkringellerips\(individuelltpensionssparande\)/i.test(plNotesStart[0] ?? "")) {
+  problems.push(`under the private pension fields the page says "${plNotesStart[0]}", expected that it is a pension insurance or an IPS`);
+}
+if (!/Schablonbeskattat/.test(plNotesStart[1] ?? "") || (await pl.locator(".pa-grid .pl-field-note-prompt").count()) !== 0) {
+  problems.push(`for an ISK the page says "${plNotesStart[1]}" (prompt ${await pl.locator(".pa-grid .pl-field-note-prompt").count()}), expected the standard-return note and no prompt`);
 }
 
 // Private pension: the same pot as the individual occupational pension, so the same numbers; the two add up.
@@ -3148,22 +3157,20 @@ const plIskLife = await plCells(0);
 const plIskFive = await plCells(5);
 console.log(`pension lasts   : ISK 300 000 + 2 000/month -> lifelong ${plIskLife[1]}, 5 years ${plIskFive[1]}`);
 if (plIskLife[1] !== "26441" || plIskFive[1] !== "55871") problems.push(`with 300 000 kr and 2 000 kr/month in an ISK the lifelong payout reads ${plIskLife[1]} and 5 years ${plIskFive[1]}, expected 26441 and 55871 (tax-free, so more than as a pension)`);
-await plSetting("plSavingsKind").selectOption("1"); // Kapitalförsäkring
+await plSetting("plSavingsKind").selectOption("1"); // Depå / VP-konto / Fondkonto
 await tab.waitForTimeout(100);
-const plKfLife = await plCells(0);
-const plKfFive = await plCells(5);
-const plKfLabels = [await plLabel("plSavingsCapital"), await plLabel("plSavingsMonthly")];
-console.log(`pension lasts   : kapitalförsäkring -> lifelong ${plKfLife[1]}, 5 years ${plKfFive[1]}, labels ${plKfLabels.join(" | ")}`);
-if (plKfLife[1] !== "26445" || plKfFive[1] !== "55878") problems.push(`in a kapitalförsäkring the lifelong payout reads ${plKfLife[1]} and 5 years ${plKfFive[1]}, expected 26445 and 55878`);
-if (!sameList(plKfLabels, ["Kapitalförsäkring,kapital", "Kapitalförsäkring,månadssparande"])) problems.push(`choosing Kapitalförsäkring labels the fields ${plKfLabels.join(" | ")}`);
-await plSetting("plSavingsKind").selectOption("2"); // Annat inkomstskattat sparande: income-taxed like a pension
-await tab.waitForTimeout(100);
-const plOtherLife = await plCells(0);
-const plOtherFive = await plCells(5);
-const plOtherLabels = [await plLabel("plSavingsCapital"), await plLabel("plSavingsMonthly")];
-console.log(`pension lasts   : other income-taxed saving -> lifelong ${plOtherLife[1]}, 5 years ${plOtherFive[1]}, labels ${plOtherLabels.join(" | ")}`);
-if (plOtherLife[1] !== "25949" || plOtherFive[1] !== "49495") problems.push(`as other income-taxed saving the lifelong payout reads ${plOtherLife[1]} and 5 years ${plOtherFive[1]}, expected 25949 and 49495, as for a pension`);
-if (!sameList(plOtherLabels, ["Annatinkomstskattatsparande,kapital", "Annatinkomstskattatsparande,månadssparande"])) problems.push(`choosing Annat inkomstskattat sparande labels the fields ${plOtherLabels.join(" | ")}`);
+const plDepotLife = await plCells(0);
+const plDepotFive = await plCells(5);
+const plDepotLabels = [await plLabel("plSavingsCapital"), await plLabel("plSavingsMonthly")];
+const plDepotNote = (await plNotes())[1] ?? "";
+const plDepotHint = plNorm(await pl.locator('label:has([data-setting="plSavingsCapital"]) .field-hint').textContent());
+console.log(`pension lasts   : depot 300 000 + 2 000/month -> lifelong ${plDepotLife[1]}, 5 years ${plDepotFive[1]}, labels ${plDepotLabels.join(" | ")}`);
+if (plDepotLife[1] !== "26483" || plDepotFive[1] !== "56022") problems.push(`in a depot the lifelong payout reads ${plDepotLife[1]} and 5 years ${plDepotFive[1]}, expected 26483 and 56022`);
+if (!sameList(plDepotLabels, ["Depå/VP-konto/Fondkonto,kapital", "Depå/VP-konto/Fondkonto,månadssparande"])) problems.push(`choosing the depot labels the fields ${plDepotLabels.join(" | ")}`);
+if (!/30%reavinstskatt.*Angekapitalvärdetefterreavinstskatt–detduharattleva/.test(plDepotNote) || (await pl.locator(".pa-grid .pl-field-note-prompt").count()) !== 1) {
+  problems.push(`for a depot the page says "${plDepotNote}" (prompt ${await pl.locator(".pa-grid .pl-field-note-prompt").count()}), expected the prompt to enter the capital after capital gains tax`);
+}
+if (!/efterreavinstskatt/.test(plDepotHint)) problems.push(`the capital field's hint for a depot reads "${plDepotHint}", expected it to say after capital gains tax`);
 
 // Before tax, an ISK's payout is grossed up so that the same years are covered; the table says so.
 await plSetting("plSavingsKind").selectOption("0");
@@ -3177,12 +3184,15 @@ const plIskGrossFive = await plCells(5);
 const plIskNotes = plNorm(await pl.locator('[data-role="pl-notes"]').textContent());
 console.log(`pension lasts   : ISK before tax -> ribbon ${plIskGrossRibbon.join(",")}, 5 years ${plIskGrossFive.slice(1, 6).join(" ")}`);
 if (!sameList(plIskGrossRibbon, plIskNetRibbon)) problems.push(`with an ISK the boxes read ${plIskGrossRibbon.join(",")} before tax and ${plIskNetRibbon.join(",")} after, expected the same`);
-if (!plIskGrossHead.includes("varavISK,uppräknat")) problems.push(`before tax with an ISK the table has columns ${plIskGrossHead.join("|")}, expected one for the ISK grossed up`);
+if (!plIskGrossHead.includes("varavprivatsparande,uppräknat")) problems.push(`before tax with an ISK the table has columns ${plIskGrossHead.join("|")}, expected one for the private savings grossed up`);
 if (!sameList(plIskGrossFive.slice(1, 6), ["78965", "20146", "31781", "0", "27039"])) {
   problems.push(`before tax the 5-year row reads ${plIskGrossFive.slice(1, 6).join(" ")}, expected 78965 as 20146 + 31781 + 0 + 27039 (the ISK payout grossed up)`);
 }
-if (!/FöreskatträknasutbetalningenfrånISKupptillden/.test(plIskNotes)) problems.push("the notes do not say that a tax-free payout is grossed up before tax");
-if (!/ISKharingenutbetalningförlivet/.test(plIskNotes)) problems.push("the notes do not say that an ISK has no payout for life");
+if (!/Föreskatträknasutbetalningenfråndetprivatasparandetupptillden/.test(plIskNotes)) problems.push("the notes do not say that a tax-free payout is grossed up before tax");
+if (!/Privatsparandeharingenutbetalningförlivet/.test(plIskNotes)) problems.push("the notes do not say that private savings have no payout for life");
+if (!/Privatsparandeärpengarsomredanärinkomstbeskattade.*Pådepå,VP-kontoochfondkontobeskattasvinstenmed30%närdusäljer/.test(plIskNotes)) {
+  problems.push("the notes do not explain the two tax categories of private savings");
+}
 await pl.locator('button[data-basis="net"]').click();
 await tab.waitForTimeout(100);
 await plType("plSavingsCapital", 0);
@@ -3275,6 +3285,7 @@ if (!sameList((await plRibbon()).map((item) => item.text), PL_RIBBON_DEFAULT) ||
   problems.push("Återställ did not restore the default typfall and budget");
 }
 if ((await plSetting("plLifespan").inputValue()) !== "95") problems.push(`Återställ left the lifespan at ${await plSetting("plLifespan").inputValue()}, expected 95`);
+if ((await plSetting("plSavingsKind").inputValue()) !== "0" || (await plSetting("plSavingsCapital").inputValue()) !== "0") problems.push("Återställ did not put the private savings back on the first kind with nothing in it");
 await pl.locator('[data-action="pl-import-forecast"]').click();
 await tab.waitForTimeout(100);
 const plImported = [
@@ -3335,8 +3346,8 @@ if (plHeadSv !== "Hur länge räcker pensionen?" || plHeadEn !== "How long does 
 if (plEnFive[1] !== "38,997" && plEnFive[1] !== "38997") problems.push(`in English the 5-year payout reads ${plEnFive[1]}, expected 38,997`);
 const plLabelsEn = [await plLabel("plCapital"), await plLabel("plPrivSaving"), await plLabel("plSavingsCapital")];
 const plGroupsEn = (await pl.locator(".pa-group").allTextContents()).map((text) => text.trim());
-if (!sameList(plLabelsEn, ["Individualoccupationalpension,capital", "Privatepension,monthlysaving", "ISK,capital"]) || !plGroupsEn.includes("Private savings")) {
-  problems.push(`in English the fields are labelled ${plLabelsEn.join(" | ")} and the groups ${plGroupsEn.join(" | ")}, expected Individual occupational pension, capital / Private pension, monthly saving / ISK, capital and a "Private savings" group`);
+if (!sameList(plLabelsEn, ["Individualoccupationalpension,capital", "Privatepension,monthlysaving", "ISK/Endowmentinsurance/Depotinsurance,capital"]) || !plGroupsEn.includes("Private savings")) {
+  problems.push(`in English the fields are labelled ${plLabelsEn.join(" | ")} and the groups ${plGroupsEn.join(" | ")}, expected Individual occupational pension, capital / Private pension, monthly saving / ISK / Endowment insurance / Depot insurance, capital and a "Private savings" group`);
 }
 if (!sameList((await plRibbon()).map((item) => item.text), ["To73", "To78", "To83", "To88", "Alltheway"])) {
   problems.push(`in English the boxes read ${(await plRibbon()).map((item) => item.text).join(",")}, expected To73,To78,To83,To88,Alltheway`);

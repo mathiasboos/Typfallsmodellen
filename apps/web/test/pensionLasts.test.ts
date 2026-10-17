@@ -166,7 +166,7 @@ describe("the input", () => {
     expect(runsKey({ ...base, individualCapital: 1 })).not.toBe(key);
     expect(runsKey({ ...base, privateCapital: 1 })).not.toBe(key);
     expect(runsKey({ ...base, privateMonthly: 2 })).not.toBe(key);
-    expect(runsKey({ ...base, savingsKind: "kf" })).not.toBe(key);
+    expect(runsKey({ ...base, savingsKind: "depot" })).not.toBe(key);
     expect(runsKey({ ...base, savingsCapital: 1 })).not.toBe(key);
     expect(runsKey({ ...base, savingsMonthly: 2 })).not.toBe(key);
     expect(runsKey({ ...base, retirementAge: 69 })).not.toBe(key);
@@ -660,40 +660,37 @@ describe("the private pension and the private savings", () => {
   const netOf = (l: Lasts, payout: number) => optionOf(l, payout).run.net;
 
   describe("as the model's saving", () => {
-    it("name the three kinds the drop-down offers, ISK first, and the model's own number for each", () => {
+    it("name the two kinds the drop-down offers, the schablon-taxed ones first, and the model's own number for each", () => {
       expect(SAVINGS_KINDS.map((k) => [k.id, k.kind, k.sv])).toEqual([
-        ["isk", 2, "ISK"],
-        ["kf", 1, "Kapitalförsäkring"],
-        ["other", 0, "Annat inkomstskattat sparande"],
+        ["isk", 2, "ISK / Kapitalförsäkring / Depåförsäkring"],
+        ["depot", 3, "Depå / VP-konto / Fondkonto"],
       ]);
-      expect(savingsKindName("kf", "en")).toBe("Endowment insurance");
-      expect(savingsKindName("other", "sv")).toBe("Annat inkomstskattat sparande");
+      expect(savingsKindName("isk", "en")).toBe("ISK / Endowment insurance / Depot insurance");
+      expect(savingsKindName("depot", "en")).toBe("Securities account / Fund account");
+      expect(savingsKindName("depot", "sv")).toBe("Depå / VP-konto / Fondkonto");
     });
 
-    it("add up the individual pension, the private pension and, if that is the kind, the other saving", () => {
+    it("add up the individual pension and the private pension, and nothing else", () => {
       const both = { ...base, individualCapital: 100_000, individualMonthly: 1_000, privateCapital: 50_000, privateMonthly: 500 };
       expect(taxedSaving(both)).toEqual({ capital: 150_000, monthly: 1_500 });
-      expect(taxedSaving({ ...both, savingsKind: "other", savingsCapital: 25_000, savingsMonthly: 250 })).toEqual({
-        capital: 175_000,
-        monthly: 1_750,
-      });
-      // An ISK is not taxed as income, so it is not part of what is.
-      expect(taxedSaving({ ...both, savingsKind: "isk", savingsCapital: 25_000, savingsMonthly: 250 })).toEqual({
-        capital: 150_000,
-        monthly: 1_500,
-      });
+      // Private savings are not taxed as income, whichever kind they are in, so they are no part of what is.
+      for (const savingsKind of ["isk", "depot"] as const) {
+        expect(taxedSaving({ ...both, savingsKind, savingsCapital: 25_000, savingsMonthly: 250 })).toEqual({
+          capital: 150_000,
+          monthly: 1_500,
+        });
+      }
     });
 
-    it("keep the tax-free saving apart, as the model's ISK (2) or kapitalförsäkring (1), and none without anything in it", () => {
+    it("keep the tax-free saving apart, as the model's ISK (2) or a depot (3), and none without anything in it", () => {
       expect(taxFreeSaving(base)).toBeNull();
       expect(taxFreeSaving({ ...base, ...isk })).toEqual({ capital: 400_000, monthly: 1_500, kind: 2 });
-      expect(taxFreeSaving({ ...base, ...isk, savingsKind: "kf" })).toMatchObject({ kind: 1 });
-      expect(taxFreeSaving({ ...base, ...isk, savingsKind: "other" })).toBeNull();
-      expect(taxFreeSaving({ ...base, savingsKind: "kf", savingsMonthly: 1_000 })).toMatchObject({ capital: 0, kind: 1 });
+      expect(taxFreeSaving({ ...base, ...isk, savingsKind: "depot" })).toEqual({ capital: 400_000, monthly: 1_500, kind: 3 });
+      expect(taxFreeSaving({ ...base, savingsKind: "depot", savingsMonthly: 1_000 })).toMatchObject({ capital: 0, kind: 3 });
       expect(taxFreeSaving({ ...base, savingsKind: "isk", savingsCapital: -5, savingsMonthly: -5 })).toBeNull();
     });
 
-    it("give the pension run the sum as IPS, and the savings run its own amounts as an ISK or a kapitalförsäkring", () => {
+    it("give the pension run the sum as IPS, and the savings run its own amounts as an ISK or a depot", () => {
       const input = { ...base, individualCapital: 100_000, individualMonthly: 1_000, privateCapital: 50_000, privateMonthly: 500, ...isk };
       expect(lastsContext(context, input, 10)).toMatchObject({ privateSavingKind: 0, ipsOpening: 150_000, ipsMonthly: 1_500 });
       expect(lastsContext(context, input, 10, "savings")).toMatchObject({
@@ -704,11 +701,9 @@ describe("the private pension and the private savings", () => {
         tjpPar: 0,
         priceBasis: 1,
       });
-      expect(lastsContext(context, { ...input, savingsKind: "kf" }, 10, "savings").privateSavingKind).toBe(1);
-      // "Other income-taxed saving" is the IPS: it joins the pension's pot, and there is no second run.
-      const other = { ...input, savingsKind: "other" as const };
-      expect(lastsContext(context, other, 10)).toMatchObject({ ipsOpening: 550_000, ipsMonthly: 3_000 });
-      expect(lastsContext(context, other, 10, "savings")).toMatchObject({ privateSavingKind: 0, ipsOpening: 0, ipsMonthly: 0 });
+      expect(lastsContext(context, { ...input, savingsKind: "depot" }, 10, "savings").privateSavingKind).toBe(3);
+      // Neither kind of private saving joins the pension's pot.
+      expect(lastsContext(context, { ...input, savingsKind: "depot" }, 10)).toMatchObject({ ipsOpening: 150_000, ipsMonthly: 1_500 });
     });
   });
 
@@ -733,7 +728,7 @@ describe("the private pension and the private savings", () => {
     });
   });
 
-  describe("an ISK or a kapitalförsäkring", () => {
+  describe("an ISK, a kapitalförsäkring or a depåförsäkring", () => {
     const withIsk = at(isk);
 
     it("is paid out tax-free for the payout's years, and not a year longer", () => {
@@ -753,7 +748,7 @@ describe("the private pension and the private savings", () => {
       const life = optionOf(withIsk, LIFELONG).run.savings;
       expect(life[R + 5]).toBeGreaterThan(0);
       expect(life[R + 30]).toBe(0);
-      const ips = optionOf(at({ savingsKind: "other", savingsCapital: 400_000, savingsMonthly: 1_500 }), LIFELONG).run.individual;
+      const ips = optionOf(at({ privateCapital: 400_000, privateMonthly: 1_500 }), LIFELONG).run.individual;
       expect(ips[R + 30]).toBeGreaterThan(0);
     });
 
@@ -783,18 +778,8 @@ describe("the private pension and the private savings", () => {
       expect(both.options[0]!.view.during!.income).toBeGreaterThan(withIsk.options[0]!.view.during!.income);
     });
 
-    it("is taxed one way as an ISK and another as a kapitalförsäkring, and is paid out tax-free as both", () => {
-      const kf = at({ ...isk, savingsKind: "kf" });
-      const a = optionOf(withIsk, 10).run.savings[R]!;
-      const b = optionOf(kf, 10).run.savings[R]!;
-      expect(a).toBeGreaterThan(0);
-      expect(b).toBeGreaterThan(0);
-      expect(a).not.toBe(b);
-      expect(optionOf(kf, 10).run.individual.every((v) => v === 0)).toBe(true);
-    });
-
     it("gives a person nothing else to choose a payout period for a reason to, and counts without an agreement", () => {
-      const only = at({ scheme: Scheme.None, savingsKind: "kf", savingsCapital: 500_000 });
+      const only = at({ scheme: Scheme.None, savingsKind: "isk", savingsCapital: 500_000 });
       expect(only.flexible).toBe(true);
       expect(only.taxFree).toBe(true);
       expect(optionOf(only, 5).view.during!.income).toBeGreaterThan(optionOf(only, 20).view.during!.income);
@@ -815,25 +800,55 @@ describe("the private pension and the private savings", () => {
     });
   });
 
-  describe("other income-taxed saving", () => {
-    it("is the IPS again: exactly what the same amounts as an individual pension would be", () => {
-      const other = at({ savingsKind: "other", savingsCapital: 300_000, savingsMonthly: 2_000 });
-      const individual = at(pension);
-      for (const payout of PAYOUTS) {
-        expect(optionOf(other, payout).run.individual, `payout ${payout}`).toEqual(optionOf(individual, payout).run.individual);
-        expect(netOf(other, payout), `payout ${payout}`).toEqual(netOf(individual, payout));
-      }
-      expect(other.taxFree).toBe(false);
-      expect(other.flexible).toBe(true);
+  describe("a depå, a VP-konto or a fondkonto", () => {
+    // The capital is typed after the tax on its gain, and what it earns is taxed 30% a year.
+    const depot = (patch: Partial<LastsInput> = {}) => at({ savingsKind: "depot", savingsCapital: 400_000, savingsMonthly: 1_500, ...patch });
+    const withDepot = depot();
+
+    it("is paid out tax-free for the payout's years, from the model's own pot for it", () => {
+      const ten = optionOf(withDepot, 10).run;
+      expect(ten.savings[R - 1]).toBe(0);
+      expect(ten.savings[R]).toBeGreaterThan(0);
+      expect(ten.savings[R + 9]).toBeGreaterThan(0);
+      expect(ten.savings[R + 10]).toBe(0);
+      expect(optionOf(withDepot, 5).run.savings[R]!).toBeGreaterThan(optionOf(withDepot, 20).run.savings[R]!);
+      expect(optionOf(withDepot, 10).run.individual.every((v) => v === 0)).toBe(true);
+      expect(withDepot.taxFree).toBe(true);
+      expect(withDepot.flexible).toBe(true);
     });
 
-    it("is taxed as income, unlike an ISK with the same amounts", () => {
-      const other = at({ savingsKind: "other", savingsCapital: 300_000 });
-      const iskSame = at({ savingsKind: "isk", savingsCapital: 300_000 });
-      const age = R + 3;
-      expect(optionOf(other, 10).run.net[age]!).toBeLessThan(optionOf(other, 10).run.gross[age]!);
-      expect(optionOf(iskSame, 10).run.net[age]!).toBeGreaterThan(optionOf(at({}), 10).run.net[age]!);
-      expect(optionOf(iskSame, 10).run.gross[age]!).toBe(optionOf(at({}), 10).run.gross[age]);
+    it("leaves the taxed pensions alone and adds to the net exactly what it pays, as the ISK does", () => {
+      const without = at({});
+      for (const payout of [5, 10, LIFELONG]) {
+        const a = optionOf(without, payout).run;
+        const b = optionOf(withDepot, payout).run;
+        expect(b.gross, `gross, ${payout}`).toEqual(a.gross);
+        for (let age = R; age <= LAST_AGE; age += 1) {
+          expect(b.net[age]!, `net at ${age}, ${payout}`).toBeCloseTo(a.net[age]! + b.savings[age]!, 6);
+        }
+      }
+    });
+
+    it("is taxed on its gain rather than on a notional return: more than an ISK at a large capital, less at a small one", () => {
+      // An ISK's tax is on the capital above its allowance, whatever it earns; a depot's is on what it earns.
+      const payout = (l: Lasts) => optionOf(l, 10).run.savings[R]!;
+      const small = 200_000;
+      const large = 3_000_000;
+      expect(payout(depot({ savingsCapital: small, savingsMonthly: 0 }))).toBeLessThan(payout(at({ ...isk, savingsCapital: small, savingsMonthly: 0 })));
+      expect(payout(depot({ savingsCapital: large, savingsMonthly: 0 }))).toBeGreaterThan(payout(at({ ...isk, savingsCapital: large, savingsMonthly: 0 })));
+    });
+
+    it("takes the capital as it is typed -- after tax -- and grows it at the return less the 30% on the gain", () => {
+      // A 10-year payout of a capital 100 000 kr bigger pays that capital's share more, to a good approximation.
+      const payout = (capital: number) => optionOf(depot({ savingsCapital: capital, savingsMonthly: 0 }), 10).run.savings[R]!;
+      expect(payout(500_000)).toBeCloseTo(payout(400_000) * (500 / 400), -2);
+      expect(payout(0)).toBe(0);
+    });
+
+    it("has no payout for life either: it is spread over the expected remaining life and then gone", () => {
+      const life = optionOf(withDepot, LIFELONG).run.savings;
+      expect(life[R + 5]).toBeGreaterThan(0);
+      expect(life[R + 30]).toBe(0);
     });
   });
 
@@ -878,12 +893,12 @@ describe("the private pension and the private savings", () => {
 
     it("writes the grossed-up column to the exports, only before tax and only with something tax-free", () => {
       const header = (l: Lasts) => optionsToCsv(l, "sv").split("\r\n")[0]!.split(";");
-      expect(header(evaluate(withIsk.runs, { ...withIsk.input, afterTax: false }))).toContain("varav ISK, uppräknat");
-      expect(header(evaluate(withIsk.runs, { ...withIsk.input, afterTax: true }))).not.toContain("varav ISK, uppräknat");
+      expect(header(evaluate(withIsk.runs, { ...withIsk.input, afterTax: false }))).toContain("varav privat sparande, uppräknat");
+      expect(header(evaluate(withIsk.runs, { ...withIsk.input, afterTax: true }))).not.toContain("varav privat sparande, uppräknat");
       const plain = at({ afterTax: false });
       expect(header(plain).some((h) => h.includes("uppräknat"))).toBe(false);
-      const kf = at({ ...isk, savingsKind: "kf", afterTax: false });
-      expect(header(kf)).toContain("varav Kapitalförsäkring, uppräknat");
+      const depot = at({ ...isk, savingsKind: "depot", afterTax: false });
+      expect(header(depot)).toContain("varav privat sparande, uppräknat");
     });
   });
 });

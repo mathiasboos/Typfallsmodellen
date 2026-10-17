@@ -157,9 +157,9 @@ describe("capital already in the private saving", () => {
   });
 
   it("goes into the pot the kind of saving builds, and into no other", () => {
-    // An IPS builds `ipsPbh`; a kapitalförsäkring or an ISK builds `ppsPbh`.
+    // An IPS builds `ipsPbh`; a kapitalförsäkring, an ISK or a depot builds `ppsPbh`.
     expect(withCapital.ppsPbh.get(49)).toBe(0);
-    for (const kind of [1, 2]) {
+    for (const kind of [1, 2, 3]) {
       const { state } = plain(born, { ...saving, ipsOpening: 200_000, privateSavingKind: kind });
       expect(state.ppsPbh.get(48), `pps before, kind ${kind}`).toBe(0);
       expect(state.ppsPbh.get(49), `pps, kind ${kind}`).toBe(200_000);
@@ -188,7 +188,7 @@ describe("capital already in the private saving", () => {
     expect(state.ips.get(77)).toBe(0);
   });
 
-  it("is paid out once: as private saving in an IPS, as `pps` in a KF or an ISK, never as both", () => {
+  it("is paid out once: as private saving in an IPS, as `pps` in a KF, an ISK or a depot, never as both", () => {
     // Someone who retires at 66 with the saving starting the year they do: the credit lands at
     // 65, in the last year before the payout, and the same capital must not be paid out twice.
     const retired = { ...born, retirementAge: 66 };
@@ -196,7 +196,7 @@ describe("capital already in the private saving", () => {
     const ips = plain(retired, { ...late, ipsOpening: 200_000, privateSavingKind: 0 }).state;
     expect(ips.ips.get(66)).toBeGreaterThan(0);
     for (let age = 60; age <= 100; age += 1) expect(ips.pps.get(age), `pps at ${age}`).toBe(0);
-    for (const kind of [1, 2]) {
+    for (const kind of [1, 2, 3]) {
       const { state } = plain(retired, { ...late, ipsOpening: 200_000, privateSavingKind: kind });
       expect(state.pps.get(66), `kind ${kind}`).toBeGreaterThan(0);
       for (let age = 60; age <= 100; age += 1) expect(state.ips.get(age), `ips at ${age}, kind ${kind}`).toBe(0);
@@ -304,6 +304,17 @@ describe("private saving", () => {
     expect(isk.pps.get(66)).toBeGreaterThan(0);
     expect(isk.ipsPbh.get(65)).toBe(0);
   });
+
+  it("routes a depot (3, not in the workbook) the same way, and builds it up after the tax on its gain", () => {
+    const depot = plain({}, { ipsMonthly: 2000, ipsStart: 2000, privateSavingKind: 3 }).state;
+    expect(depot.ppsPbh.get(65)).toBeGreaterThan(0);
+    expect(depot.pps.get(66)).toBeGreaterThan(0);
+    expect(depot.ipsPbh.get(65)).toBe(0);
+    // Taxed on the gain, not on a notional return: more than a kapitalförsäkring's pot when the return is modest.
+    const untouched = plain({}, { ipsMonthly: 2000, ipsStart: 2000, privateSavingKind: 2 }).state;
+    expect(depot.ppsPbh.get(65)).not.toBe(untouched.ppsPbh.get(65));
+    expect(depot.ppsPbh.get(65)).toBeGreaterThan(untouched.ppsPbh.get(65) * 0.5);
+  });
 });
 
 describe("gross income", () => {
@@ -325,6 +336,15 @@ describe("gross income", () => {
 
   it("leaves an ISK or KF payout out, because it is not taxed as income", () => {
     const { run, state } = plain({}, { ipsMonthly: 2000, ipsStart: 2000, privateSavingKind: 2 });
+    expect(state.pps.get(70)).toBeGreaterThan(0);
+    expect(state.brutto.get(70)).toBeCloseTo(
+      run.v.income.get(70) + state.ip.get(70) + state.pp.get(70) + state.garp.get(70) + state.ptillagg.get(70),
+      6,
+    );
+  });
+
+  it("leaves a depot payout out too, being paid out of money already taxed", () => {
+    const { run, state } = plain({}, { ipsMonthly: 2000, ipsStart: 2000, privateSavingKind: 3 });
     expect(state.pps.get(70)).toBeGreaterThan(0);
     expect(state.brutto.get(70)).toBeCloseTo(
       run.v.income.get(70) + state.ip.get(70) + state.pp.get(70) + state.garp.get(70) + state.ptillagg.get(70),

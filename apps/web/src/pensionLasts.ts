@@ -25,10 +25,10 @@
  *   age (public and occupational pension both start then), a monthly salary --
  *   or a final salary, found the way `pensionAge.ts` finds it -- and a collective
  *   agreement. The retirement age is moved inside what the cohort may draw.
- * - **The individual occupational pension and the private pension** are the model's
- *   private saving (IPS, `privateSavingKind: 0`, taxed as income when paid out, like an
- *   occupational pension): each a capital already saved and a monthly saving until
- *   retirement. The model treats them alike -- the same return, the same payout period,
+ * - **The individual occupational pension and the private pension** -- the latter a
+ *   pension insurance or an IPS, both -- are the model's private saving (IPS,
+ *   `privateSavingKind: 0`, taxed as income when paid out, like an occupational pension):
+ *   each a capital already saved and a monthly saving until retirement. The model treats them alike -- the same return, the same payout period,
  *   the same tax -- so they are one pot and what is saved in each adds up. They are
  *   paid out over the same period as the agreement's pension. The model has no place
  *   for the capital (its own `pbhYear` replaces every pot at once, and garantipension
@@ -36,11 +36,13 @@
  *   the year Avancerat calls "Sparandet börjar år" -- the model's idea of today -- or
  *   from the retirement year if that has passed. The monthly saving is a fixed number
  *   of kronor, as in the model: it is not raised with inflation.
- * - **Private savings** are held in an ISK, a kapitalförsäkring or "other income-taxed
- *   saving". The last is taxed as income when paid out, which is the IPS again, so it
- *   joins the pot above. An ISK and a kapitalförsäkring are the model's other two kinds
- *   of private saving: taxed on a standard return while saved, paid out tax-free. The
- *   model carries one kind per run, so they are a second run (`lastsContext`'s
+ * - **Private savings** are held in one of two kinds, as the money is taxed: an ISK,
+ *   a kapitalförsäkring or a depåförsäkring, taxed on a standard return while saved; or
+ *   a depå, a VP-konto or a fondkonto, taxed 30% on the gain when it is sold. Both are
+ *   paid out tax-free, and the person types the capital after that tax on the second --
+ *   what there is to live on -- while its return is taxed each year (the engine's
+ *   `SavingType.Depot`, which the workbook does not have). The model carries one kind
+ *   of private saving per run, so they are a second run (`lastsContext`'s
  *   `"savings"`), and the two payouts add -- what is tax-free is no part of what the
  *   tax is taken from. They are drawn over the same payout period as everything else;
  *   only "lifelong" differs, since money, unlike an IPS, is not paid for as long as the
@@ -60,9 +62,9 @@
  *   into the budget, age by age (`runWithTaxProbe`). Since tax never leaves less
  *   for more, a pension meets the budget before tax exactly when it meets it
  *   after, and the view only changes the units. A payout that is not taxed as income
- *   (an ISK, a kapitalförsäkring) is grossed up the same way, to the gross income
- *   that leaves as much: added at face value it would count for no more than a taxed
- *   krona, and the two views would part.
+ *   (the private savings) is grossed up the same way, to the gross income that leaves
+ *   as much: added at face value it would count for no more than a taxed krona, and
+ *   the two views would part.
  *
  * **Two readings of "lasts".** Month by month: an age is *covered* if the pension
  * then is at least the budget. A 5-year payout covers the budget with room to
@@ -172,16 +174,22 @@ export const BUDGET_BOUNDS = { min: 0, max: 200_000, step: 100 } as const;
 // ----------------------------------------------------------------- input ---
 
 /**
- * What private saving can be held in -- the three the model tells apart, in the
- * order the drop-down offers them. ISK and kapitalförsäkring are taxed on a
- * standard return while the money is saved and paid out tax-free; "other
- * income-taxed saving" is taxed as income when paid out, which the model calls
- * IPS, so it is the same pot as the pensions below.
+ * What private saving can be held in -- two kinds, as the money is taxed, in the order the
+ * drop-down offers them.
+ *
+ * - `isk`: ISK, kapitalförsäkring and depåförsäkring, which are taxed on a standard return
+ *   while the money is saved (schablonbeskattade) and paid out tax-free. The model's
+ *   ISK (2); a kapitalförsäkring (1) differs from it by a hair, in how the tax base is
+ *   taken, so one stands for the group.
+ * - `depot`: depå, VP-konto and fondkonto, where the gain is taxed 30% when it is sold.
+ *   The model has no such saving (the engine got `SavingType.Depot`, 3, for this): the
+ *   capital is taken after that tax, as the person is asked to type it, and the return
+ *   is taxed each year, as if the gain were realised then. Paid out tax-free, the tax
+ *   being paid.
  */
 export const SAVINGS_KINDS = [
-  { id: "isk", kind: 2, sv: "ISK", en: "ISK" },
-  { id: "kf", kind: 1, sv: "Kapitalförsäkring", en: "Endowment insurance" },
-  { id: "other", kind: 0, sv: "Annat inkomstskattat sparande", en: "Other income-taxed saving" },
+  { id: "isk", kind: 2, sv: "ISK / Kapitalförsäkring / Depåförsäkring", en: "ISK / Endowment insurance / Depot insurance" },
+  { id: "depot", kind: 3, sv: "Depå / VP-konto / Fondkonto", en: "Securities account / Fund account" },
 ] as const;
 
 export type SavingsKind = (typeof SAVINGS_KINDS)[number]["id"];
@@ -227,7 +235,7 @@ export interface LastsInput {
 /**
  * A typfall born 1980 who started working at 25, earns the model's normal salary,
  * has ITP 1, retires at the riktålder, wants to last to 95 on what minPension calls
- * an average pensioner's budget, has no private pension or other saving, and takes
+ * an average pensioner's budget, has no private pension or private saving, and takes
  * the workbook's own economic assumptions.
  */
 export function defaultLastsInput(): LastsInput {
@@ -300,27 +308,24 @@ export interface Saving {
 const amount = (n: number): number => (Number.isFinite(n) ? Math.max(n, 0) : 0);
 
 /**
- * What is paid out as taxed income: the individual occupational pension, the private
- * pension and, if that is what the private saving is held in, "other income-taxed
- * saving". The model has one pot for all of it (its IPS) -- the same return, the
- * same payout period, the same tax -- so what is saved in each simply adds up.
+ * What is paid out as taxed income: the individual occupational pension and the private
+ * pension -- a pension insurance or an IPS. The model has one pot for both (its IPS): the
+ * same return, the same payout period, the same tax, so what is saved in each simply adds up.
  */
 export function taxedSaving(input: LastsInput): Saving {
-  const other = input.savingsKind === "other";
   return {
-    capital: amount(input.individualCapital) + amount(input.privateCapital) + (other ? amount(input.savingsCapital) : 0),
-    monthly: amount(input.individualMonthly) + amount(input.privateMonthly) + (other ? amount(input.savingsMonthly) : 0),
+    capital: amount(input.individualCapital) + amount(input.privateCapital),
+    monthly: amount(input.individualMonthly) + amount(input.privateMonthly),
   };
 }
 
 /**
- * What is paid out tax-free -- an ISK or a kapitalförsäkring, which the model taxes
- * on a standard return while the money is saved -- and which of the two it is; null
- * when the private saving is held in something else or there is nothing in it.
+ * What is paid out tax-free -- the private savings, whichever of the two kinds they are held
+ * in, the tax on them having been paid already or being paid on the way -- and the model's
+ * number for the kind; null when there is nothing in them.
  */
-export function taxFreeSaving(input: LastsInput): (Saving & { readonly kind: 1 | 2 }) | null {
-  const found = SAVINGS_KINDS.find((k) => k.id === input.savingsKind);
-  if (found === undefined || found.kind === 0) return null;
+export function taxFreeSaving(input: LastsInput): (Saving & { readonly kind: 2 | 3 }) | null {
+  const found = SAVINGS_KINDS.find((k) => k.id === input.savingsKind) ?? SAVINGS_KINDS[0];
   const saving = { capital: amount(input.savingsCapital), monthly: amount(input.savingsMonthly) };
   if (saving.capital <= 0 && saving.monthly <= 0) return null;
   return { ...saving, kind: found.kind };
@@ -332,8 +337,8 @@ export function taxFreeSaving(input: LastsInput): (Saving & { readonly kind: 1 |
  * and the model's private saving carrying one of two things.
  *
  * `"pension"` is everything paid out as taxed income (`taxedSaving`): the model's
- * IPS, `privateSavingKind: 0`. `"savings"` is the ISK or the kapitalförsäkring
- * (`taxFreeSaving`), run on its own because the model carries one kind of private
+ * IPS, `privateSavingKind: 0`. `"savings"` is the private savings (`taxFreeSaving`),
+ * an ISK or a depot, run on its own because the model carries one kind of private
  * saving per run. Nothing else differs between the two, and the two payouts just
  * add: the tax-free one is no part of what the tax is taken from.
  *
@@ -368,11 +373,11 @@ export interface PayoutRun {
   readonly payout: number;
   readonly publicPension: readonly number[];
   readonly occupational: readonly number[];
-  /** Individual occupational pension, private pension and any other income-taxed saving: the model's IPS, paid out as taxed income. */
+  /** Individual occupational pension and private pension (pension insurance, IPS): the model's IPS, paid out as taxed income. */
   readonly individual: readonly number[];
   /** The three together, before tax: all that the model takes tax from. */
   readonly gross: readonly number[];
-  /** ISK or kapitalförsäkring paid out. Not taxed as income, so the same before and after tax. */
+  /** The private savings paid out. Not taxed as income, so the same before and after tax. */
   readonly savings: readonly number[];
   /** What is left of `gross` after the model's tax, with the tax-free `savings` on top. */
   readonly net: readonly number[];
@@ -435,7 +440,7 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
     const individual = annual(rows, par, (r) => r.ips);
     remember(probe.result.warnings);
 
-    // An ISK or a kapitalförsäkring is a second run: the model carries one kind of private saving at a time.
+    // The private savings are a second run: the model carries one kind of private saving at a time.
     let savings: readonly number[] = new Array<number>(LAST_AGE + 1).fill(0);
     if (taxFree !== null) {
       const own = run(typfall, lastsContext(shared, input, payout, "savings"), { deaths });
@@ -662,7 +667,7 @@ export interface PayoutOption {
    */
   readonly net: Assessment;
   /**
-   * The ISK or kapitalförsäkring payout in the basis shown, by age 0..`LAST_AGE`. After
+   * The private savings payout in the basis shown, by age 0..`LAST_AGE`. After
    * tax it is what is paid out. Before tax it is grossed up, so that the parts of the
    * pension still add up to `view.income` -- see `evaluate`. All zero without one.
    */
@@ -693,7 +698,7 @@ export interface Lasts {
   readonly best: PayoutOption | null;
   /** Whether the person has an occupational or individual pension, or private saving, for a payout period to apply to. */
   readonly flexible: boolean;
-  /** An ISK or a kapitalförsäkring pays out something, which is not taxed as income. */
+  /** The private savings pay out something, which is not taxed as income. */
   readonly taxFree: boolean;
 }
 
@@ -856,13 +861,7 @@ function optionsHeader(lasts: Lasts, lang: Lang): string[] {
           say(lang, "varav tjänstepension", "of which occupational pension"),
           say(lang, "varav individuell och privat pension", "of which individual and private pension"),
           ...(lasts.taxFree
-            ? [
-                say(
-                  lang,
-                  `varav ${savingsKindName(lasts.input.savingsKind, "sv")}, uppräknat`,
-                  `of which ${savingsKindName(lasts.input.savingsKind, "en")}, grossed up`,
-                ),
-              ]
+            ? [say(lang, "varav privat sparande, uppräknat", "of which private savings, grossed up")]
             : []),
         ]),
     say(lang, `Efter utbetalningen, kr/mån ${tax}`, `After the payout, SEK/month ${tax}`),

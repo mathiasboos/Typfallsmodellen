@@ -765,9 +765,9 @@ The original is one long procedure, so its loop locals are still in scope when t
 second pass reads several of them. `RunState.leftovers` keeps exactly those, which is why splitting
 `Mcalc` into functions did not lose them.
 
-### Two additions that are not in the workbook
+### Three additions that are not in the workbook
 
-Both are off or inert unless a caller asks, so the golden comparison (299 typfall) and every other
+All are off or inert unless a caller asks, so the golden comparison (299 typfall) and every other
 test are untouched.
 
 - **`ipsOpening`** (`ModelContext`, default 0): capital already in the private saving when the saving
@@ -775,8 +775,9 @@ test are untouched.
   pot for that year -- income pension, premium pension, occupational pension and private saving -- and
   divides the guarantee base by the income pension's balance (the last of the quirks below), so it cannot be used
   to say "I have 300 000 kr in a private pension" without also zeroing the rest. `ipsOpening` is added to
-  the pot the kind of saving builds -- `ipsPbh` for an IPS, `ppsPbh` for a KF or an ISK, and only that
-  one, since both pay out from retirement and crediting both would pay the same capital twice -- at the
+  the pot the kind of saving builds -- `ipsPbh` for an IPS, `ppsPbh` for a KF, an ISK or a depot (below),
+  and only that one, since both pay out from retirement and crediting both would pay the same capital
+  twice -- at the
   end of the year before `ipsStart`, in `closeBalances`, so it earns the return from `ipsStart` on and is
   paid out like any other part of the pot. Born so far back that the payout has already begun, the
   caller counts it from the payout year; and the year has to be one the run covers, or the capital is
@@ -791,6 +792,19 @@ test are untouched.
   income in the model, and it is monotone and invertible. It also snapshots the whole run state -- every
   age array, running scalar, the leftovers and the output rows -- before and after probing, so a stray
   write cannot hide.
+- **`SavingType.Depot`** (`privateSavingKind` 3, `saving/privateSaving.ts`): an ordinary securities
+  account -- depå, VP-konto, fondkonto -- beside the workbook's two kinds of private saving, 1 (KF) and
+  2 (ISK). Those are taxed on a notional return (schablonintäkt); a depot is taxed on its *gain*, 30%,
+  when it is sold, which has no yearly figure to take. So `PrivatSpar` takes the return after that tax,
+  each year, as if the gain were realised then: `kept = yield - 0.3 * max(yield - 1, 0)`, no allowance,
+  no refund for a loss, deposits at half a year's growth as for the others. That is a little harder than
+  the deferral a real portfolio has, and it makes the balance an after-tax one from the start, which is
+  how the caller asks for it. A depot is built up in the same `pps` pot as a KF or an ISK and paid out the
+  same way, untaxed as income -- `isUntaxedSaving(kind)` is the one test of that, used by the pot's
+  update and by `ipsOpening`'s credit -- and nothing reads the kind 3 anywhere else, so Avancerat's drop-down
+  (0, 1, 2) is as it was. `test/privateSaving.test.ts` and `test/mcalcDrawdown.test.ts` pin it: the
+  arithmetic, no refund, no dependence on the year or on what the two wrappers' tax functions carry
+  between calls, the routing to `pps`, and that its payout is no part of the gross income.
 
 ### Quirks kept on purpose
 
