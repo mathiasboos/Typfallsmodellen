@@ -2254,8 +2254,8 @@ const paType = async (name, value) => {
   await field.fill(String(value));
   await field.dispatchEvent("change");
   // A field that was typed into fires one more change when it loses focus, and that redraws the
-  // results -- under a pointer that is on its way to a button in them, which then misses. Let it
-  // happen here, so that what the next step clicks is still there.
+  // results. Let it happen here, so that each step starts from a page that has settled; a press
+  // made while a field is still being typed in is what "The first press" below checks.
   await field.evaluate((el) => el.blur());
   await tab.waitForTimeout(60);
 };
@@ -3078,8 +3078,8 @@ const plType = async (name, value) => {
   await field.fill(String(value));
   await field.dispatchEvent("change");
   // A field that was typed into fires one more change when it loses focus, and that redraws the
-  // results -- under a pointer that is on its way to a button in them, which then misses. Let it
-  // happen here, so that what the next step clicks is still there.
+  // results. Let it happen here, so that each step starts from a page that has settled; a press
+  // made while a field is still being typed in is what "The first press" below checks.
   await field.evaluate((el) => el.blur());
   await tab.waitForTimeout(80);
 };
@@ -3609,6 +3609,191 @@ await tab.waitForTimeout(100);
 
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
+
+// ---- The first press ---------------------------------------------------------
+//
+// A number is applied when its field loses focus, and the press on a button is what takes the focus
+// from it. The page used to be redrawn between the button's mousedown and its mouseup, so the button
+// the pointer came up on was not the one it went down on, the browser dropped the click, and the first
+// press did nothing. Every press here is a real one -- the mouse moved, pressed and released through
+// the browser's own input, with none of the retrying `locator.click()` does for a button that was
+// replaced under it -- made while a number has been typed and its field not left.
+
+const fp = await context.newPage();
+fp.on("pageerror", (error) => errors.push(String(error)));
+fp.on("console", (message) => {
+  if (message.type() === "error") errors.push(message.text());
+});
+const fpFiles = [];
+fp.on("download", (saved) => fpFiles.push(saved));
+await fp.goto(pathToFileURL(page).href);
+await fp.waitForSelector(".table1 tbody tr[data-key]", { timeout: 15000 });
+
+const fpPresses = [];
+const fpExpect = (what, ok) => fpPresses.push({ what, ok });
+const fpPress = async (page, locator, how = "mouse") => {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error("the button has no box to press");
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  if (how === "touch") return page.touchscreen.tap(x, y);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.up();
+};
+const fpTyped = async (field, text) => {
+  await field.click();
+  await field.press("Control+A");
+  await field.pressSequentially(text);
+};
+const fpActive = async (locator) => ((await locator.getAttribute("class")) ?? "").split(/\s+/).includes("active");
+const fpSalary = fp.locator("form.inputs input[type=number]").nth(3);
+const fpBorn = fp.locator("form.inputs input[type=number]").first();
+const fpScreen = (screen) => fp.locator(`.screen-toggle .panel-btn[data-screen="${screen}"]`);
+
+/** Press a download button and read back what it wrote: how many files, and the first. */
+const fpWritten = async (page, button, how = "mouse") => {
+  const from = fpFiles.length;
+  await fpPress(page, button, how);
+  await page.waitForTimeout(350);
+  const written = fpFiles.slice(from);
+  return { count: written.length, buffer: written.length > 0 ? readFileSync(await written[0].path()) : Buffer.alloc(0) };
+};
+/**
+ * The three presses of one download button: before anything was typed, the first press after a number
+ * was typed, and a press once that number has been applied and left. The first has to write the file
+ * the third writes -- the one with the new number in it, not the one the page showed when the
+ * button was pressed -- once, and not the file the first one wrote.
+ */
+const fpFresh = async (what, button, field, text, leave) => {
+  const baseline = await fpWritten(fp, button());
+  await fpTyped(field, text);
+  const first = await fpWritten(fp, button());
+  await leave();
+  const settled = await fpWritten(fp, button());
+  fpExpect(`${what}: one file`, first.count === 1);
+  fpExpect(`${what}: not the file from before the number was typed`, first.buffer.length > 0 && !first.buffer.equals(baseline.buffer));
+  fpExpect(`${what}: the file a press after the number is applied writes`, first.buffer.equals(settled.buffer));
+};
+const fpLeave = () => fp.locator("h1").click();
+
+// Prognos: the tabs, the mode, the figure's and the table's own toggles, the language.
+await fpTyped(fpSalary, "512345");
+await fpPress(fp, fpScreen("retirement"));
+await fp.waitForTimeout(150);
+fpExpect("Prognos: the 'Bästa pensionsålder' tab", await fpActive(fpScreen("retirement")));
+await fpPress(fp, fpScreen("single"));
+await fp.waitForTimeout(150);
+
+for (const [what, press, restore] of [
+  ["the Avancerat toggle", '.mode-toggle .panel-btn[data-mode="advanced"]', '.mode-toggle .panel-btn[data-mode="normal"]'],
+  ["Figur 2's 'Före skatt' toggle", '.panel-toggle .panel-btn[data-basis="before-tax"]', '.panel-toggle .panel-btn[data-basis="after-tax"]'],
+]) {
+  await fpTyped(fpSalary, "498765");
+  await fpPress(fp, fp.locator(press));
+  await fp.waitForTimeout(150);
+  fpExpect(`Prognos: ${what}`, await fpActive(fp.locator(press)));
+  await fpTyped(fpSalary, "512345");
+  await fpPress(fp, fp.locator(restore));
+  await fp.waitForTimeout(150);
+  fpExpect(`Prognos: and back again`, await fpActive(fp.locator(restore)));
+}
+await fpTyped(fpSalary, "498765");
+await fpPress(fp, fp.locator(".panel-toggle .panel-btn", { hasText: "Årsvis" }));
+await fp.waitForTimeout(150);
+fpExpect("Prognos: Table 2's 'Årsvis' toggle", await fpActive(fp.locator(".panel-toggle .panel-btn", { hasText: "Årsvis" })));
+await fpTyped(fpSalary, "512345");
+await fpPress(fp, fp.locator(".panel-toggle .panel-btn", { hasText: "Månadsvis" }));
+await fp.waitForTimeout(150);
+
+await fpFresh("Prognos: Table 1's CSV", () => fp.locator('.export-btn[data-file="tabell1.csv"]'), fpSalary, "530000", fpLeave);
+await fpFresh("Prognos: Table 2's CSV", () => fp.locator('.export-btn[data-file="tabell2.csv"]'), fpSalary, "470000", fpLeave);
+
+await fpTyped(fpSalary, "498765");
+await fpPress(fp, fp.locator(".langs button", { hasText: "EN" }));
+await fp.waitForTimeout(150);
+fpExpect("Prognos: the language chip 'EN'", (await fp.evaluate(() => document.documentElement.lang)) === "en");
+await fpTyped(fpSalary, "512345");
+await fpPress(fp, fp.locator(".langs button", { hasText: "SV" }));
+await fp.waitForTimeout(150);
+fpExpect("Prognos: and back to 'SV'", (await fp.evaluate(() => document.documentElement.lang)) === "sv");
+
+// Hur länge räcker pensionen?
+await fpPress(fp, fpScreen("lasts"));
+await fp.waitForSelector('[data-setting="plCapital"]');
+await fp.waitForTimeout(250);
+const fpPlCapital = fp.locator('[data-setting="plCapital"]');
+await fpFresh("Lasts: the CSV", () => fp.locator('.export-btn[data-file="pension-per-ar.csv"]'), fpPlCapital, "300000", fpLeave);
+await fpTyped(fpPlCapital, "310000");
+const fpPlExcel = await fpWritten(fp, fp.locator('.export-btn[data-file="pension-per-ar.xlsx"]'));
+fpExpect("Lasts: the Excel file, once", fpPlExcel.count === 1 && looksLikeXlsx(fpPlExcel.buffer));
+await fpTyped(fpPlCapital, "123456");
+await fpPress(fp, fp.locator("[data-preset]").first());
+await fp.waitForTimeout(250);
+fpExpect("Lasts: a button among the inputs keeps what was typed", (await fpPlCapital.inputValue()) === "123456");
+
+// Bästa pensionsålder, one agreement and all of them.
+await fpPress(fp, fpScreen("retirement"));
+await fp.waitForSelector('[data-setting="paCapital"]');
+await fp.waitForTimeout(250);
+const fpPaCapital = fp.locator('[data-setting="paCapital"]');
+await fpFresh("Age: the CSV", () => fp.locator('.export-btn[data-file="pension-per-ar.csv"]'), fpPaCapital, "300000", fpLeave);
+await fpPress(fp, fp.locator('button[data-view="compare"]'));
+await fp.waitForTimeout(400);
+await fpFresh("Age, the agreements: the CSV", () => fp.locator('.export-btn[data-file="avtalsomraden.csv"]'), fpPaCapital, "320000", fpLeave);
+await fpTyped(fpPaCapital, "330000");
+await fpPress(fp, fp.locator('button[data-view="single"]'));
+await fp.waitForTimeout(300);
+fpExpect("Age: the switch between one agreement and all", await fpActive(fp.locator('button[data-view="single"]')));
+
+// A number out of range is shown clamped, and the press still lands. A field that was only clicked
+// into is left as an ordinary press leaves it.
+await fpPress(fp, fpScreen("single"));
+await fp.waitForTimeout(150);
+await fpTyped(fpBorn, "3000");
+await fpPress(fp, fpScreen("retirement"));
+await fp.waitForTimeout(250);
+fpExpect("a clamped entry: the press lands", await fpActive(fpScreen("retirement")));
+fpExpect("a clamped entry: it reads the largest year", (await fpBorn.inputValue()) === (await fpBorn.getAttribute("max")));
+await fpPress(fp, fpScreen("single"));
+await fp.waitForTimeout(150);
+await fpSalary.click();
+await fpPress(fp, fpScreen("mikrosim"));
+await fp.waitForTimeout(250);
+fpExpect("a field with nothing typed: the press lands", await fpActive(fpScreen("mikrosim")));
+await fp.close();
+
+// A finger: the same press, as a tap, on a phone.
+const touchContext = await browser.newContext({ viewport: { width: 420, height: 900 }, hasTouch: true, isMobile: true, acceptDownloads: true });
+await touchContext.route("**/*", (route) => {
+  const url = route.request().url();
+  if (url.startsWith("file://") || url.startsWith("blob:")) return route.continue();
+  outbound.push(url);
+  return route.abort();
+});
+const finger = await touchContext.newPage();
+finger.on("pageerror", (error) => errors.push(String(error)));
+finger.on("download", (saved) => fpFiles.push(saved));
+await finger.goto(pathToFileURL(page).href);
+await finger.waitForSelector(".table1 tbody tr[data-key]", { timeout: 15000 });
+const fingerSalary = finger.locator("form.inputs input[type=number]").nth(3);
+const fingerTyped = async (text) => {
+  await fingerSalary.tap();
+  await fingerSalary.press("Control+A");
+  await fingerSalary.pressSequentially(text);
+};
+await fingerTyped("512345");
+const fingerCsv = await fpWritten(finger, finger.locator('.export-btn[data-file="tabell1.csv"]'), "touch");
+fpExpect("a tap on Table 1's CSV, once", fingerCsv.count === 1 && fingerCsv.buffer.length > 100);
+await fingerTyped("498765");
+await fpPress(finger, finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]'), "touch");
+await finger.waitForTimeout(250);
+fpExpect("a tap on the 'Bästa pensionsålder' tab", await fpActive(finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]')));
+await touchContext.close();
+
+const fpFailed = fpPresses.filter((press) => !press.ok);
+console.log(`first press     : ${fpPresses.length - fpFailed.length}/${fpPresses.length} landed first time, with the number that was just typed${fpFailed.length > 0 ? ` -- not: ${fpFailed.map((press) => press.what).join("; ")}` : ""}`);
+for (const press of fpFailed) problems.push(`a press right after typing a number did not do what it should: ${press.what}`);
 
 // ---- Provenance and paper ------------------------------------------------
 //

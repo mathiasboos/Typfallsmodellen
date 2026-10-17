@@ -244,6 +244,39 @@ the form says. The month/year switch is `rng_Chart_Earning_factor` on the `Model
 than a division in the view, since `buildTable2` already divides by it — the same rule as
 everywhere else here: where the workbook has an opinion, the port does not add a second one.
 
+### A press on a button while a number is being typed
+
+A number field applies its value when it loses focus (`change`: running the model on every keystroke
+would run it on the half-typed "19" of "1960"), and the press on a button is what takes the focus from
+it. So the page used to be redrawn between the button's mousedown and its mouseup, and a browser only
+clicks an element it saw go down: the button the pointer went down on was gone, the one it came up on
+was a new element, and the click was dropped. The first press did nothing and the second worked. It hit
+every button in a part of the page that is rebuilt on a change — the tabs, Normalt/Avancerat and the
+language chips (all rebuilt by `main.ts`'s `render()`), Figur 2's and Table 2's toggles, and every
+download button — with a mouse and with a finger.
+
+`pressCommit.ts` fixes it once, for all of them, rather than making each part of the page keep its
+buttons across a redraw. A mouse press on a button does not take the focus from a field being typed in
+(`mousedown` is cancelled; a button needs no focus to be clicked), and the number is applied when the
+click arrives, before the button's own handler: the field is blurred, which fires its `change`, which
+redraws. If the redraw replaced the button, the click is stopped and handed on to its counterpart in the
+new page — the button with the same classes, `data-*` and text, and the same place among those that
+look alike (`counterpart`, arithmetic and tested). It has to be the new button and not the old one's
+handler: a download writes what was drawn, so the old button would write the page from before the
+number was typed. That is also why the download buttons carry `data-file`, the name of the file, which
+is what tells the page's several "Ladda ner CSV" apart. If the redraw left no such button the click is
+dropped, as it was, rather than given to a different one.
+
+Two things it leaves alone. The focus is not moved to the pressed button afterwards: a script that moves
+the focus away from a text field gives its target a keyboard-style focus ring (`:focus-visible` follows
+what held the focus before), which a mouse press never shows. And `Shift+Tab` out of the first field
+into the header still loses the focus, because `render()` also rebuilds the header on every change; what
+was reported, and what is fixed, is the press.
+
+**Checked** by 10 unit tests, and in the built file with a real mouse and a finger (`verify:offline`, "The
+first press"): every press lands the first time, a download is written once and holds the number that
+was just typed, and the block fails on a build without the `commitOnPress()` call.
+
 ### Saying whose model it is
 
 The page carries an `Inofficiell version` notice under its subtitle, in both languages, naming

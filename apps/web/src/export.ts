@@ -17,16 +17,18 @@ function download(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-function exportButton(text: string): HTMLButtonElement {
+/** `data-file` is what tells the page's several download buttons apart, to a person's tools as to `pressCommit.ts`. */
+function exportButton(text: string, filename: string): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "export-btn";
+  button.dataset.file = filename;
   button.textContent = text;
   return button;
 }
 
 export function csvExportButton(lang: Lang, filename: string, csv: () => string): HTMLButtonElement {
-  const button = exportButton(lang === "sv" ? "Ladda ner CSV" : "Download CSV");
+  const button = exportButton(lang === "sv" ? "Ladda ner CSV" : "Download CSV", filename);
   button.addEventListener("click", () => {
     // A BOM, so Excel reads å/ä/ö as UTF-8 instead of guessing a legacy
     // codepage from the bytes.
@@ -40,7 +42,7 @@ export function xlsxExportButton(
   filename: string,
   sheetData: () => SheetData,
 ): HTMLButtonElement {
-  const button = exportButton(lang === "sv" ? "Ladda ner Excel" : "Download Excel");
+  const button = exportButton(lang === "sv" ? "Ladda ner Excel" : "Download Excel", filename);
   button.addEventListener("click", () => {
     void xlsxBlob(sheetData()).then((blob) => download(blob, filename));
   });
