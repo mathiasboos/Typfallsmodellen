@@ -423,6 +423,23 @@ export function benefits(run: Run, age: number, utgyear: number, tax: TaxResult)
   }
 }
 
+/**
+ * What a nominal amount at `age` is multiplied by to be expressed the way the
+ * output is: in the reference year's prices, in its wage level, or nominally
+ * (1), depending on `rng_Bara_fastapriser`.
+ */
+export function priceFactor(run: Run, age: number): number {
+  const { v, p, context } = run;
+  const refAge = context.referenceYear - vbaInt(p.born);
+  if (context.priceBasis === 1) {
+    return v.startage <= refAge ? v.kpi.get(refAge) / v.kpi.get(age) : v.kpi.get(v.startage) / v.kpi.get(age);
+  }
+  if (context.priceBasis === 0) {
+    return v.startage <= refAge ? v.iindex.get(refAge) / v.iindex.get(age) : v.iindex.get(v.startage) / v.iindex.get(age);
+  }
+  return 1;
+}
+
 /** The row this age contributes to the output matrix. */
 export function recordRow(run: Run, age: number): void {
   const { v, s, p, context } = run;
@@ -430,15 +447,8 @@ export function recordRow(run: Run, age: number): void {
 
   // Amounts are expressed in the reference year's prices, its wage level, or
   // nominally, depending on the setting.
-  let factor: number;
+  const factor = priceFactor(run, age);
   const refAge = context.referenceYear - born;
-  if (context.priceBasis === 1) {
-    factor = v.startage <= refAge ? v.kpi.get(refAge) / v.kpi.get(age) : v.kpi.get(v.startage) / v.kpi.get(age);
-  } else if (context.priceBasis === 0) {
-    factor = v.startage <= refAge ? v.iindex.get(refAge) / v.iindex.get(age) : v.iindex.get(v.startage) / v.iindex.get(age);
-  } else {
-    factor = 1;
-  }
 
   // `Round(x, i - 1)`: whole kronor normally, two decimals without rounding.
   // `Round(x, i - 1)` with i = 1 normally and 3 without rounding, so whole

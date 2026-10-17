@@ -19,6 +19,7 @@ export * from "./model/drawdown.js";
 export * from "./model/taxAndBenefits.js";
 export * from "./model/result.js";
 export * from "./model/run.js";
+export * from "./model/netProbe.js";
 export * from "./model/runVectors.js";
 
 export * from "./data/index.js";

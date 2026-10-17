@@ -3,7 +3,9 @@
  *
  * Port of `PrivatSparande.bas`. Neither wrapper is taxed on its actual return:
  * both pay a flat yield tax on a notional return (schablonintäkt) derived from
- * the government borrowing rate.
+ * the government borrowing rate. (An ordinary securities account, `SavingType.Depot`,
+ * is not in the workbook; it was added beside them for the web app's "how long does
+ * the pension last" tab.)
  *
  * ---
  *
@@ -35,9 +37,27 @@ export const SavingType = {
   KF: 1,
   /** Investeringssparkonto, which did not exist before 2012. */
   ISK: 2,
+  /**
+   * An ordinary securities account -- depå, VP-konto, fondkonto. Not in the workbook.
+   * It is taxed on the gain, 30%, when it is sold, which has no yearly figure to take
+   * as the two above have; see `PrivatSpar` for what is done instead.
+   */
+  Depot: 3,
 } as const;
 
 export type SavingTypeId = (typeof SavingType)[keyof typeof SavingType];
+
+/** The tax on a gain realised in an ordinary securities account. */
+export const DEPOT_GAIN_TAX = 0.3;
+
+/**
+ * Whether `kind` -- the workbook's `rng_Kapitalförsäkring`, and 3 for a depot -- is a saving
+ * that is built up in the `pps` pot and paid out untaxed as income. 0, the IPS, is the other
+ * way round: it builds `ips` and is taxed as income when it is paid out.
+ */
+export function isUntaxedSaving(kind: number): kind is SavingTypeId {
+  return kind === SavingType.KF || kind === SavingType.ISK || kind === SavingType.Depot;
+}
 
 /** Mirrors the VBA's implicit module-level `avkskatten`. */
 let lastYieldTax = 0;
@@ -161,6 +181,13 @@ export function PrivatSpar(
         sparandePerAr * yield_ ** (180 / 360) -
         AvkastningsskattKFISK(taxBase, ar);
     }
+  } else if (typ === SavingType.Depot) {
+    // Taxed on the gain when it is sold, not on a notional return. What is taken is the
+    // return after that tax, each year, as if the gain were realised then: a little
+    // harder than the deferral a real portfolio has, and the balance is after tax from
+    // the start, which is what the person is asked to type in. A loss gets no refund.
+    const kept = yield_ - DEPOT_GAIN_TAX * Math.max(yield_ - 1, 0);
+    balance = balance * kept + sparandePerAr * kept ** (180 / 360);
   }
 
   return balance;

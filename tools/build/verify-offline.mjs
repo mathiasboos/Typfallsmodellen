@@ -1483,9 +1483,9 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 4) {
+if (screenButtons !== 5) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 4 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder)`,
+    `screen toggle has ${screenButtons} buttons, expected 5 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder / Hur länge räcker pensionen?)`,
   );
 }
 
@@ -2253,6 +2253,10 @@ const paType = async (name, value) => {
   const field = paSetting(name);
   await field.fill(String(value));
   await field.dispatchEvent("change");
+  // A field that was typed into fires one more change when it loses focus, and that redraws the
+  // results -- under a pointer that is on its way to a button in them, which then misses. Let it
+  // happen here, so that what the next step clicks is still there.
+  await field.evaluate((el) => el.blur());
   await tab.waitForTimeout(60);
 };
 const paBest = () =>
@@ -2476,6 +2480,215 @@ if (paImported.join("/") !== `1959/23/38500/${paRiktalder(1959)}`) {
 }
 await pa.locator('[data-action="pa-reset"]').click();
 await tab.waitForTimeout(80);
+
+// Own savings: the individual occupational pension, the private pension and the private savings are
+// asked for by the module "Hur länge räcker pensionen?" is built with, so the two tabs look the same and
+// work the same -- the same fields in the same order, the same labels and small print, the same drop-down.
+// The numbers are the engine's, and `pensionAge.test.ts` pins them against it and against the other tab's
+// runs: 300 000 kr and 2 000 kr/month in a pension pot pay 4 869 kr/month at 68 on top of the public
+// pension's 20 194, taxed as income; 400 000 kr and 1 000 kr/month in an ISK pay 3 939, in a depot 3 951,
+// not taxed.
+
+const paNorm = (text) => (text ?? "").replace(/\s/g, "").replace(/−/g, "-");
+const paLabel = async (name) => paNorm(await pa.locator(`label:has([data-setting="${name}"]) .field-label`).textContent());
+const paSequence = () =>
+  pa.locator(".pa-grid").first().evaluate((grid) =>
+    [...grid.children].map((el) =>
+      el.classList.contains("pa-group")
+        ? `#${el.textContent}`
+        : el.classList.contains("field-pair")
+          ? [...el.querySelectorAll("[data-setting]")].map((i) => i.dataset.setting).join("+")
+          : (el.querySelector("[data-setting]")?.dataset.setting ?? el.className),
+    ),
+  );
+const paPairRows = () =>
+  pa.locator(".field-pair").evaluateAll((pairs) =>
+    pairs.map((pair) => {
+      const [a, b] = [...pair.querySelectorAll("input")].map((i) => i.getBoundingClientRect());
+      return { sameRow: Math.abs(a.top - b.top) < 1.5, side: b.left > a.right - 1 };
+    }),
+  );
+const paTimeHead = async () => (await pa.locator('[data-role="pa-time-table"] thead th').allTextContents()).map(paNorm);
+const paTimeRow = async (par = 68) => (await pa.locator(`[data-role="pa-time-table"] tr[data-par="${par}"] td`).allTextContents()).map(paNorm);
+const paFirstYear = async (par = 68) => Number((await paTimeRow(par))[1]);
+const paKpi = async () => paNorm(await pa.locator('[data-role="pa-answer"] .pa-kpi').textContent());
+const paNotes = async () => (await pa.locator(".pa-grid .saving-note").allTextContents()).map(paNorm);
+
+// Where the fields sit, what they are called, and that capital and monthly saving share a row.
+const paSeq = await paSequence();
+const paWantedSeq = [
+  "#Person", "paBorn", "paStartWork", "paCentre", "paRiktalder", "paSalaryAs", "paSalary",
+  "#Pension", "paScheme", "paIncludeOccupational", "paCapital+paSaving", "paPrivCapital+paPrivSaving", "saving-note",
+  "#Privat sparande", "paSavingsKind", "saving-note", "paSavingsCapital+paSavingsMonthly",
+  "#Livslängd",
+];
+const paSeqAt = paSeq.indexOf("#Person");
+if (paSeqAt === -1 || !sameList(paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length), paWantedSeq)) {
+  problems.push(`the Bästa pensionsålder inputs run ${paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length).join(" > ")}, expected ${paWantedSeq.join(" > ")}`);
+}
+const paLabelsSv = [await paLabel("paCapital"), await paLabel("paSaving"), await paLabel("paPrivCapital"), await paLabel("paPrivSaving"), await paLabel("paSavingsCapital"), await paLabel("paSavingsMonthly")];
+console.log(`pension age     : saving labels ${paLabelsSv.join(" | ")}`);
+if (!sameList(paLabelsSv, ["Individuelltjänstepension,kapital", "Individuelltjänstepension,månadssparande", "Privatpension,kapital", "Privatpension,månadssparande", "ISK/Kapitalförsäkring/Depåförsäkring,kapital", "ISK/Kapitalförsäkring/Depåförsäkring,månadssparande"])) {
+  problems.push(`the age tab's capital and saving fields are labelled ${paLabelsSv.join(" | ")}`);
+}
+if ((await paLabel("paIncludeOccupational")) !== "Räknamedavtaletstjänstepension") {
+  problems.push(`the include box is labelled "${await paLabel("paIncludeOccupational")}", expected that it is the agreement's occupational pension that it switches off`);
+}
+const paPairsDesktop = await paPairRows();
+if (paPairsDesktop.length !== 3 || !paPairsDesktop.every((pair) => pair.sameRow && pair.side)) {
+  problems.push(`at 1280px the age tab's capital and monthly saving are not side by side on one row: ${JSON.stringify(paPairsDesktop)}`);
+}
+const paKindOptions = (await paSetting("paSavingsKind").locator("option").allTextContents()).map((text) => text.trim());
+if (!sameList(paKindOptions, ["ISK / Kapitalförsäkring / Depåförsäkring", "Depå / VP-konto / Fondkonto"])) {
+  problems.push(`the age tab's kind of saving offers ${paKindOptions.join(" | ")}, expected the two tax categories`);
+}
+const paNotesStart = await paNotes();
+if (!/Privatpensionärenpensionsförsäkringellerips\(individuelltpensionssparande\)/i.test(paNotesStart[0] ?? "")) {
+  problems.push(`under the private pension fields the age tab says "${paNotesStart[0]}", expected that it is a pension insurance or an IPS`);
+}
+if (!/Schablonbeskattat/.test(paNotesStart[1] ?? "") || (await pa.locator(".pa-grid .saving-note-prompt").count()) !== 0) {
+  problems.push(`for an ISK the age tab says "${paNotesStart[1]}" (prompt ${await pa.locator(".pa-grid .saving-note-prompt").count()}), expected the standard-return note and no prompt`);
+}
+
+// The Pension and Privat sparande sections' markup, kept for the other tab to be compared with (its panel is not on screen
+// then). The box that switches the agreement off is the age tab's own and is left out.
+const sectionsOf = (panel, prefix) =>
+  panel.locator(".pa-grid").first().evaluate((grid, prefix) => {
+    const kids = [...grid.children];
+    const isGroup = (el, text) => el.classList.contains("pa-group") && (text === undefined || el.textContent === text);
+    const start = kids.findIndex((el) => isGroup(el, "Pension"));
+    const savings = kids.findIndex((el) => isGroup(el, "Privat sparande"));
+    const end = kids.findIndex((el, i) => i > savings && isGroup(el));
+    return kids
+      .slice(start, end)
+      .filter((el) => !el.querySelector('[data-setting$="IncludeOccupational"]'))
+      .map((el) => el.outerHTML.replaceAll(`data-setting="${prefix}`, 'data-setting="X'));
+  }, prefix);
+const paSection = await sectionsOf(pa, "pa");
+
+// A pension of one's own: one pot, taxed as income, from the alternative's own retirement age.
+const paPlainFirst = await paFirstYear();
+await paType("paCapital", 300000);
+await paType("paSaving", 2000);
+const paIpsFirst = await paFirstYear();
+const paIpsHead = await paTimeHead();
+const paIpsRow = await paTimeRow();
+const paIpsKpi = await paKpi();
+const paIpsBest = await paBest();
+console.log(`pension age     : pension of one's own 300 000 + 2 000/month -> ${paPlainFirst} to ${paIpsFirst} at 68, best ${paIpsBest.join(",")}`);
+if (paPlainFirst !== 20194 || paIpsFirst !== 25063) problems.push(`the first year at 68 reads ${paPlainFirst} without and ${paIpsFirst} with 300 000 kr and 2 000 kr/month of one's own pension, expected 20194 and 25063`);
+if (!sameList(paIpsBest, [65, 65, 65, 67, 68, 68, 71, 71, 71, 71, 71, 71, 71, 71, 71, 71])) {
+  problems.push(`with a pension of one's own the short answer picks ${paIpsBest.join(",")}, expected 65,65,65,67,68,68 then 71 from 86`);
+}
+if (!paIpsHead.includes("varavallmän") || !paIpsHead.includes("varavindividuellochprivat") || paIpsHead.includes("varavtjänstepension") || paIpsHead.includes("varavprivatsparande")) {
+  problems.push(`before tax the per-age table has columns ${paIpsHead.join("|")}, expected public and individual-and-private only`);
+}
+if (paIpsRow[1] !== "25063" || paIpsRow[2] !== "20194" || paIpsRow[3] !== "4869") problems.push(`the first-year row splits ${paIpsRow.slice(1, 4).join(" + ")}, expected 25063 = 20194 + 4869`);
+if (!/^Vid68år\(riktåldern\):25267kr\/mån\(varavindividuellochprivatpension4869kr\/mån\),[\d,]+%avslutlönen39872kr\/mån\.Allmänpension\+egetsparande,föreskatt\./.test(paIpsKpi)) {
+  problems.push(`the short answer's figure reads "${paIpsKpi}", expected it to name the individual and private pension and the own saving`);
+}
+// The private pension is the same pot: the same numbers whichever field they are typed in, and the two add up.
+await paType("paCapital", 0);
+await paType("paSaving", 0);
+await paType("paPrivCapital", 300000);
+await paType("paPrivSaving", 2000);
+const paPrivFirst = await paFirstYear();
+await paType("paCapital", 150000);
+await paType("paSaving", 1000);
+await paType("paPrivCapital", 150000);
+await paType("paPrivSaving", 1000);
+const paSplitFirst = await paFirstYear();
+if (paPrivFirst !== 25063 || paSplitFirst !== 25063) problems.push(`as private pension the first year reads ${paPrivFirst} and half and half ${paSplitFirst}, expected 25063 for both`);
+for (const name of ["paCapital", "paSaving", "paPrivCapital", "paPrivSaving"]) await paType(name, 0);
+
+// Private savings: what it is held in names the fields and says how it is taxed; paid out tax-free.
+await paType("paSavingsCapital", 400000);
+await paType("paSavingsMonthly", 1000);
+const paIskFirst = await paFirstYear();
+const paIskHead = await paTimeHead();
+const paIskRow = await paTimeRow();
+const paIskKpi = await paKpi();
+console.log(`pension age     : ISK 400 000 + 1 000/month -> ${paIskFirst} at 68 (${paIskRow.slice(2, 4).join(" + ")})`);
+if (paIskFirst !== 24133) problems.push(`with 400 000 kr and 1 000 kr/month in an ISK the first year at 68 reads ${paIskFirst}, expected 24133`);
+if (!paIskHead.includes("varavprivatsparande") || paIskHead.includes("varavindividuellochprivat")) problems.push(`with an ISK the per-age table has columns ${paIskHead.join("|")}, expected one for the private savings`);
+if (paIskRow[2] !== "20194" || paIskRow[3] !== "3939") problems.push(`the ISK's first-year row splits ${paIskRow.slice(2, 4).join(" + ")}, expected 20194 + 3939`);
+if (!/\(varavprivatsparande3939kr\/mån\)/.test(paIskKpi) || !/Allmänpension\+egetsparande,föreskatt\.$/.test(paIskKpi)) problems.push(`with an ISK the short answer's figure reads "${paIskKpi}"`);
+await paSetting("paSavingsKind").selectOption("1"); // Depå / VP-konto / Fondkonto
+await tab.waitForTimeout(100);
+const paDepotFirst = await paFirstYear();
+const paDepotLabels = [await paLabel("paSavingsCapital"), await paLabel("paSavingsMonthly")];
+const paDepotNote = (await paNotes())[1] ?? "";
+const paDepotHint = paNorm(await pa.locator('label:has([data-setting="paSavingsCapital"]) .field-hint').textContent());
+console.log(`pension age     : depot 400 000 + 1 000/month -> ${paDepotFirst} at 68, labels ${paDepotLabels.join(" | ")}`);
+if (paDepotFirst !== 24145) problems.push(`in a depot the first year at 68 reads ${paDepotFirst}, expected 24145`);
+if (!sameList(paDepotLabels, ["Depå/VP-konto/Fondkonto,kapital", "Depå/VP-konto/Fondkonto,månadssparande"])) problems.push(`choosing the depot labels the age tab's fields ${paDepotLabels.join(" | ")}`);
+if (!/30%reavinstskatt.*Angekapitalvärdetefterreavinstskatt–detduharattleva/.test(paDepotNote) || (await pa.locator(".pa-grid .saving-note-prompt").count()) !== 1) {
+  problems.push(`for a depot the age tab says "${paDepotNote}" (prompt ${await pa.locator(".pa-grid .saving-note-prompt").count()}), expected the prompt to enter the capital after capital gains tax`);
+}
+if (!/efterreavinstskatt/.test(paDepotHint)) problems.push(`the age tab's capital hint for a depot reads "${paDepotHint}", expected it to say after capital gains tax`);
+
+// After tax the private savings are the same and the tax is not split out of the rest.
+await pa.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(100);
+const paNetDepotFirst = await paFirstYear();
+const paNetHead = await paTimeHead();
+const paNetKpi = await paKpi();
+if (paNetDepotFirst !== 18640) problems.push(`after tax a depot's first year at 68 reads ${paNetDepotFirst}, expected 18640 (14689 net public + 3951 untaxed)`);
+if (paNetHead.some((text) => text.startsWith("varav"))) problems.push(`after tax the per-age table has columns ${paNetHead.join("|")}, expected no split`);
+if (!/Allmänpension\+egetsparande,efterskatt\.$/.test(paNetKpi) || /varav/.test(paNetKpi)) problems.push(`after tax the short answer's figure reads "${paNetKpi}"`);
+await pa.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(100);
+
+// Everything at once, with an agreement: each kind in its own column, and the agreement's switch leaves the rest alone.
+await paType("paCapital", 300000);
+await paType("paSaving", 2000);
+await paSetting("paScheme").selectOption("2"); // ITP-1
+await tab.waitForTimeout(100);
+const paAllFirst = await paFirstYear();
+const paAllHead = await paTimeHead();
+const paAllRow = await paTimeRow();
+const paAllKpi = await paKpi();
+console.log(`pension age     : everything + ITP-1 -> ${paAllFirst} at 68 (${paAllRow.slice(2, 6).join(" + ")})`);
+if (paAllFirst !== 37221 || !sameList(paAllRow.slice(1, 6), ["37221", "20194", "8207", "4869", "3951"])) {
+  problems.push(`everything at once splits ${paAllRow.slice(1, 6).join(" ")}, expected 37221 = 20194 + 8207 + 4869 + 3951`);
+}
+if (!sameList(paAllHead.slice(1, 6), ["Förstaåret", "varavallmän", "varavtjänstepension", "varavindividuellochprivat", "varavprivatsparande"])) {
+  problems.push(`everything at once gives the per-age table columns ${paAllHead.slice(0, 7).join("|")}`);
+}
+if (!/\(varavtjänstepension8207,individuellochprivatpension4869,privatsparande3951kr\/mån\)/.test(paAllKpi)) problems.push(`everything at once, the short answer's figure reads "${paAllKpi}"`);
+await paSetting("paIncludeOccupational").uncheck();
+await tab.waitForTimeout(100);
+const paAgreementOffFirst = await paFirstYear();
+if (paAgreementOffFirst !== 29014) problems.push(`with the agreement switched off the first year reads ${paAgreementOffFirst}, expected 29014 (the own saving stays)`);
+await paSetting("paIncludeOccupational").check();
+await paSetting("paScheme").selectOption("1");
+await tab.waitForTimeout(80);
+
+// The notes say what is counted and how.
+const paAllNotes = paNorm(await pa.locator('[data-role="pa-notes"]').textContent());
+if (!/Individuelltjänstepensionochprivatpension\(enpensionsförsäkringellerIPS\)räknassommodellensprivatapensionssparande\(IPS\)/.test(paAllNotes)) problems.push("the notes do not explain the individual and private pension");
+if (!/Privatsparandeärpengarsomredanärinkomstbeskattade.*Pådepå,VP-kontoochfondkontobeskattasvinstenmed30%närdusäljer/.test(paAllNotes)) problems.push("the notes do not explain the two tax categories of private savings");
+if (!/Sparandetfortsätterframtillrespektivepensionsålder/.test(paAllNotes) || !/Privatsparandeharingenutbetalningförlivet/.test(paAllNotes)) problems.push("the notes do not say that the saving goes on until each retirement age and that private savings have no payout for life");
+
+// English: the same fields, named in English.
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paLabelsEn = [await paLabel("paCapital"), await paLabel("paPrivCapital"), await paLabel("paSavingsCapital"), await paLabel("paSavingsKind")];
+if (!sameList(paLabelsEn, ["Individualoccupationalpension,capital", "Privatepension,capital", "Securitiesaccount/Fundaccount,capital", "Typeofsaving"])) {
+  problems.push(`in English the age tab's saving fields are labelled ${paLabelsEn.join(" | ")}`);
+}
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+
+// Reset puts the savings back to none, on the ISK the drop-down opens on.
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(100);
+const paResetSavings = [];
+for (const name of ["paCapital", "paSaving", "paPrivCapital", "paPrivSaving", "paSavingsKind", "paSavingsCapital", "paSavingsMonthly"]) paResetSavings.push(await paSetting(name).inputValue());
+if (paResetSavings.join("/") !== "0/0/0/0/0/0/0" || (await paFirstYear()) !== 20194) {
+  problems.push(`Återställ left the savings at ${paResetSavings.join("/")} (first year ${await paFirstYear()}), expected none and 20194`);
+}
+if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("Återställ did not restore the short answer after savings were typed");
 
 // The exports: the matrix as CSV (whole kronor, Swedish delimiter) and a real .xlsx.
 const paMatrixActions = pa.locator('[data-role="pa-matrix-panel"] .panel-actions');
@@ -2765,6 +2978,19 @@ if (/varav/.test(cmpNetHead) || !(cmpNetBaseline > 0 && cmpNetBaseline < PA_AG_A
 await pa.locator('button[data-basis="gross"]').click();
 await tab.waitForTimeout(150);
 
+// Own savings are in every agreement's total, the same for each, so what an agreement adds is what it was.
+await paType("paCapital", 300000);
+await paType("paSaving", 2000);
+await cmpFigures({ 1: [4981416, 0], 2: [6655644, 1674228], 4: [6599748, 1618332], 5: [6654624, 1673208], 7: [6806604, 1825188] }, "with a pension of one's own");
+const cmpOwnMonthly = paNorm(await cmpRow(1).locator("td").nth(5).textContent());
+const cmpOwnLead = paNorm(await pa.locator('[data-role="pa-compare-table-panel"] .pa-lead').first().textContent());
+console.log(`agreements      : with a pension of one's own -> baseline ${await cmpKr(1, 0)} / monthly ${cmpOwnMonthly}, ITP-1 +${await cmpKr(2, 1)}`);
+if (cmpOwnMonthly !== "25063") problems.push(`with a pension of one's own the baseline's monthly pension at the start reads ${cmpOwnMonthly}, expected 25063`);
+if (!/allmänpension\+tjänstepension\+egetsparande,föreskatt/.test(cmpOwnLead)) problems.push(`with own savings the comparison describes its sums as "${cmpOwnLead.slice(0, 160)}"`);
+await paType("paCapital", 0);
+await paType("paSaving", 0);
+await cmpFigures(PA_AG_AT_85, "once the pension of one's own is taken away");
+
 // The exports: best ages and totals per agreement and lifespan, whole kronor.
 const cmpActions = pa.locator('[data-role="pa-compare-grid-panel"] .panel-actions');
 const cmpCsv = await download(cmpActions.getByRole("button", { name: "Ladda ner CSV" }));
@@ -2823,6 +3049,563 @@ await tab.waitForTimeout(150);
 if (!sameList(await paBest(), PA_BEST_DEFAULT) || !(await cmpControls.isHidden())) {
   problems.push("going back to the single view did not restore its short answer and hide the comparison's controls");
 }
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
+// ---- Hur länge räcker pensionen? --------------------------------------------
+//
+// A fifth top-level view: one typfall's pension set against a budget under every
+// way of taking the occupational pension out -- 5 to 20 years, or for life --
+// run as one typfall each. As above, the point of each check is that a control
+// reaches the runs it should and that the page says what the engine said. The
+// numbers pinned are the ones `pensionLasts.test.ts` and the engine give for
+// born 1980, work from 25, 38 500 kr/month, ITP-1, an average pensioner's
+// budget (18 400 kr/month after tax) and retiring at the riktålder (68). The tab
+// opens on a lifespan of 95, which is pinned once; the rest of the block works
+// at 90, where its anchors were worked out. The page has no numbers of its own.
+
+/** A cell's text with the spaces thousands are grouped by taken out, and the typographic minus made plain. */
+const plNorm = (text) => (text ?? "").replace(/\s/g, "").replace(/−/g, "-");
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="lasts"]').click();
+await tab.waitForTimeout(150);
+
+const pl = tab.locator('[data-role="pension-lasts-panel"]');
+const plSetting = (name) => pl.locator(`[data-setting="${name}"]`);
+const plType = async (name, value) => {
+  const field = plSetting(name);
+  await field.fill(String(value));
+  await field.dispatchEvent("change");
+  // A field that was typed into fires one more change when it loses focus, and that redraws the
+  // results -- under a pointer that is on its way to a button in them, which then misses. Let it
+  // happen here, so that what the next step clicks is still there.
+  await field.evaluate((el) => el.blur());
+  await tab.waitForTimeout(80);
+};
+const plRibbon = () =>
+  pl.locator('[data-role="pl-ribbon"] li').evaluateAll((items) =>
+    items.map((li) => ({
+      payout: Number(li.dataset.payout),
+      status: li.dataset.status,
+      best: li.dataset.best === "1",
+      text: (li.querySelector(".pl-ribbon-d")?.textContent ?? "").replace(/\s/g, ""),
+    })),
+  );
+const plRow = (payout) => pl.locator(`[data-role="pl-options"] tbody tr[data-payout="${payout}"]`);
+const plCells = async (payout) => (await plRow(payout).locator("td").allTextContents()).map(plNorm);
+const plLines = (figure) => pl.locator(`[data-role="${figure}"] svg polyline.pa-line`).evaluateAll((lines) => lines.map((l) => Number(l.dataset.payout)));
+const plMatrixHead = async () => (await pl.locator('[data-role="pl-matrix"] thead th').allTextContents()).map(plNorm);
+const plMatrixStatus = (payout) =>
+  pl.locator(`[data-role="pl-matrix"] tbody tr[data-payout="${payout}"] td[data-status]`).evaluateAll((cells) => cells.map((td) => td.dataset.status));
+const plTimeCells = async (payout) => (await pl.locator(`[data-role="pl-time-table"] tbody tr[data-payout="${payout}"] td`).allTextContents()).map(plNorm);
+
+const PL_RIBBON_DEFAULT = ["Till73år", "Till78år", "Till83år", "Till88år", "Helavägen"];
+
+if ((await pl.count()) !== 1) problems.push("the Hur länge räcker pensionen? tab did not open");
+
+// The inputs start as the person the file comment describes.
+const plStart = {
+  born: await plSetting("plBorn").inputValue(),
+  start: await plSetting("plStartWork").inputValue(),
+  retirement: await plSetting("plRetirement").inputValue(),
+  retirementLocked: (await plSetting("plRetirement").isDisabled()) && (await plSetting("plRiktalder").isChecked()),
+  lifespan: await plSetting("plLifespan").inputValue(),
+  salary: await plSetting("plSalary").inputValue(),
+  budgetChoice: await plSetting("plBudgetChoice").inputValue(),
+  budget: await plSetting("plBudget").inputValue(),
+  scheme: await plSetting("plScheme").inputValue(),
+  capital: await plSetting("plCapital").inputValue(),
+  saving: await plSetting("plSaving").inputValue(),
+  privCapital: await plSetting("plPrivCapital").inputValue(),
+  privSaving: await plSetting("plPrivSaving").inputValue(),
+  savingsKind: await plSetting("plSavingsKind").inputValue(),
+  savingsCapital: await plSetting("plSavingsCapital").inputValue(),
+  savingsMonthly: await plSetting("plSavingsMonthly").inputValue(),
+  net: await pl.locator('button[data-basis="net"]').evaluate((b) => b.classList.contains("active")),
+};
+console.log(`pension lasts   : inputs ${JSON.stringify(plStart)}`);
+if (
+  plStart.born !== "1980" || plStart.start !== "25" || plStart.retirement !== "68" || !plStart.retirementLocked ||
+  plStart.lifespan !== "95" || plStart.salary !== "38500" || plStart.budgetChoice !== "1" || plStart.budget !== "18400" ||
+  plStart.scheme !== "2" || plStart.capital !== "0" || plStart.saving !== "0" || plStart.privCapital !== "0" ||
+  plStart.privSaving !== "0" || plStart.savingsKind !== "0" || plStart.savingsCapital !== "0" || plStart.savingsMonthly !== "0" || !plStart.net
+) {
+  problems.push(`the Hur länge räcker pensionen? inputs start at ${JSON.stringify(plStart)}`);
+}
+
+// The short answer: five boxes, the lifelong payout the best, every fixed payout ending where it should.
+const plDefault = await plRibbon();
+console.log(`pension lasts   : ribbon ${plDefault.map((item) => `${item.payout}:${item.text}`).join(" ")}`);
+if (!sameList(plDefault.map((item) => item.payout), [5, 10, 15, 20, 0]) || !sameList(plDefault.map((item) => item.text), PL_RIBBON_DEFAULT)) {
+  problems.push(`the answer boxes read ${plDefault.map((item) => `${item.payout}:${item.text}`).join(" ")}, expected 5,10,15,20,0 and ${PL_RIBBON_DEFAULT.join(",")}`);
+}
+if (!sameList(plDefault.map((item) => item.status), ["part", "part", "part", "part", "ok"]) || !sameList(plDefault.filter((item) => item.best).map((item) => item.payout), [0])) {
+  problems.push(`the answer boxes' statuses ${plDefault.map((item) => item.status).join(",")} / best ${plDefault.filter((item) => item.best).map((item) => item.payout).join(",")}, expected part x4 then ok, best 0`);
+}
+// The lifespan it opens on, 95, pinned once: 27 pension years, and the numbers that moves. Then on to 90.
+const plAnswer95 = plNorm(await pl.locator('[data-role="pl-answer"]').textContent());
+const plLife95 = await plCells(0);
+const plFive95 = await plCells(5);
+const plFloor95 = await plCells("floor");
+console.log(`pension lasts   : at 95 lifelong ${plLife95.slice(1, 7).join(" ")}, 5 years ${plFive95.slice(1, 6).join(" ")}, public only ${plFloor95[1]}`);
+if (!/15928kr\/mån/.test(plAnswer95)) problems.push("at a lifespan of 95 the short answer does not give the public pension alone as 15 928 kr/month");
+if (plLife95[1] !== "22131" || plLife95[3] !== "+3731/–" || plLife95[4] !== "Helavägentill95år" || plLife95[5] !== "27/27" || plLife95[6] !== "0") {
+  problems.push(`at 95 the lifelong row reads ${plLife95.join(" | ")}, expected 22131, +3731/–, all the way to 95, 27/27, 0`);
+}
+if (plFive95[1] !== "38997" || plFive95[2] !== "15822" || plFive95[3] !== "+20597/-2578" || plFive95[4] !== "Till73år" || plFive95[5] !== "5/27") {
+  problems.push(`at 95 the 5-year row reads ${plFive95.join(" | ")}, expected 38997, 15822, +20597/-2578, to 73, 5/27`);
+}
+if (plFloor95[1] !== "15928" || plFloor95[4] !== "Räckerinte") problems.push(`at 95 the public-pension-only row reads ${plFloor95.join(" | ")}, expected 15928 that does not last`);
+await plType("plLifespan", 90);
+
+const plAnswerText = plNorm(await pl.locator('[data-role="pl-answer"]').textContent());
+if (!/18400kr\/månefterskatt/.test(plAnswerText) || !/Medelpensionär/.test(plAnswerText) || !/16094kr\/mån/.test(plAnswerText)) {
+  problems.push("the short answer does not name the average pensioner's 18 400 kr/month and the public pension alone (16 094 kr/month)");
+}
+
+// The options table: the public pension alone, then seventeen payouts, the best one marked.
+const plRowCount = await pl.locator('[data-role="pl-options"] tbody tr').count();
+const plBestRows = await pl.locator('[data-role="pl-options"] tbody tr.pl-best').evaluateAll((rows) => rows.map((tr) => tr.dataset.payout));
+const plLife = await plCells(0);
+const plFive = await plCells(5);
+const plFloor = await plCells("floor");
+console.log(`pension lasts   : table ${plRowCount} rows, best ${plBestRows.join(",")}, lifelong ${plLife.slice(1, 5).join(" ")}, 5 years ${plFive.slice(1, 6).join(" ")}`);
+if (plRowCount !== 18 || !sameList(plBestRows, ["0"])) problems.push(`the options table has ${plRowCount} rows with ${plBestRows.join(",")} marked, expected 18 and the lifelong row`);
+if (plLife[1] !== "22289" || plLife[2] !== "–" || plLife[3] !== "+3889/–" || plLife[4] !== "Helavägentill90år" || plLife[5] !== "22/22" || plLife[6] !== "0") {
+  problems.push(`the lifelong row reads ${plLife.join(" | ")}, expected 22289, –, +3889/–, all the way to 90, 22/22, 0`);
+}
+if (plFive[1] !== "38997" || plFive[2] !== "16005" || plFive[3] !== "+20597/-2395" || plFive[4] !== "Till73år" || plFive[5] !== "5/22") {
+  problems.push(`the 5-year row reads ${plFive.join(" | ")}, expected 38997, 16005, +20597/-2395, to 73, 5/22`);
+}
+if (plFloor[1] !== "16094" || plFloor[4] !== "Räckerinte") problems.push(`the public-pension-only row reads ${plFloor.join(" | ")}, expected 16094 that does not last`);
+
+// The first chart: one line per drawn payout and the budget, the lifelong line heavy, only the budget dashed.
+const plIncomeLines = await plLines("pl-fig-income");
+const plHeavy = await pl.locator('[data-role="pl-fig-income"] svg polyline.pa-line-z').evaluateAll((lines) => lines.map((l) => Number(l.dataset.payout)));
+const plDashed = await pl.locator('[data-role="pl-fig-income"] svg polyline.pa-line-dashed').evaluateAll((lines) => lines.map((l) => Number(l.dataset.payout)));
+const plEndLabels = (await pl.locator('[data-role="pl-fig-income"] svg text.pa-end').allTextContents()).join(",");
+const plLegend = await pl.locator('[data-role="pl-fig-income"] .legend li').count();
+console.log(`pension lasts   : income lines ${plIncomeLines.join(",")}, heavy ${plHeavy.join(",")}, dashed ${plDashed.join(",")}, labels ${plEndLabels}, legend ${plLegend}`);
+if (!sameList([...plIncomeLines].sort((a, b) => a - b), [-1, 0, 5, 10, 15, 20])) problems.push(`the income chart draws lines for ${plIncomeLines.join(",")}, expected the budget (-1) and 0,5,10,15,20`);
+if (!sameList(plHeavy, [0]) || !sameList(plDashed, [-1])) problems.push(`the income chart's heavy line is ${plHeavy.join(",")} and its dashed one ${plDashed.join(",")}, expected 0 and the budget (-1)`);
+for (const wanted of ["5 år", "10 år", "15 år", "20 år", "Livsvarigt", "Budget"]) {
+  if (!plEndLabels.split(",").includes(wanted)) problems.push(`the income chart has no label "${wanted}" (labels: ${plEndLabels})`);
+}
+if (plLegend !== 6) problems.push(`the income chart's legend has ${plLegend} entries, expected 6`);
+
+// Its hover readout names the budget and every payout; the arrow keys move it.
+// A field that was typed into fires one more change when it loses focus, and that redraws the results under the chart; let it settle first.
+await tab.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+await tab.waitForTimeout(150);
+const plIncomeFigure = pl.locator('[data-role="pl-fig-income"]');
+await plIncomeFigure.scrollIntoViewIfNeeded();
+const plBox = await plIncomeFigure.locator("svg").boundingBox();
+if (plBox) {
+  const k = plBox.width / 760;
+  // 78 of 68-89, in the chart's own geometry (68 left, 686 right of 760: 74 kept for the labels).
+  await tab.mouse.move(plBox.x + 300 * k, plBox.y + 150 * k);
+  await tab.mouse.move(plBox.x + (68 + (10 / 21) * (686 - 68)) * k, plBox.y + 150 * k);
+  await tab.waitForTimeout(100);
+}
+const plTipRows = await plIncomeFigure.locator(".tooltip .tooltip-row").count();
+const plTipHead = (await plIncomeFigure.locator(".tooltip strong").textContent()) ?? "";
+console.log(`pension lasts   : hover "${plTipHead}", ${plTipRows} rows`);
+if (plTipRows !== 6 || !/78/.test(plTipHead)) problems.push(`the income chart's hover shows "${plTipHead}" with ${plTipRows} rows at age 78, expected 6 rows`);
+await plIncomeFigure.locator("svg").focus();
+await tab.keyboard.press("ArrowRight");
+const plKeyHead = (await plIncomeFigure.locator(".tooltip strong").textContent()) ?? "";
+if (!/79/.test(plKeyHead)) problems.push(`the arrow key moved the readout to "${plKeyHead}", expected age 79`);
+await tab.keyboard.press("Escape");
+
+// The table twin of that chart, and the second chart: the running total, with nothing "below" yet.
+const plTimeBudget = await plTimeCells(-1);
+const plTimeFive = await plTimeCells(5);
+console.log(`pension lasts   : per-age table budget ${plTimeBudget.slice(1).join(" ")}, 5 years ${plTimeFive.slice(1).join(" ")}`);
+if (!sameList(plTimeBudget.slice(1), ["18400", "18400", "18400", "18400", "18400"]) || !sameList(plTimeFive.slice(1), ["35510", "39906", "16456", "16073", "15705"])) {
+  problems.push(`the per-age table reads ${plTimeBudget.slice(1).join(",")} for the budget and ${plTimeFive.slice(1).join(",")} for 5 years, expected 18400 x5 and 35510,39906,16456,16073,15705`);
+}
+const plBalanceLines = await plLines("pl-fig-balance");
+const plBalanceNotes = await pl.locator('[data-role="pl-fig-balance"] svg text.pa-note').count();
+if (!sameList([...plBalanceLines].sort((a, b) => a - b), [0, 5, 10, 15, 20])) problems.push(`the running-total chart draws ${plBalanceLines.join(",")}, expected 0,5,10,15,20`);
+if (plBalanceNotes !== 1) problems.push(`the running-total chart has ${plBalanceNotes} margin notes while no line goes below zero, expected 1`);
+
+// The budgets table: three examples, every payout, and what each budget lasts to.
+const plMatrixRows = await pl.locator('[data-role="pl-matrix"] tbody tr').count();
+const plLifeStatus = await plMatrixStatus(0);
+const plFiveMatrix = (await pl.locator('[data-role="pl-matrix"] tbody tr[data-payout="5"] td').allTextContents()).map(plNorm);
+console.log(`pension lasts   : budgets ${plMatrixRows} rows, head ${(await plMatrixHead()).length}, lifelong ${plLifeStatus.join(",")}, 5 years ${plFiveMatrix.join(" ")}`);
+if (plMatrixRows !== 17 || (await plMatrixHead()).length !== 5 || !sameList(plLifeStatus, ["ok", "ok", "no"])) {
+  problems.push(`the budgets table has ${plMatrixRows} rows, ${(await plMatrixHead()).length} columns and lifelong statuses ${plLifeStatus.join(",")}, expected 17, 5 and ok,ok,no`);
+}
+if (!sameList(plFiveMatrix, ["5år", "Till73år", "Till73år", "Till73år", "35510"])) problems.push(`the 5-year row of the budgets table reads ${plFiveMatrix.join(" | ")}`);
+
+// The budget: minPension's examples set the amount; typing one's own selects "Egen budget".
+await plSetting("plBudgetChoice").selectOption("2"); // Pluspensionär
+await tab.waitForTimeout(100);
+const plPlus = await plRibbon();
+const plPlusBudget = await plSetting("plBudget").inputValue();
+console.log(`pension lasts   : Pluspensionär -> budget ${plPlusBudget}, ribbon ${plPlus.map((item) => `${item.payout}:${item.text}`).join(" ")}, best ${plPlus.filter((item) => item.best).map((item) => item.payout).join(",")}`);
+if (plPlusBudget !== "27300") problems.push(`choosing Pluspensionär puts ${plPlusBudget} in the budget field, expected 27300`);
+if (!sameList(plPlus.map((item) => item.payout), [5, 10, 11, 15, 20, 0]) || !sameList(plPlus.filter((item) => item.best).map((item) => item.payout), [11])) {
+  problems.push(`with Pluspensionär the boxes are ${plPlus.map((item) => item.payout).join(",")} and the best ${plPlus.filter((item) => item.best).map((item) => item.payout).join(",")}, expected 5,10,11,15,20,0 and 11`);
+}
+if (!sameList(plPlus.map((item) => item.text), ["Till73år", "69–78år", "69–79år", "Räckerinte", "Räckerinte", "Räckerinte"]) || plPlus[5]?.status !== "no") {
+  problems.push(`with Pluspensionär the boxes read ${plPlus.map((item) => item.text).join(",")}, expected Till73år,69–78år,69–79år and three that do not last`);
+}
+const plPlusLife = await plMatrixStatus(0);
+if (!sameList(plPlusLife, ["ok", "ok", "no"])) problems.push("the budgets table changed with the chosen budget; it should read the same three examples");
+const plPlusNotes = await pl.locator('[data-role="pl-fig-balance"] svg text.pa-note').count();
+if (plPlusNotes !== 2) problems.push(`the running-total chart has ${plPlusNotes} margin notes once lines go below zero, expected 2`);
+const plPlusAnswer = plNorm(await pl.locator('[data-role="pl-answer"]').textContent());
+if (!/Längsttäcksbudgetenmed11årsutbetalning:10av22år\(69–79år\)/.test(plPlusAnswer)) problems.push("the short answer does not say that 11 years covers the budget longest, 10 of 22 years (69-79)");
+
+await plType("plBudget", 12345);
+const plOwnChoice = await plSetting("plBudgetChoice").inputValue();
+const plOwn = await plRibbon();
+console.log(`pension lasts   : own 12 345 -> choice ${plOwnChoice}, ribbon ${plOwn.map((item) => item.text).join(",")}, budgets columns ${(await plMatrixHead()).length}`);
+if (plOwnChoice !== "3" || !plOwn.every((item) => item.text === "Helavägen") || (await plMatrixHead()).length !== 6) {
+  problems.push(`an own budget of 12 345 gives choice ${plOwnChoice}, boxes ${plOwn.map((item) => item.text).join(",")} and ${(await plMatrixHead()).length} budget columns, expected 3, all the way x5 and 6`);
+}
+await plType("plBudget", 18400);
+const plBack = await plSetting("plBudgetChoice").inputValue();
+if (plBack !== "1" || (await plMatrixHead()).length !== 5) problems.push(`typing 18 400 gives choice ${plBack} and ${(await plMatrixHead()).length} columns, expected the average pensioner (1) and 5`);
+await plSetting("plBudgetChoice").selectOption("3"); // Egen budget keeps the amount; it is no column of its own while it is an example's
+await tab.waitForTimeout(80);
+if ((await plSetting("plBudget").inputValue()) !== "18400" || (await plSetting("plBudgetChoice").inputValue()) !== "3" || (await plMatrixHead()).length !== 5) {
+  problems.push("choosing \"Egen budget\" should keep the amount and stay chosen, without repeating an example's column");
+}
+await plType("plBudget", 19000);
+if ((await plSetting("plBudgetChoice").inputValue()) !== "3" || (await plMatrixHead()).length !== 6) {
+  problems.push("an own budget of 19 000 should stay chosen and be a column of its own in the budgets table");
+}
+await plType("plBudget", 18400);
+await plSetting("plBudgetChoice").selectOption("1");
+await tab.waitForTimeout(80);
+
+// Before tax: the same years covered, in gross amounts, with the budget grossed up by the model's own tax.
+await pl.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(150);
+const plGrossRibbon = await plRibbon();
+const plGrossHead = (await pl.locator('[data-role="pl-options"] thead th').allTextContents()).map(plNorm);
+const plGrossFive = await plCells(5);
+const plGrossBudget = await plTimeCells(-1);
+const plGrossAnswer = plNorm(await pl.locator('[data-role="pl-answer"]').textContent());
+console.log(`pension lasts   : before tax -> ribbon ${plGrossRibbon.map((item) => item.text).join(",")}, 5 years ${plGrossFive[1]}, budget row ${plGrossBudget.slice(1, 3).join(" ")}`);
+if (!sameList(plGrossRibbon.map((item) => item.text), PL_RIBBON_DEFAULT)) problems.push(`before tax the boxes read ${plGrossRibbon.map((item) => item.text).join(",")}, expected the same years as after tax`);
+if (!plGrossHead.includes("varavallmän") || plGrossFive[1] !== "51927") problems.push(`before tax the options table has columns ${plGrossHead.join("|")} and 51927 for 5 years? ${plGrossFive[1]}`);
+if (plGrossBudget[1] !== "25946" || plGrossBudget[2] !== "22204") problems.push(`the budget before tax reads ${plGrossBudget.slice(1, 3).join(",")} at 68 and 70, expected 25946 (the first year is taxed harder) and 22204`);
+if (!/ungefär22204kr\/månföreskatt/.test(plGrossAnswer)) problems.push("the short answer does not say that 18 400 after tax is about 22 204 before tax");
+if ((await pl.locator('[data-role="pl-fig-income"] .figure-note').count()) !== 1) problems.push("the income chart has no note on the budget before tax");
+await pl.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(100);
+
+// Individual occupational pension: capital and monthly saving add to every payout.
+await plType("plCapital", 300000);
+await plType("plSaving", 2000);
+const plIndLife = await plCells(0);
+const plIndFive = await plCells(5);
+const plCapitalHint = (await pl.locator('label:has([data-setting="plCapital"]) .field-hint').textContent()) ?? "";
+console.log(`pension lasts   : 300 000 + 2 000/month -> lifelong ${plIndLife[1]}, 5 years ${plIndFive[1]}, hint "${plCapitalHint}"`);
+if (plIndLife[1] !== "25949" || plIndFive[1] !== "49495") problems.push(`with 300 000 kr and 2 000 kr/month the lifelong payout reads ${plIndLife[1]} and 5 years ${plIndFive[1]}, expected 25949 and 49495`);
+if (!/2026/.test(plCapitalHint)) problems.push(`the capital field's hint says "${plCapitalHint}", expected it to name the year the capital is counted from (2026)`);
+await plType("plCapital", 0);
+await plType("plSaving", 0);
+
+// The inputs: where they sit, what they are called, and that capital and monthly saving share a row.
+const plLabel = async (name) => plNorm((await pl.locator(`label:has([data-setting="${name}"]) .field-label`).textContent()) ?? "");
+const plSequence = () =>
+  pl.locator(".pa-grid").evaluate((grid) =>
+    [...grid.children].map((el) =>
+      el.classList.contains("pa-group")
+        ? `#${el.textContent}`
+        : el.classList.contains("field-pair")
+          ? [...el.querySelectorAll("[data-setting]")].map((i) => i.dataset.setting).join("+")
+          : (el.querySelector("[data-setting]")?.dataset.setting ?? el.className),
+    ),
+  );
+const plPairRows = () =>
+  pl.locator(".field-pair").evaluateAll((pairs) =>
+    pairs.map((pair) => {
+      const [a, b] = [...pair.querySelectorAll("input")].map((i) => i.getBoundingClientRect());
+      return { sameRow: Math.abs(a.top - b.top) < 1.5, side: b.left > a.right - 1 };
+    }),
+  );
+const plSeq = await plSequence();
+const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "saving-note", "#Privat sparande", "plSavingsKind", "saving-note", "plSavingsCapital+plSavingsMonthly", "#Antaganden"];
+const plSeqAt = plSeq.indexOf("#Pension");
+if (plSeqAt === -1 || !sameList(plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length), plWantedSeq)) {
+  problems.push(`the input order from "Pension" on is ${plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length).join(" > ")}, expected ${plWantedSeq.join(" > ")}`);
+}
+const plLabelsSv = [await plLabel("plCapital"), await plLabel("plSaving"), await plLabel("plPrivCapital"), await plLabel("plPrivSaving"), await plLabel("plSavingsCapital"), await plLabel("plSavingsMonthly")];
+console.log(`pension lasts   : labels ${plLabelsSv.join(" | ")}`);
+if (!sameList(plLabelsSv, ["Individuelltjänstepension,kapital", "Individuelltjänstepension,månadssparande", "Privatpension,kapital", "Privatpension,månadssparande", "ISK/Kapitalförsäkring/Depåförsäkring,kapital", "ISK/Kapitalförsäkring/Depåförsäkring,månadssparande"])) {
+  problems.push(`the capital and saving fields are labelled ${plLabelsSv.join(" | ")}`);
+}
+const plPairsDesktop = await plPairRows();
+if (plPairsDesktop.length !== 3 || !plPairsDesktop.every((pair) => pair.sameRow && pair.side)) {
+  problems.push(`at 1280px the capital and monthly saving are not side by side on one row: ${JSON.stringify(plPairsDesktop)}`);
+}
+const plKindOptions = (await plSetting("plSavingsKind").locator("option").allTextContents()).map((text) => text.trim());
+if (!sameList(plKindOptions, ["ISK / Kapitalförsäkring / Depåförsäkring", "Depå / VP-konto / Fondkonto"])) {
+  problems.push(`the kind of saving offers ${plKindOptions.join(" | ")}, expected the two tax categories: ISK / Kapitalförsäkring / Depåförsäkring and Depå / VP-konto / Fondkonto`);
+}
+// What the person is told: a private pension is a pension insurance or an IPS; each kind of saving says how it is taxed.
+const plNotes = async () => (await pl.locator(".pa-grid .saving-note").allTextContents()).map(plNorm);
+const plNotesStart = await plNotes();
+if (!/Privatpensionärenpensionsförsäkringellerips\(individuelltpensionssparande\)/i.test(plNotesStart[0] ?? "")) {
+  problems.push(`under the private pension fields the page says "${plNotesStart[0]}", expected that it is a pension insurance or an IPS`);
+}
+if (!/Schablonbeskattat/.test(plNotesStart[1] ?? "") || (await pl.locator(".pa-grid .saving-note-prompt").count()) !== 0) {
+  problems.push(`for an ISK the page says "${plNotesStart[1]}" (prompt ${await pl.locator(".pa-grid .saving-note-prompt").count()}), expected the standard-return note and no prompt`);
+}
+
+// Private pension: the same pot as the individual occupational pension, so the same numbers; the two add up.
+await plType("plPrivCapital", 300000);
+await plType("plPrivSaving", 2000);
+const plPrivLife = await plCells(0);
+const plPrivFive = await plCells(5);
+console.log(`pension lasts   : private pension 300 000 + 2 000/month -> lifelong ${plPrivLife[1]}, 5 years ${plPrivFive[1]}`);
+if (plPrivLife[1] !== "25949" || plPrivFive[1] !== "49495") problems.push(`with 300 000 kr and 2 000 kr/month as private pension the lifelong payout reads ${plPrivLife[1]} and 5 years ${plPrivFive[1]}, expected 25949 and 49495, as for an individual pension`);
+await plType("plPrivCapital", 150000);
+await plType("plPrivSaving", 1000);
+await plType("plCapital", 150000);
+await plType("plSaving", 1000);
+const plSplitLife = await plCells(0);
+const plSplitFive = await plCells(5);
+if (plSplitLife[1] !== "25949" || plSplitFive[1] !== "49495") problems.push(`half as individual and half as private pension the lifelong payout reads ${plSplitLife[1]} and 5 years ${plSplitFive[1]}, expected 25949 and 49495`);
+for (const name of ["plPrivCapital", "plPrivSaving", "plCapital", "plSaving"]) await plType(name, 0);
+
+// Private savings: what it is held in decides how it is taxed, and names the two fields.
+await plType("plSavingsCapital", 300000);
+await plType("plSavingsMonthly", 2000);
+const plIskLife = await plCells(0);
+const plIskFive = await plCells(5);
+console.log(`pension lasts   : ISK 300 000 + 2 000/month -> lifelong ${plIskLife[1]}, 5 years ${plIskFive[1]}`);
+if (plIskLife[1] !== "26441" || plIskFive[1] !== "55871") problems.push(`with 300 000 kr and 2 000 kr/month in an ISK the lifelong payout reads ${plIskLife[1]} and 5 years ${plIskFive[1]}, expected 26441 and 55871 (tax-free, so more than as a pension)`);
+await plSetting("plSavingsKind").selectOption("1"); // Depå / VP-konto / Fondkonto
+await tab.waitForTimeout(100);
+const plDepotLife = await plCells(0);
+const plDepotFive = await plCells(5);
+const plDepotLabels = [await plLabel("plSavingsCapital"), await plLabel("plSavingsMonthly")];
+const plDepotNote = (await plNotes())[1] ?? "";
+const plDepotHint = plNorm(await pl.locator('label:has([data-setting="plSavingsCapital"]) .field-hint').textContent());
+console.log(`pension lasts   : depot 300 000 + 2 000/month -> lifelong ${plDepotLife[1]}, 5 years ${plDepotFive[1]}, labels ${plDepotLabels.join(" | ")}`);
+if (plDepotLife[1] !== "26483" || plDepotFive[1] !== "56022") problems.push(`in a depot the lifelong payout reads ${plDepotLife[1]} and 5 years ${plDepotFive[1]}, expected 26483 and 56022`);
+if (!sameList(plDepotLabels, ["Depå/VP-konto/Fondkonto,kapital", "Depå/VP-konto/Fondkonto,månadssparande"])) problems.push(`choosing the depot labels the fields ${plDepotLabels.join(" | ")}`);
+if (!/30%reavinstskatt.*Angekapitalvärdetefterreavinstskatt–detduharattleva/.test(plDepotNote) || (await pl.locator(".pa-grid .saving-note-prompt").count()) !== 1) {
+  problems.push(`for a depot the page says "${plDepotNote}" (prompt ${await pl.locator(".pa-grid .saving-note-prompt").count()}), expected the prompt to enter the capital after capital gains tax`);
+}
+if (!/efterreavinstskatt/.test(plDepotHint)) problems.push(`the capital field's hint for a depot reads "${plDepotHint}", expected it to say after capital gains tax`);
+
+// Before tax, an ISK's payout is grossed up so that the same years are covered; the table says so.
+await plSetting("plSavingsKind").selectOption("0");
+await tab.waitForTimeout(100);
+const plIskNetRibbon = (await plRibbon()).map((item) => item.text);
+await pl.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(150);
+const plIskGrossRibbon = (await plRibbon()).map((item) => item.text);
+const plIskGrossHead = (await pl.locator('[data-role="pl-options"] thead th').allTextContents()).map(plNorm);
+const plIskGrossFive = await plCells(5);
+const plIskNotes = plNorm(await pl.locator('[data-role="pl-notes"]').textContent());
+console.log(`pension lasts   : ISK before tax -> ribbon ${plIskGrossRibbon.join(",")}, 5 years ${plIskGrossFive.slice(1, 6).join(" ")}`);
+if (!sameList(plIskGrossRibbon, plIskNetRibbon)) problems.push(`with an ISK the boxes read ${plIskGrossRibbon.join(",")} before tax and ${plIskNetRibbon.join(",")} after, expected the same`);
+if (!plIskGrossHead.includes("varavprivatsparande,uppräknat")) problems.push(`before tax with an ISK the table has columns ${plIskGrossHead.join("|")}, expected one for the private savings grossed up`);
+if (!sameList(plIskGrossFive.slice(1, 6), ["78965", "20146", "31781", "0", "27039"])) {
+  problems.push(`before tax the 5-year row reads ${plIskGrossFive.slice(1, 6).join(" ")}, expected 78965 as 20146 + 31781 + 0 + 27039 (the ISK payout grossed up)`);
+}
+if (!/Föreskatträknasutbetalningenfråndetprivatasparandetupptillden/.test(plIskNotes)) problems.push("the notes do not say that a tax-free payout is grossed up before tax");
+if (!/Privatsparandeharingenutbetalningförlivet/.test(plIskNotes)) problems.push("the notes do not say that private savings have no payout for life");
+if (!/Privatsparandeärpengarsomredanärinkomstbeskattade.*Pådepå,VP-kontoochfondkontobeskattasvinstenmed30%närdusäljer/.test(plIskNotes)) {
+  problems.push("the notes do not explain the two tax categories of private savings");
+}
+await pl.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(100);
+await plType("plSavingsCapital", 0);
+await plType("plSavingsMonthly", 0);
+const plIskGone = await plCells(0);
+if (plIskGone[1] !== "22289") problems.push(`emptying the ISK left the lifelong payout at ${plIskGone[1]}, expected 22289`);
+if ((await pl.locator('[data-role="pl-options"] thead th').count()) !== 8) problems.push("without anything tax-free the options table should not have the ISK column");
+
+// The age tab's Pension and Privat sparande sections are this tab's, field by field: the same markup, by construction
+// (one module builds both; the age tab's one extra box, which switches its agreement off, is left out). Its markup was taken
+// while that tab was on screen (`paSection`).
+const plSection = await sectionsOf(pl, "pl");
+const sectionDiffers = paSection.findIndex((html, i) => html !== plSection[i]);
+console.log(`pension lasts   : Pension and Privat sparande sections ${paSection.length} elements vs ${plSection.length} in the age tab, first difference at ${sectionDiffers}`);
+if (paSection.length < 8 || paSection.length !== plSection.length || sectionDiffers !== -1) {
+  problems.push(`the age tab's Pension and Privat sparande sections are not this tab's: ${paSection.length} against ${plSection.length} elements, first difference at ${sectionDiffers}: ${paSection[sectionDiffers] ?? ""} vs ${plSection[sectionDiffers] ?? ""}`);
+}
+
+// No agreement and nothing saved: nothing for a payout period to apply to, and the page says so.
+await plSetting("plScheme").selectOption("1");
+await tab.waitForTimeout(100);
+const plNone = await plRibbon();
+const plNoneAnswer = plNorm(await pl.locator('[data-role="pl-answer"]').textContent());
+console.log(`pension lasts   : no agreement -> ${plNone.map((item) => item.status).join(",")}, best ${plNone.filter((item) => item.best).length}`);
+if (!plNone.every((item) => item.status === "no") || plNone.some((item) => item.best) || !/ingentjänstepension/.test(plNoneAnswer)) {
+  problems.push("with no agreement the answer should mark no payout best and say there is no occupational pension to choose a payout period for");
+}
+await plSetting("plScheme").selectOption("2");
+await tab.waitForTimeout(100);
+
+// Retirement age: unlock the riktålder and move it; an age below the cohort's lowest is clamped.
+await plSetting("plRiktalder").uncheck();
+await plType("plRetirement", 65);
+const plR65 = await plRibbon();
+console.log(`pension lasts   : retiring at 65 -> ${plR65.map((item) => item.text).join(",")}`);
+if (!sameList(plR65.map((item) => item.text), ["Till70år", "Till75år", "Till80år", "69–85år", "Från69år"])) {
+  problems.push(`retiring at 65 the boxes read ${plR65.map((item) => item.text).join(",")}, expected Till70år,Till75år,Till80år,69–85år,Från69år`);
+}
+await plType("plRetirement", 62);
+const plClamped = await plSetting("plRetirement").inputValue();
+if (plClamped !== "65") problems.push(`a retirement age of 62 (the cohort's lowest is 65) shows ${plClamped}, expected 65`);
+await plSetting("plRiktalder").check();
+await tab.waitForTimeout(80);
+if ((await plSetting("plRetirement").inputValue()) !== "68") problems.push("ticking the riktålder box did not put the retirement age back on 68");
+
+// The lifespan: a shorter one lets the longer payouts last all the way.
+await plType("plLifespan", 80);
+const plL80 = await plRibbon();
+const plL80Five = await plCells(5);
+console.log(`pension lasts   : living to 80 -> ${plL80.map((item) => item.text).join(",")}, 5 years ${plL80Five[5]}`);
+if (!sameList(plL80.map((item) => item.text), ["Till73år", "Till78år", "Helavägen", "Helavägen", "Helavägen"]) || plL80Five[5] !== "5/12") {
+  problems.push(`living to 80 the boxes read ${plL80.map((item) => item.text).join(",")} and 5 years ${plL80Five[5]}, expected Till73år,Till78år then all the way x3 and 5/12`);
+}
+await plType("plLifespan", 60);
+if ((await plSetting("plLifespan").inputValue()) !== "70") problems.push(`a lifespan of 60 shows ${await plSetting("plLifespan").inputValue()}, expected 70`);
+await plType("plLifespan", 90);
+
+// The riktålder follows the birth year while its box is ticked.
+await plType("plBorn", 1990);
+const plBorn90 = await plSetting("plRetirement").inputValue();
+const plBorn90Ribbon = await plRibbon();
+console.log(`pension lasts   : born 1990 -> retirement ${plBorn90}, ${plBorn90Ribbon.map((item) => item.text).join(",")}`);
+if (plBorn90 !== String(paRiktalder(1990)) || !sameList(plBorn90Ribbon.map((item) => item.text), ["Till74år", "Till79år", "Till84år", "Till89år", "Från70år"])) {
+  problems.push(`born 1990 puts retirement at ${plBorn90} with boxes ${plBorn90Ribbon.map((item) => item.text).join(",")}, expected ${paRiktalder(1990)} and Till74år,Till79år,Till84år,Till89år,Från70år`);
+}
+await plType("plBorn", 1980);
+
+// A final salary as the input: the monthly salary behind it is worked out and shown.
+await plSetting("plSalaryAs").selectOption("1");
+await tab.waitForTimeout(80);
+const plFinalShown = await plSetting("plSalary").inputValue();
+await plType("plSalary", 40000);
+const plMonthlyHint = (await pl.locator('label:has([data-setting="plSalary"]) .field-hint').textContent()) ?? "";
+console.log(`pension lasts   : final salary shown ${plFinalShown}, hint "${plMonthlyHint}"`);
+if (plFinalShown !== "39872") problems.push(`switching to final salary shows ${plFinalShown}, expected 39872 (the model's own final salary)`);
+if (!/38\D?623/.test(plMonthlyHint)) problems.push(`typing a final salary of 40000 gives the hint "${plMonthlyHint}", expected the monthly salary 38 623`);
+const plRaised = await plCells(0);
+if (!(Number(plRaised[1]) > 22289)) problems.push("a higher final salary did not raise the lifelong payout");
+await plSetting("plSalaryAs").selectOption("0");
+await tab.waitForTimeout(80);
+if ((await plSetting("plSalary").inputValue()) !== "38623") problems.push(`switching back to monthly salary shows ${await plSetting("plSalary").inputValue()}, expected the derived 38623`);
+await plType("plSalary", 38500);
+
+// The economic assumptions: a preset sets the three fields.
+await pl.locator('button[data-preset="growth"]').click();
+await tab.waitForTimeout(100);
+const plGrowthFields = [await plSetting("plInflation").inputValue(), await plSetting("plGrowth").inputValue(), await plSetting("plReturn").inputValue()];
+const plGrowthActive = await pl.locator('button[data-preset="growth"]').evaluate((b) => b.classList.contains("active"));
+console.log(`pension lasts   : growth preset -> ${plGrowthFields.join("/")}, ribbon ${(await plRibbon()).map((item) => item.text).join(",")}`);
+if (!plGrowthActive || plGrowthFields.join("/") !== "2/1,8/1,7") problems.push(`the growth preset reads active=${plGrowthActive}, fields ${plGrowthFields.join("/")}, expected active 2/1,8/1,7`);
+await pl.locator('button[data-preset="standard"]').click();
+await tab.waitForTimeout(100);
+if (!sameList((await plRibbon()).map((item) => item.text), PL_RIBBON_DEFAULT)) problems.push("the standard preset did not restore the default short answer");
+
+// Reset puts everything back; "Hämta från Prognos" copies the form's person once.
+await plType("plBudget", 27300);
+await pl.locator('[data-action="pl-reset"]').click();
+await tab.waitForTimeout(100);
+if (!sameList((await plRibbon()).map((item) => item.text), PL_RIBBON_DEFAULT) || (await plSetting("plBudgetChoice").inputValue()) !== "1") {
+  problems.push("Återställ did not restore the default typfall and budget");
+}
+if ((await plSetting("plLifespan").inputValue()) !== "95") problems.push(`Återställ left the lifespan at ${await plSetting("plLifespan").inputValue()}, expected 95`);
+if ((await plSetting("plSavingsKind").inputValue()) !== "0" || (await plSetting("plSavingsCapital").inputValue()) !== "0") problems.push("Återställ did not put the private savings back on the first kind with nothing in it");
+await pl.locator('[data-action="pl-import-forecast"]').click();
+await tab.waitForTimeout(100);
+const plImported = [
+  await plSetting("plBorn").inputValue(),
+  await plSetting("plStartWork").inputValue(),
+  await plSetting("plSalary").inputValue(),
+  await plSetting("plRetirement").inputValue(),
+  await plSetting("plScheme").inputValue(),
+];
+console.log(`pension lasts   : from Prognos ${plImported.join("/")}`);
+if (plImported.join("/") !== "1959/23/38500/66/1") problems.push(`"Hämta från Prognos" gives ${plImported.join("/")}, expected 1959/23/38500/66/1`);
+await pl.locator('[data-action="pl-reset"]').click();
+await tab.waitForTimeout(100);
+await plType("plLifespan", 90);
+
+// The exports: the options table, the per-age series and the budgets as CSV (whole kronor, Swedish delimiter), and a real .xlsx.
+const plOptionsActions = pl.locator('[data-role="pl-options-panel"] .panel-actions');
+const plCsv = await download(plOptionsActions.getByRole("button", { name: "Ladda ner CSV" }));
+const plCsvLines = plCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`pension lasts   : CSV ${plCsv.filename}, ${plCsvLines.length} lines`);
+if (plCsvLines.length !== 18 || !plCsvLines[0].startsWith("Utbetalningstid;Under utbetalningen, kr/mån efter skatt;Efter utbetalningen, kr/mån efter skatt;")) {
+  problems.push(`the options CSV starts "${plCsvLines[0]}" and has ${plCsvLines.length} lines, expected the 18-line table`);
+}
+if (plCsvLines[1] !== "5 år;38997;16005;20597;-2395;Till 73 år;5;488494;Hela vägen till 90 år") problems.push(`the options CSV's first row reads "${plCsvLines[1]}"`);
+if (plCsvLines[17] !== "Livsvarigt;22289;;3889;;Hela vägen till 90 år;22;0;Hela vägen till 90 år") problems.push(`the options CSV's last row reads "${plCsvLines[17]}"`);
+const plXlsx = await download(plOptionsActions.getByRole("button", { name: "Ladda ner Excel" }));
+if (!looksLikeXlsx(plXlsx.buffer)) problems.push(`the options' Excel download ("${plXlsx.filename}") isn't a real .xlsx file`);
+const plSeries = await download(pl.locator('[data-role="pl-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const plSeriesLines = plSeries.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+if (plSeriesLines.length !== 23 || !plSeriesLines[1]?.startsWith("68;18400;35510;")) problems.push(`the per-age CSV has ${plSeriesLines.length} lines starting "${plSeriesLines[1]}", expected 23 lines from age 68 at 18400 then 35510`);
+const plMatrixCsv = await download(pl.locator('[data-role="pl-matrix-panel"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const plMatrixLines = plMatrixCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+if (plMatrixLines.length !== 18 || plMatrixLines[1] !== "5 år;Till 73 år;Till 73 år;Till 73 år;35510") problems.push(`the budgets CSV has ${plMatrixLines.length} lines, the first row "${plMatrixLines[1]}"`);
+
+// The theme tokens reach the boxes: the lifelong chip is ink (black on light, white on dark), the 5-year one the darkest gold.
+const plChip = async (payout) => pl.locator(`.pl-ribbon li[data-payout="${payout}"] .pa-chip`).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+const plChipsLight = [await plChip(0), await plChip(5)];
+await tab.emulateMedia({ colorScheme: "dark" });
+const plChipsDark = [await plChip(0), await plChip(5)];
+await tab.emulateMedia({ colorScheme: "light" });
+console.log(`pension lasts   : chips ${plChipsLight.join(" / ")} light, ${plChipsDark.join(" / ")} dark`);
+if (plChipsLight.join("/") !== "rgb(0, 0, 0)/rgb(91, 68, 0)" || plChipsDark.join("/") !== "rgb(255, 255, 255)/rgb(255, 200, 59)") {
+  problems.push(`the lifelong and 5-year chips are ${plChipsLight.join("/")} on light and ${plChipsDark.join("/")} on dark, expected black/#5b4400 and white/#ffc83b`);
+}
+
+// Swedish and English; the numbers do not move with the language.
+const plHeadSv = (await pl.locator("section.panel > h2 span").first().textContent()) ?? "";
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(150);
+const plHeadEn = (await pl.locator("section.panel > h2 span").first().textContent()) ?? "";
+const plLabelEn = (await pl.locator(".pa-ribbon-label").first().textContent()) ?? "";
+const plButtonEn = (await tab.locator('.screen-toggle .panel-btn[data-screen="lasts"]').textContent()) ?? "";
+const plEnFive = await plCells(5);
+console.log(`pension lasts   : "${plHeadSv}" / "${plHeadEn}", "${plLabelEn}", button "${plButtonEn}", 5 years "${plEnFive[4]}"`);
+if (plHeadSv !== "Hur länge räcker pensionen?" || plHeadEn !== "How long does the pension last?" || plLabelEn !== "Payout period and how long the budget lasts" || plButtonEn !== "How long does the pension last?") {
+  problems.push(`the tab's language switch reads "${plHeadSv}"/"${plHeadEn}"/"${plLabelEn}"/"${plButtonEn}"`);
+}
+if (plEnFive[1] !== "38,997" && plEnFive[1] !== "38997") problems.push(`in English the 5-year payout reads ${plEnFive[1]}, expected 38,997`);
+const plLabelsEn = [await plLabel("plCapital"), await plLabel("plPrivSaving"), await plLabel("plSavingsCapital")];
+const plGroupsEn = (await pl.locator(".pa-group").allTextContents()).map((text) => text.trim());
+if (!sameList(plLabelsEn, ["Individualoccupationalpension,capital", "Privatepension,monthlysaving", "ISK/Endowmentinsurance/Depotinsurance,capital"]) || !plGroupsEn.includes("Private savings")) {
+  problems.push(`in English the fields are labelled ${plLabelsEn.join(" | ")} and the groups ${plGroupsEn.join(" | ")}, expected Individual occupational pension, capital / Private pension, monthly saving / ISK / Endowment insurance / Depot insurance, capital and a "Private savings" group`);
+}
+if (!sameList((await plRibbon()).map((item) => item.text), ["To73", "To78", "To83", "To88", "Alltheway"])) {
+  problems.push(`in English the boxes read ${(await plRibbon()).map((item) => item.text).join(",")}, expected To73,To78,To83,To88,Alltheway`);
+}
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(150);
+
+// A phone: nothing widens the page, and the boxes wrap instead of overflowing.
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(150);
+const plOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const plRibbonRows = await pl.locator(".pl-ribbon li").evaluateAll((items) => new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size);
+const plTableScrolls = await pl.locator('[data-role="pl-options-panel"] .scroll').evaluate((box) => box.scrollWidth > box.clientWidth);
+console.log(`pension lasts @375px: page overflow ${plOverflow}px, boxes in ${plRibbonRows} rows, table scrolls ${plTableScrolls}`);
+if (plOverflow > 1) problems.push(`the Hur länge räcker pensionen? tab widens the page by ${plOverflow}px at 375px`);
+const plPairsPhone = await plPairRows();
+if (plPairsPhone.length !== 3 || !plPairsPhone.every((pair) => pair.sameRow && pair.side)) {
+  problems.push(`at 375px the capital and monthly saving are not side by side on one row: ${JSON.stringify(plPairsPhone)}`);
+}
+if (plRibbonRows < 2 || !plTableScrolls) problems.push(`at 375px the answer boxes sit in ${plRibbonRows} row(s) and the options table scrolls ${plTableScrolls}, expected several rows and a scrolling table`);
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
 
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);

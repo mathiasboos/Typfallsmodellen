@@ -32,6 +32,7 @@ import type { Lang, LabelName } from "./i18n.js";
 import { renderKpis, retirementAge } from "./kpis.js";
 import { createMikrosimPanel } from "./mikrosim.js";
 import { createPensionAgePanel } from "./pensionAgePanel.js";
+import { createPensionLastsPanel } from "./pensionLastsPanel.js";
 import { createPgbGrid } from "./pgb.js";
 import { createSalaryPath } from "./salaryPath.js";
 import {
@@ -59,9 +60,9 @@ interface View {
 /** The workbook's two radio circles: `Normalt` and `Avancerat`. */
 type Mode = "normal" | "advanced";
 
-/** Not a workbook mode -- a second, third and fourth top-level view alongside
- * the forecast. */
-type Screen = "single" | "compare" | "mikrosim" | "retirement";
+/** Not a workbook mode -- a second, third, fourth and fifth top-level view
+ * alongside the forecast. */
+type Screen = "single" | "compare" | "mikrosim" | "retirement" | "lasts";
 
 const deaths = loadDeathProbabilities();
 
@@ -158,6 +159,9 @@ const mikrosimPanel = createMikrosimPanel(
 // Own inputs, like Mikrosim's rows: "Hämta från Prognos" pulls the form's
 // current typfall across once, on the click, rather than this tab following it.
 const pensionAgePanel = createPensionAgePanel(view.lang, () => runInput());
+// The same for "Hur länge räcker pensionen?": its own person, budget and payout
+// periods, with the Forecast form's person copied across on the click.
+const pensionLastsPanel = createPensionLastsPanel(view.lang, () => runInput());
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");
@@ -242,6 +246,7 @@ function screenToggle(): HTMLElement {
     // both languages, so no `say()`-style branching is needed here.
     { screen: "mikrosim", label: () => "Mikrosim" },
     { screen: "retirement", label: (l) => (l === "sv" ? "Bästa pensionsålder" : "Best retirement age") },
+    { screen: "lasts", label: (l) => (l === "sv" ? "Hur länge räcker pensionen?" : "How long does the pension last?") },
   ];
   for (const choice of choices) {
     const button = document.createElement("button");
@@ -309,6 +314,7 @@ function renderHeading(): void {
       comparePanel.relabel(lang);
       mikrosimPanel.relabel(lang);
       pensionAgePanel.relabel(lang);
+      pensionLastsPanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -454,6 +460,14 @@ function render(): void {
     // switch: the tab has its own person and always shows kronor per month.
     // What it does read live is the shared context (Avancerat).
     pensionAgePanel.setContext(context, deaths);
+    return;
+  }
+
+  if (screen === "lasts") {
+    results.append(pensionLastsPanel.element);
+    // The same: its own person and budget, always kronor per month in fixed
+    // prices; what it reads live is the shared context (Avancerat).
+    pensionLastsPanel.setContext(context, deaths);
     return;
   }
 
