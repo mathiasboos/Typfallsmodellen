@@ -34,6 +34,7 @@ import { createMikrosimPanel } from "./mikrosim.js";
 import { createPensionAgePanel } from "./pensionAgePanel.js";
 import { createPensionLastsPanel } from "./pensionLastsPanel.js";
 import { createPgbGrid } from "./pgb.js";
+import { commitOnPress } from "./pressCommit.js";
 import { createSalaryPath } from "./salaryPath.js";
 import {
   renderTable1,
@@ -104,6 +105,10 @@ let advancedInput: Partial<TypfallInput> = {};
 
 const root = document.querySelector("#app");
 if (!(root instanceof HTMLElement)) throw new Error("#app is missing from the page");
+
+// Before any panel is built: a number is applied when its field loses focus, which redraws, and
+// that must not happen under a pointer that is on its way to a button.
+commitOnPress();
 
 const header = document.createElement("header");
 header.className = "masthead";
