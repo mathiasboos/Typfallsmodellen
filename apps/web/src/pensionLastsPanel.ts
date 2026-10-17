@@ -54,6 +54,7 @@ import {
   BUDGET_BOUNDS,
   CHART_PAYOUTS,
   LIFELONG,
+  SAVINGS_KINDS,
   balanceText,
   budgetIdOf,
   budgetMatrix,
@@ -70,6 +71,7 @@ import {
   runPayouts,
   runsKey,
   savingYear,
+  savingsKindName,
   seriesToCsv,
   seriesToXlsxRows,
   slotOfPayout,
@@ -367,18 +369,79 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   relabels.push(schemeSelect.relabel);
   field(schemeSelect.element, (l) => ({ label: t("occupational", l) }), "field field-wide");
 
-  const capitalField = number(input.capital, CAPITAL, (value) => update({ capital: value }));
-  capitalField.element.dataset.setting = "plCapital";
-  const relabelCapital = field(capitalField.element, (l) => ({
-    label: say(l, "Individuell tjänstepension, kapital", "Individual occupational pension, capital"),
-    hint: say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
-  }));
-  const savingField = number(input.monthlySaving, SAVING, (value) => update({ monthlySaving: value }));
-  savingField.element.dataset.setting = "plSaving";
-  field(savingField.element, (l) => ({
-    label: say(l, "Individuell tjänstepension, månadssparande", "Individual occupational pension, monthly saving"),
-    hint: say(l, "kr/mån fram till pensionen", "SEK/month until retirement"),
-  }));
+  /**
+   * Capital and monthly saving of one kind of saving, side by side. The grid would
+   * put two fields wherever its columns happen to fall; a pair is one row at every
+   * width, each caption over its own box, and is relabelled by `caption`.
+   */
+  function savingPair(
+    caption: (l: Lang) => { capital: string; monthly: string },
+    capital: { value: number; set: (value: number) => Partial<LastsInput>; setting: string },
+    monthly: { value: number; set: (value: number) => Partial<LastsInput>; setting: string },
+  ) {
+    const pair = h("div", "field-pair");
+    grid.append(pair);
+    const own = fieldSet(pair, relabels, lang);
+    const capitalField = own.number(capital.value, CAPITAL, (value) => update(capital.set(value)));
+    capitalField.element.dataset.setting = capital.setting;
+    const relabelCapital = own.field(
+      capitalField.element,
+      (l) => ({
+        label: caption(l).capital,
+        hint: say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
+      }),
+      "field field-stack",
+    );
+    const monthlyField = own.number(monthly.value, SAVING, (value) => update(monthly.set(value)));
+    monthlyField.element.dataset.setting = monthly.setting;
+    const relabelMonthly = own.field(
+      monthlyField.element,
+      (l) => ({ label: caption(l).monthly, hint: say(l, "kr/mån fram till pensionen", "SEK/month until retirement") }),
+      "field field-stack",
+    );
+    /** The captions depend on the drop-down and the hint on the saving year, so they are redone when either changes. */
+    const relabel = (l: Lang): void => {
+      relabelCapital(l);
+      relabelMonthly(l);
+    };
+    return { capitalField, monthlyField, relabel };
+  }
+
+  const individual = savingPair(
+    (l) => ({
+      capital: say(l, "Individuell tjänstepension, kapital", "Individual occupational pension, capital"),
+      monthly: say(l, "Individuell tjänstepension, månadssparande", "Individual occupational pension, monthly saving"),
+    }),
+    { value: input.individualCapital, set: (individualCapital) => ({ individualCapital }), setting: "plCapital" },
+    { value: input.individualMonthly, set: (individualMonthly) => ({ individualMonthly }), setting: "plSaving" },
+  );
+  const privatePension = savingPair(
+    (l) => ({
+      capital: say(l, "Privat pension, kapital", "Private pension, capital"),
+      monthly: say(l, "Privat pension, månadssparande", "Private pension, monthly saving"),
+    }),
+    { value: input.privateCapital, set: (privateCapital) => ({ privateCapital }), setting: "plPrivCapital" },
+    { value: input.privateMonthly, set: (privateMonthly) => ({ privateMonthly }), setting: "plPrivSaving" },
+  );
+
+  // Private saving: what it is held in decides how it is taxed, and names the two fields.
+  group("Privat sparande", "Private savings");
+  const kindSelect = select(
+    SAVINGS_KINDS.map((k, index) => ({ value: index, label: (l: Lang) => say(l, k.sv, k.en) })),
+    SAVINGS_KINDS.findIndex((k) => k.id === input.savingsKind),
+    (index) => update({ savingsKind: SAVINGS_KINDS[index]!.id }),
+  );
+  kindSelect.element.dataset.setting = "plSavingsKind";
+  relabels.push(kindSelect.relabel);
+  field(kindSelect.element, (l) => ({ label: say(l, "Typ av sparande", "Type of saving") }), "field field-wide");
+  const savings = savingPair(
+    (l) => ({
+      capital: `${savingsKindName(input.savingsKind, l)}, ${say(l, "kapital", "capital")}`,
+      monthly: `${savingsKindName(input.savingsKind, l)}, ${say(l, "månadssparande", "monthly saving")}`,
+    }),
+    { value: input.savingsCapital, set: (savingsCapital) => ({ savingsCapital }), setting: "plSavingsCapital" },
+    { value: input.savingsMonthly, set: (savingsMonthly) => ({ savingsMonthly }), setting: "plSavingsMonthly" },
+  );
 
   // Assumptions: two ready-made sets, then the three numbers behind them.
   group("Antaganden", "Assumptions");
@@ -453,8 +516,13 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     budgetSelect.element.value = String(tier === undefined || tier < 0 ? OWN_BUDGET : tier);
     budgetField.setValue(input.budget);
     schemeSelect.element.value = String(input.scheme);
-    capitalField.setValue(input.capital);
-    savingField.setValue(input.monthlySaving);
+    individual.capitalField.setValue(input.individualCapital);
+    individual.monthlyField.setValue(input.individualMonthly);
+    privatePension.capitalField.setValue(input.privateCapital);
+    privatePension.monthlyField.setValue(input.privateMonthly);
+    kindSelect.element.value = String(SAVINGS_KINDS.findIndex((k) => k.id === input.savingsKind));
+    savings.capitalField.setValue(input.savingsCapital);
+    savings.monthlyField.setValue(input.savingsMonthly);
     inflationField.setValue(input.yearlyInflation);
     growthField.setValue(input.realGrowth);
     returnField.setValue(input.realReturn);
@@ -467,7 +535,17 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       button.classList.toggle("active", choice.afterTax === input.afterTax);
       button.setAttribute("aria-pressed", String(choice.afterTax === input.afterTax));
     }
-    for (const relabel of [relabelBorn, relabelRetirement, relabelLifespan, relabelSalary, relabelCapital]) relabel(currentLang);
+    for (const relabel of [
+      relabelBorn,
+      relabelRetirement,
+      relabelLifespan,
+      relabelSalary,
+      individual.relabel,
+      privatePension.relabel,
+      savings.relabel,
+    ]) {
+      relabel(currentLang);
+    }
   }
 
   function update(patch: Partial<LastsInput>): void {
@@ -534,9 +612,9 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
         "pa-lead",
         say(
           l,
-          "Allmän pension betalas ut livet ut. Tjänstepension och individuell tjänstepension kan du ofta ta ut under 5–20 år eller livsvarigt: kortare tid ger mer per månad men tar slut. Varje ruta visar hur länge din budget räcker med en utbetalningstid, månad för månad, till dess att du är " +
+          "Allmän pension betalas ut livet ut. Tjänstepension, individuell tjänstepension, privat pension och privat sparande kan du ofta ta ut under 5–20 år eller livsvarigt: kortare tid ger mer per månad men tar slut. Varje ruta visar hur länge din budget räcker med en utbetalningstid, månad för månad, till dess att du är " +
             `${to} år.`,
-          "The public pension is paid for life. Occupational and individual occupational pension can often be drawn over 5–20 years or for life: a shorter time pays more a month but runs out. Each box shows how long your budget lasts with one payout period, month by month, until you are " +
+          "The public pension is paid for life. Occupational pension, individual occupational pension, private pension and private savings can often be drawn over 5–20 years or for life: a shorter time pays more a month but runs out. Each box shows how long your budget lasts with one payout period, month by month, until you are " +
             `${to}.`,
         ),
       ),
@@ -620,8 +698,8 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       bullet(
         say(
           l,
-          "Du har ingen tjänstepension eller individuell tjänstepension att välja utbetalningstid för, så allmän pension är allt. Välj ett avtalsområde eller fyll i kapital och sparande för att se hur utbetalningstiden påverkar.",
-          "You have no occupational or individual occupational pension to choose a payout period for, so the public pension is all there is. Pick an agreement area, or fill in capital and saving, to see what the payout period does.",
+          "Du har ingen tjänstepension, privat pension eller annat sparande att välja utbetalningstid för, så allmän pension är allt. Välj ett avtalsområde eller fyll i kapital och sparande för att se hur utbetalningstiden påverkar.",
+          "You have no occupational pension, private pension or other saving to choose a payout period for, so the public pension is all there is. Pick an agreement area, or fill in capital and saving, to see what the payout period does.",
         ),
       );
     } else if (best === null) {
@@ -930,7 +1008,18 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
         : [
             headCell(say(l, "varav allmän", "of which public")),
             headCell(say(l, "varav tjänstepension", "of which occupational")),
-            headCell(say(l, "varav individuell", "of which individual")),
+            headCell(say(l, "varav individuell och privat", "of which individual and private")),
+            ...(lasts.taxFree
+              ? [
+                  headCell(
+                    say(
+                      l,
+                      `varav ${savingsKindName(lasts.input.savingsKind, "sv")}, uppräknat`,
+                      `of which ${savingsKindName(lasts.input.savingsKind, "en")}, grossed up`,
+                    ),
+                  ),
+                ]
+              : []),
           ]),
       headCell(say(l, "Efter utbetalningen", "After the payout")),
       headCell(say(l, "Mot budgeten under / efter", "Against the budget during / after")),
@@ -954,7 +1043,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     {
       const a = lasts.publicOnly;
       const cells: HTMLTableCellElement[] = [cell(say(l, "Bara allmän pension", "Public pension only"), "pl-floor-name"), cell(kronor(a.during?.income ?? 0, l), "num")];
-      if (!afterTax) cells.push(cell("–", "num"), cell("–", "num"), cell("–", "num"));
+      if (!afterTax) cells.push(...Array.from({ length: lasts.taxFree ? 4 : 3 }, () => cell("–", "num")));
       cells.push(
         cell("–", "num"),
         cell(`${diff(a.during?.difference ?? 0)} / –`, "num"),
@@ -976,6 +1065,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
           cell(kronor(average(option, (o) => o.run.publicPension), l), "num"),
           cell(kronor(average(option, (o) => o.run.occupational), l), "num"),
           cell(kronor(average(option, (o) => o.run.individual), l), "num"),
+          ...(lasts.taxFree ? [cell(kronor(average(option, (o) => o.savings), l), "num")] : []),
         );
       }
       cells.push(
@@ -1047,8 +1137,8 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     const paragraphs = [
       say(
         l,
-        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, från pensionsstart till och med året före ${lasts.to}-årsdagen (${lasts.to - lasts.from} hela år). Belopp i ${priceText(lasts, l)}, utan diskontering. Bidrag som bostadstillägg räknas inte med; efter skatt är modellens nettoinkomst.`,
-        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, from the start up to the year before the ${lasts.to}th birthday (${lasts.to - lasts.from} whole years). Amounts are in ${priceText(lasts, l)}, not discounted. Benefits such as housing supplement are not counted; after tax is the model's net income.`,
+        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart till och med året före ${lasts.to}-årsdagen (${lasts.to - lasts.from} hela år). Belopp i ${priceText(lasts, l)}, utan diskontering. Bidrag som bostadstillägg räknas inte med; efter skatt är modellens nettoinkomst.`,
+        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, private pension and private savings, from the start up to the year before the ${lasts.to}th birthday (${lasts.to - lasts.from} whole years). Amounts are in ${priceText(lasts, l)}, not discounted. Benefits such as housing supplement are not counted; after tax is the model's net income.`,
       ),
       say(
         l,
@@ -1057,8 +1147,8 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       ),
       say(
         l,
-        `Individuell tjänstepension – och ett privat pensionssparande, som räknas på samma sätt – räknas som modellens privata pensionssparande (IPS, beskattas som inkomst vid utbetalning): kapitalet du har, och månadssparandet fram till pensionen, räknas från ${lasts.runs.savingYear} (Avancerat > Sparandet börjar år; har pensionen redan börjat räknas kapitalet vid pensionsstart). Månadssparandet är ett fast belopp i kronor och räknas inte upp med inflationen. Det betalas ut över samma period som avtalets tjänstepension.`,
-        `Individual occupational pension -- and private pension saving, which is counted the same way -- is the model's private pension saving (IPS, taxed as income when paid out): the capital you have, and the monthly saving until retirement, count from ${lasts.runs.savingYear} (Advanced > Saving starts in; if the pension has already started, the capital counts at the start). The monthly saving is a fixed number of kronor and is not raised with inflation. It is paid out over the same period as the agreement's occupational pension.`,
+        `Individuell tjänstepension och privat pension räknas som modellens privata pensionssparande (IPS) och beskattas som inkomst vid utbetalning, precis som tjänstepension. De behandlas lika och läggs därför ihop, och det gör även Annat inkomstskattat sparande under Privat sparande. ISK och kapitalförsäkring beskattas i stället på en schablonintäkt medan du sparar och betalas ut skattefritt. Kapitalet du har, och månadssparandet fram till pensionen, räknas från ${lasts.runs.savingYear} (Avancerat > Sparandet börjar år; har pensionen redan börjat räknas kapitalet vid pensionsstart). Månadssparandet är ett fast belopp i kronor och räknas inte upp med inflationen. Allt betalas ut över samma period som avtalets tjänstepension.`,
+        `Individual occupational pension and private pension are counted as the model's private pension saving (IPS) and are taxed as income when paid out, like an occupational pension. They are treated alike and so are added together, and so is Other income-taxed saving under Private savings. An ISK or an endowment insurance is instead taxed on a standard return while you save and paid out tax-free. The capital you have, and the monthly saving until retirement, count from ${lasts.runs.savingYear} (Advanced > Saving starts in; if the pension has already started, the capital counts at the start). The monthly saving is a fixed number of kronor and is not raised with inflation. Everything is paid out over the same period as the agreement's occupational pension.`,
       ),
       say(
         l,
@@ -1075,6 +1165,20 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
         `Den rekommenderade utbetalningstiden är den som täcker budgeten i flest år; vid lika många år vinner den längre. Fliken har egna indata och följer inte formuläret till vänster; "Hämta från Prognos" kopierar dem en gång. Skatteinställningar och löneprofil kommer från Avancerat; prisbasen är alltid fasta priser, och tjänstepensionen börjar alltid vid pensionsåldern. Kända kapitalvärden som anges under Avancerat gäller också här.`,
         `The recommended payout period is the one that covers the budget in the most years; with an equal number, the longer wins. The tab has its own inputs and does not follow the form on the left; "Use the Forecast values" copies them once. Tax settings and wage profile come from Advanced; prices are always constant, and the occupational pension always starts at the retirement age. Known capital values entered under Advanced apply here too.`,
       ),
+      ...(lasts.taxFree
+        ? [
+            say(
+              l,
+              `${savingsKindName(lasts.input.savingsKind, "sv")} har ingen utbetalning för livet: Livsvarigt betyder här att pengarna fördelas över din förväntade återstående livslängd (modellens regel), och sedan är de slut. En pension betalas i stället ut så länge du lever.`,
+              `${savingsKindName(lasts.input.savingsKind, "en")} has no payout for life: Lifelong here means the money is spread over your expected remaining life (the model's rule), and then it is gone. A pension, by contrast, is paid for as long as you live.`,
+            ),
+            say(
+              l,
+              `Före skatt räknas utbetalningen från ${savingsKindName(lasts.input.savingsKind, "sv")} upp till den bruttoinkomst som ger lika mycket efter skatt (med modellens skatt, år för år). Annars skulle en skattefri krona räknas som en beskattad och vyerna före och efter skatt ge olika svar. Efter skatt visas utbetalningen som den är.`,
+              `Before tax, the payout from ${savingsKindName(lasts.input.savingsKind, "en")} is grossed up to the gross income that leaves the same amount after tax (with the model's tax, year by year). Otherwise an untaxed krona would count as a taxed one and the views before and after tax would give different answers. After tax the payout is shown as it is.`,
+            ),
+          ]
+        : []),
     ];
     for (const text of paragraphs) bodyBox.append(h("p", undefined, text));
     details.append(bodyBox);
@@ -1119,7 +1223,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     const lasts = evaluate(runs, effective);
     derived = { finalSalary: runs.finalSalary, monthlySalary: effective.monthlySalary };
     relabelSalary(currentLang);
-    relabelCapital(currentLang);
+    for (const pair of [individual, privatePension, savings]) pair.relabel(currentLang);
     results.replaceChildren(...buildResults(lasts, currentLang));
   }
 
@@ -1129,8 +1233,8 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     inputsTitle.textContent = say(l, "Hur länge räcker pensionen?", "How long does the pension last?");
     intro.textContent = say(
       l,
-      "Sätt din pension mot en budget och se hur länge den räcker, beroende på hur du tar ut tjänstepensionen och den individuella tjänstepensionen: under 5–20 år eller livsvarigt. Allmän pension betalas alltid ut livet ut. Ändra personen, avtalsområdet, budgeten eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
-      "Set your pension against a budget and see how long it lasts, depending on how you draw the occupational and individual occupational pension: over 5–20 years or for life. The public pension is always paid for life. Change the person, the agreement area, the budget or the assumptions and everything is recalculated at once. The tab has its own inputs and is affected only by the settings under Advanced.",
+      "Sätt din pension mot en budget och se hur länge den räcker, beroende på hur du tar ut tjänstepensionen, den individuella tjänstepensionen, den privata pensionen och det privata sparandet: under 5–20 år eller livsvarigt. Allmän pension betalas alltid ut livet ut. Ändra personen, avtalsområdet, budgeten eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
+      "Set your pension against a budget and see how long it lasts, depending on how you draw the occupational pension, the individual occupational pension, the private pension and the private savings: over 5–20 years or for life. The public pension is always paid for life. Change the person, the agreement area, the budget or the assumptions and everything is recalculated at once. The tab has its own inputs and is affected only by the settings under Advanced.",
     );
     importButton.textContent = say(l, "Hämta från Prognos", "Use the Forecast values");
     resetButton.textContent = say(l, "Återställ", "Reset");

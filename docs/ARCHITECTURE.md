@@ -1291,7 +1291,7 @@ Three modules and one test file, split the way "Bästa pensionsålder" is:
 - `pensionLastsPanel.ts` -- the inputs, the short answer, the tables and the exports.
 - `pensionAgeChart.ts` -- the same line chart "Bästa pensionsålder" draws, asked for two more things (a
   dashed line, and a label where a payout ends instead of at the right edge).
-- `apps/web/test/pensionLasts.test.ts` -- 59 tests; the engine side has `test/netProbe.test.ts` and a
+- `apps/web/test/pensionLasts.test.ts` -- 79 tests; the engine side has `test/netProbe.test.ts` and a
   block in `test/mcalcDrawdown.test.ts`.
 
 **The method.** One `runWithTaxProbe()` per payout period: every whole year from 5 to 20, and lifelong
@@ -1301,18 +1301,39 @@ so `PayoutRuns` is kept (keyed by `runsKey`, and the identity of the shared cont
 comparison's cache is) while only those change, and `evaluate` does the rest. The pension is the per-age
 matrix (`result.rows`): public pension, occupational pension and the individual pension separately
 (`ip + tp + pp + garp + ptillagg`, `tjp`, `ips`), the model's net income (`netto`) beside them, all in
-fixed prices.
+fixed prices. An ISK or a kapitalförsäkring adds a second run per payout period and a fourth part
+(`pps`, below).
 
-**The individual occupational pension is the model's private saving** -- IPS, taxed as income when paid
-out, like an occupational pension -- with a capital already saved and a monthly saving until retirement,
-paid out over the same period as the agreement's pension (`tempIpsUttag` = `tempTjpUttag`). The model
-has no place for the capital: the workbook can only inject a known balance through `pbhYear`, which
-replaces every pot at once *and* divides the guarantee base by the income pension's balance (a quirk
-the engine keeps and tests). So the engine got `ipsOpening`, a setting of its own -- see
-`docs/VBA-MAPPING.md`. Capital and saving count from the year Avancerat calls "Sparandet börjar år"
-(`ipsStart`, the model's idea of today), or from the retirement year if that has passed -- and never
-from before the run's own first years, where the capital could not be booked. The monthly saving is a
-fixed number of kronor, as in the model; it is not raised with inflation.
+**Three kinds of saving, two pots.** The *individual occupational pension* and the *private pension* are
+the model's private saving -- IPS, taxed as income when paid out, like an occupational pension -- each with
+a capital already saved and a monthly saving until retirement. The model treats them alike (the same
+return, the same payout period, the same tax), so they are one pot and what is saved in each simply adds
+up: the tests show 300 000 kr as a private pension, as an individual pension, and split between the two
+give the same payout to the krona. They are paid out over the same period as the agreement's pension
+(`tempIpsUttag` = `tempTjpUttag`). The model has no place for the capital: the workbook can only inject
+a known balance through `pbhYear`, which replaces every pot at once *and* divides the guarantee base by
+the income pension's balance (a quirk the engine keeps and tests). So the engine got `ipsOpening`, a
+setting of its own -- see `docs/VBA-MAPPING.md`. Capital and saving count from the year Avancerat calls
+"Sparandet börjar år" (`ipsStart`, the model's idea of today), or from the retirement year if that has
+passed -- and never from before the run's own first years, where the capital could not be booked. The
+monthly saving is a fixed number of kronor, as in the model; it is not raised with inflation.
+
+*Private savings* are held in an ISK, a kapitalförsäkring or "other income-taxed saving", chosen in a
+drop-down that also names the two fields (`ISK, kapital`, `Kapitalförsäkring, månadssparande`, ...). The
+three are the model's own kinds of private saving, `rng_Kapitalförsäkring` 2, 1 and 0. "Other
+income-taxed saving" is taxed as income when paid out, which is the IPS again, so it joins the pot above
+(and is exactly what the same amounts as a pension would be). An ISK and a kapitalförsäkring are taxed on
+a standard return while saved -- the model's `PrivatSpar`, with the ISK's tax-free allowance -- and paid
+out tax-free. The model carries one kind of private saving per run, so they are a second run per payout
+period (`lastsContext`'s `"savings"`: a second seventeen, a few tens of milliseconds more), and the two payouts
+add: the pots are independent and the tax-free one is no part of what the tax is taken from. The tests
+prove it -- the taxed pensions and the net with an ISK are what each is alone, exactly -- and that the
+ISK's own tax rule is not linear: capital and saving together pay a little less than the two alone,
+because the allowance is used once.
+
+An ISK or a kapitalförsäkring has no payout for life. The model pays an IPS for as long as the person
+lives, as an insurance does, but a saving is an amount of money: "lifelong" here spreads it over the
+expected remaining life (the model's rule) and it is gone. The notes say so when there is one.
 
 **The budget is after tax.** minPension's three examples (Baspensionär 17 600, Medelpensionär 18 400,
 Pluspensionär 27 300 kr a month -- the amounts the site's Pensionsöversikt uses, so a change there
@@ -1330,7 +1351,11 @@ section by handing it the income a run actually had and getting back the net tha
 every age from the retirement age on and under every price basis, and with capital income in the model;
 a snapshot of the whole run state before and after probing shows it leaves nothing behind. Because net
 never falls as gross rises, a pension covers the budget before tax exactly when it covers it after
-(tested for five budgets), so the before-tax view only changes the units.
+(tested for five budgets), so the before-tax view only changes the units. A tax-free payout (an ISK,
+a kapitalförsäkring) has no gross of its own, and added at face value an untaxed krona would count for
+no more than a taxed one -- the two views would part. So before tax it is grossed up through the same
+inversion, to the gross income that leaves the same net, and the table says so ("varav ISK, uppräknat");
+the parts still add up to the total, and the same years are covered (tested for four budgets).
 
 **Two readings of "lasts", both reported.** *Month by month*: an age is covered if the pension then is
 at least the budget; the answer is the stretches of covered ages ("Till 73 år", "69-78 år", "Från 69 år",
@@ -1340,7 +1365,7 @@ tax), the money lasts until the running total of pension minus budget turns nega
 interpolated inside the year as `breakEven` does. The first is the plain answer to "can I live on it
 each month"; the second says whether a short payout, saved with discipline, still gets the person
 through. The default person shows the difference: a 5-year payout covers the budget to 73 month by
-month, and to 90 if the surplus is saved.
+month, and all the way to 95 -- what the tab opens on -- if the surplus is saved.
 
 **The recommended payout** is the one that covers the budget in the most years, the longer payout on a
 tie (lifelong being the longest in time), and none when no payout covers it in any year. Payouts pay more
@@ -1360,8 +1385,16 @@ short, but as a stretch ("från 69 år") and not as a failure of the whole, and 
 **Its own inputs, a one-time pull from Prognos**, as the other new tabs; the shared context
 (Avancerat: tax, wage profile, ...) is read live. Overridden on purpose: the occupational pension starts
 with the public one (`tjpPar: 0`), the payout periods (`tempTjpUttag`, `tempIpsUttag`), private saving
-(`privateSavingKind: 0`, `ipsMonthly`, `ipsStart`, `ipsOpening`) and fixed prices. Known capital values
-typed into Avancerat apply here too, and replace the private pot at their year.
+(`privateSavingKind` -- 0 for the pension run, 1 or 2 for an ISK or a kapitalförsäkring --, `ipsMonthly`,
+`ipsStart`, `ipsOpening`) and fixed prices. Known capital values typed into Avancerat apply here too,
+and replace the private pot at their year.
+
+**The inputs.** Capital and monthly saving of each kind of saving -- the individual occupational pension,
+the private pension, the private savings -- sit side by side on one row at every width (`.field-pair`):
+the grid's usual caption-left, box-right field does not fit twice across a phone, so each of the two
+stacks its caption over its box, and the rows are shared (subgrid) so the boxes line up however many
+lines a caption wraps to. The groups run Person, Lön, Budget, Pension, Privat sparande, Antaganden, Visa.
+The tab opens on a lifespan of 95.
 
 **Colours: an ordinal ramp, and ink for lifelong.** The payout periods are ordered, so the colour is one
 hue stepped in OKLCH lightness (`--fig-pu-*`), not four hues: SEB's gold at 0.40 / 0.48 / 0.55 / 0.63 in
@@ -1379,21 +1412,27 @@ retirement to the lifespan shows at a glance how long each budget lasts.
 
 **Left out on purpose:** married/unmarried, interest on saved surplus, discounting, a probability-weighted
 lifespan, benefits (housing supplement), and choosing the payout period of one pension separately from
-the other's. A composition chart (how much of the pension is public, occupational, individual) is the
+the other's -- the private savings too are drawn over the same period. A composition chart (how much of the pension is public, occupational, individual) is the
 natural next step; the before-tax table already splits it.
 
-**Checked** by the 57 unit tests -- the payout periods and budgets, the input held inside what the cohort
+**Checked** by the 79 unit tests -- the payout periods and budgets, the input held inside what the cohort
 may draw, what each context setting is overridden to, that a fixed payout stops after its years and pays
 more the shorter it is, that the lifelong run is a plain run of the model, capital and saving added
-separately and together, the assessment on hand-built incomes (stretches, the first year short, the
-running total's interpolation, the phases), before and after tax covering the same years, the budget
-before tax taxed back to the budget, the budgets matrix, a final salary, and the exports -- and, in the
+separately and together, a private pension exactly as an individual one and "other income-taxed saving"
+exactly as a pension, an ISK or a kapitalförsäkring paid out tax-free beside an IPS with each payout as
+it is alone and no payout for life, the assessment on hand-built incomes (stretches, the first year short,
+the running total's interpolation, the phases), before and after tax covering the same years -- with a
+tax-free payout grossed up too -- the budget before tax taxed back to the budget, the budgets matrix, a
+final salary, and the exports -- and, in the
 built page, by `verify-offline.mjs`'s own block: the answer boxes, the options table, both charts (lines,
 the heavy and the dashed one, labels, legend, hover and arrow keys), the per-age table, the budgets
-table, each of minPension's budgets and an own one, before tax, the individual pension, no agreement,
-the retirement age moved and clamped, the lifespan, a typed final salary, the riktålder following the
-birth year, a preset, reset and the import from Prognos, the three CSV downloads and an Excel one, the
-theme tokens in both themes, both languages, and the page not widening at 375px.
+table, each of minPension's budgets and an own one, before tax, the individual pension, the private
+pension, an ISK, a kapitalförsäkring and other income-taxed saving (the numbers, the field captions and
+the ISK grossed up before tax), the order of the inputs and each capital/saving pair on one row at 1280
+and 375px, no agreement, the retirement age moved and clamped, the lifespan (opening on 95), a typed
+final salary, the riktålder following the birth year, a preset, reset and the import from Prognos, the
+three CSV downloads and an Excel one, the theme tokens in both themes, both languages, and the page not
+widening at 375px.
 
 ### Table 2's own column tooltips, and Ordlista
 

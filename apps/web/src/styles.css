@@ -1174,6 +1174,24 @@ body {
 }
 .pa-group:first-child { margin-top: 0; }
 .pa-toggle { grid-column: 1 / -1; flex-wrap: wrap; }
+/* Two fields on one row at every width: the capital and the monthly saving of one
+   kind of saving. Each stacks its caption over its box, since two of the grid's
+   usual caption-left, box-right fields do not fit side by side on a phone; the
+   rows are shared (subgrid) so the boxes line up however many lines a caption
+   wraps to. Without subgrid they simply start at the top of their own cell. */
+.field-pair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto auto;
+  gap: 2px 16px;
+  max-width: 34rem;
+}
+.field-pair > .field-stack { grid-row: span 3; grid-template-rows: subgrid; }
+.field-stack { grid-template-columns: minmax(0, 1fr); align-content: start; }
+.field-stack > .field-label { grid-column: 1; grid-row: 1; align-self: end; }
+.field-stack > input { grid-column: 1; grid-row: 2; }
+.field-stack > .field-hint { grid-column: 1; grid-row: 3; align-self: start; }
 .pa-lead { margin: 0; font-size: 0.8rem; color: var(--text-muted); max-width: 90ch; }
 .pa-answer .pa-lead { font-size: 0.88rem; color: var(--text-secondary); }
 
