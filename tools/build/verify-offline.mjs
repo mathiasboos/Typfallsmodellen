@@ -2253,6 +2253,10 @@ const paType = async (name, value) => {
   const field = paSetting(name);
   await field.fill(String(value));
   await field.dispatchEvent("change");
+  // A field that was typed into fires one more change when it loses focus, and that redraws the
+  // results -- under a pointer that is on its way to a button in them, which then misses. Let it
+  // happen here, so that what the next step clicks is still there.
+  await field.evaluate((el) => el.blur());
   await tab.waitForTimeout(60);
 };
 const paBest = () =>
@@ -2476,6 +2480,215 @@ if (paImported.join("/") !== `1959/23/38500/${paRiktalder(1959)}`) {
 }
 await pa.locator('[data-action="pa-reset"]').click();
 await tab.waitForTimeout(80);
+
+// Own savings: the individual occupational pension, the private pension and the private savings are
+// asked for by the module "Hur länge räcker pensionen?" is built with, so the two tabs look the same and
+// work the same -- the same fields in the same order, the same labels and small print, the same drop-down.
+// The numbers are the engine's, and `pensionAge.test.ts` pins them against it and against the other tab's
+// runs: 300 000 kr and 2 000 kr/month in a pension pot pay 4 869 kr/month at 68 on top of the public
+// pension's 20 194, taxed as income; 400 000 kr and 1 000 kr/month in an ISK pay 3 939, in a depot 3 951,
+// not taxed.
+
+const paNorm = (text) => (text ?? "").replace(/\s/g, "").replace(/−/g, "-");
+const paLabel = async (name) => paNorm(await pa.locator(`label:has([data-setting="${name}"]) .field-label`).textContent());
+const paSequence = () =>
+  pa.locator(".pa-grid").first().evaluate((grid) =>
+    [...grid.children].map((el) =>
+      el.classList.contains("pa-group")
+        ? `#${el.textContent}`
+        : el.classList.contains("field-pair")
+          ? [...el.querySelectorAll("[data-setting]")].map((i) => i.dataset.setting).join("+")
+          : (el.querySelector("[data-setting]")?.dataset.setting ?? el.className),
+    ),
+  );
+const paPairRows = () =>
+  pa.locator(".field-pair").evaluateAll((pairs) =>
+    pairs.map((pair) => {
+      const [a, b] = [...pair.querySelectorAll("input")].map((i) => i.getBoundingClientRect());
+      return { sameRow: Math.abs(a.top - b.top) < 1.5, side: b.left > a.right - 1 };
+    }),
+  );
+const paTimeHead = async () => (await pa.locator('[data-role="pa-time-table"] thead th').allTextContents()).map(paNorm);
+const paTimeRow = async (par = 68) => (await pa.locator(`[data-role="pa-time-table"] tr[data-par="${par}"] td`).allTextContents()).map(paNorm);
+const paFirstYear = async (par = 68) => Number((await paTimeRow(par))[1]);
+const paKpi = async () => paNorm(await pa.locator('[data-role="pa-answer"] .pa-kpi').textContent());
+const paNotes = async () => (await pa.locator(".pa-grid .saving-note").allTextContents()).map(paNorm);
+
+// Where the fields sit, what they are called, and that capital and monthly saving share a row.
+const paSeq = await paSequence();
+const paWantedSeq = [
+  "#Person", "paBorn", "paStartWork", "paCentre", "paRiktalder", "paSalaryAs", "paSalary",
+  "#Pension", "paScheme", "paIncludeOccupational", "paCapital+paSaving", "paPrivCapital+paPrivSaving", "saving-note",
+  "#Privat sparande", "paSavingsKind", "saving-note", "paSavingsCapital+paSavingsMonthly",
+  "#Livslängd",
+];
+const paSeqAt = paSeq.indexOf("#Person");
+if (paSeqAt === -1 || !sameList(paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length), paWantedSeq)) {
+  problems.push(`the Bästa pensionsålder inputs run ${paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length).join(" > ")}, expected ${paWantedSeq.join(" > ")}`);
+}
+const paLabelsSv = [await paLabel("paCapital"), await paLabel("paSaving"), await paLabel("paPrivCapital"), await paLabel("paPrivSaving"), await paLabel("paSavingsCapital"), await paLabel("paSavingsMonthly")];
+console.log(`pension age     : saving labels ${paLabelsSv.join(" | ")}`);
+if (!sameList(paLabelsSv, ["Individuelltjänstepension,kapital", "Individuelltjänstepension,månadssparande", "Privatpension,kapital", "Privatpension,månadssparande", "ISK/Kapitalförsäkring/Depåförsäkring,kapital", "ISK/Kapitalförsäkring/Depåförsäkring,månadssparande"])) {
+  problems.push(`the age tab's capital and saving fields are labelled ${paLabelsSv.join(" | ")}`);
+}
+if ((await paLabel("paIncludeOccupational")) !== "Räknamedavtaletstjänstepension") {
+  problems.push(`the include box is labelled "${await paLabel("paIncludeOccupational")}", expected that it is the agreement's occupational pension that it switches off`);
+}
+const paPairsDesktop = await paPairRows();
+if (paPairsDesktop.length !== 3 || !paPairsDesktop.every((pair) => pair.sameRow && pair.side)) {
+  problems.push(`at 1280px the age tab's capital and monthly saving are not side by side on one row: ${JSON.stringify(paPairsDesktop)}`);
+}
+const paKindOptions = (await paSetting("paSavingsKind").locator("option").allTextContents()).map((text) => text.trim());
+if (!sameList(paKindOptions, ["ISK / Kapitalförsäkring / Depåförsäkring", "Depå / VP-konto / Fondkonto"])) {
+  problems.push(`the age tab's kind of saving offers ${paKindOptions.join(" | ")}, expected the two tax categories`);
+}
+const paNotesStart = await paNotes();
+if (!/Privatpensionärenpensionsförsäkringellerips\(individuelltpensionssparande\)/i.test(paNotesStart[0] ?? "")) {
+  problems.push(`under the private pension fields the age tab says "${paNotesStart[0]}", expected that it is a pension insurance or an IPS`);
+}
+if (!/Schablonbeskattat/.test(paNotesStart[1] ?? "") || (await pa.locator(".pa-grid .saving-note-prompt").count()) !== 0) {
+  problems.push(`for an ISK the age tab says "${paNotesStart[1]}" (prompt ${await pa.locator(".pa-grid .saving-note-prompt").count()}), expected the standard-return note and no prompt`);
+}
+
+// The Pension and Privat sparande sections' markup, kept for the other tab to be compared with (its panel is not on screen
+// then). The box that switches the agreement off is the age tab's own and is left out.
+const sectionsOf = (panel, prefix) =>
+  panel.locator(".pa-grid").first().evaluate((grid, prefix) => {
+    const kids = [...grid.children];
+    const isGroup = (el, text) => el.classList.contains("pa-group") && (text === undefined || el.textContent === text);
+    const start = kids.findIndex((el) => isGroup(el, "Pension"));
+    const savings = kids.findIndex((el) => isGroup(el, "Privat sparande"));
+    const end = kids.findIndex((el, i) => i > savings && isGroup(el));
+    return kids
+      .slice(start, end)
+      .filter((el) => !el.querySelector('[data-setting$="IncludeOccupational"]'))
+      .map((el) => el.outerHTML.replaceAll(`data-setting="${prefix}`, 'data-setting="X'));
+  }, prefix);
+const paSection = await sectionsOf(pa, "pa");
+
+// A pension of one's own: one pot, taxed as income, from the alternative's own retirement age.
+const paPlainFirst = await paFirstYear();
+await paType("paCapital", 300000);
+await paType("paSaving", 2000);
+const paIpsFirst = await paFirstYear();
+const paIpsHead = await paTimeHead();
+const paIpsRow = await paTimeRow();
+const paIpsKpi = await paKpi();
+const paIpsBest = await paBest();
+console.log(`pension age     : pension of one's own 300 000 + 2 000/month -> ${paPlainFirst} to ${paIpsFirst} at 68, best ${paIpsBest.join(",")}`);
+if (paPlainFirst !== 20194 || paIpsFirst !== 25063) problems.push(`the first year at 68 reads ${paPlainFirst} without and ${paIpsFirst} with 300 000 kr and 2 000 kr/month of one's own pension, expected 20194 and 25063`);
+if (!sameList(paIpsBest, [65, 65, 65, 67, 68, 68, 71, 71, 71, 71, 71, 71, 71, 71, 71, 71])) {
+  problems.push(`with a pension of one's own the short answer picks ${paIpsBest.join(",")}, expected 65,65,65,67,68,68 then 71 from 86`);
+}
+if (!paIpsHead.includes("varavallmän") || !paIpsHead.includes("varavindividuellochprivat") || paIpsHead.includes("varavtjänstepension") || paIpsHead.includes("varavprivatsparande")) {
+  problems.push(`before tax the per-age table has columns ${paIpsHead.join("|")}, expected public and individual-and-private only`);
+}
+if (paIpsRow[1] !== "25063" || paIpsRow[2] !== "20194" || paIpsRow[3] !== "4869") problems.push(`the first-year row splits ${paIpsRow.slice(1, 4).join(" + ")}, expected 25063 = 20194 + 4869`);
+if (!/^Vid68år\(riktåldern\):25267kr\/mån\(varavindividuellochprivatpension4869kr\/mån\),[\d,]+%avslutlönen39872kr\/mån\.Allmänpension\+egetsparande,föreskatt\./.test(paIpsKpi)) {
+  problems.push(`the short answer's figure reads "${paIpsKpi}", expected it to name the individual and private pension and the own saving`);
+}
+// The private pension is the same pot: the same numbers whichever field they are typed in, and the two add up.
+await paType("paCapital", 0);
+await paType("paSaving", 0);
+await paType("paPrivCapital", 300000);
+await paType("paPrivSaving", 2000);
+const paPrivFirst = await paFirstYear();
+await paType("paCapital", 150000);
+await paType("paSaving", 1000);
+await paType("paPrivCapital", 150000);
+await paType("paPrivSaving", 1000);
+const paSplitFirst = await paFirstYear();
+if (paPrivFirst !== 25063 || paSplitFirst !== 25063) problems.push(`as private pension the first year reads ${paPrivFirst} and half and half ${paSplitFirst}, expected 25063 for both`);
+for (const name of ["paCapital", "paSaving", "paPrivCapital", "paPrivSaving"]) await paType(name, 0);
+
+// Private savings: what it is held in names the fields and says how it is taxed; paid out tax-free.
+await paType("paSavingsCapital", 400000);
+await paType("paSavingsMonthly", 1000);
+const paIskFirst = await paFirstYear();
+const paIskHead = await paTimeHead();
+const paIskRow = await paTimeRow();
+const paIskKpi = await paKpi();
+console.log(`pension age     : ISK 400 000 + 1 000/month -> ${paIskFirst} at 68 (${paIskRow.slice(2, 4).join(" + ")})`);
+if (paIskFirst !== 24133) problems.push(`with 400 000 kr and 1 000 kr/month in an ISK the first year at 68 reads ${paIskFirst}, expected 24133`);
+if (!paIskHead.includes("varavprivatsparande") || paIskHead.includes("varavindividuellochprivat")) problems.push(`with an ISK the per-age table has columns ${paIskHead.join("|")}, expected one for the private savings`);
+if (paIskRow[2] !== "20194" || paIskRow[3] !== "3939") problems.push(`the ISK's first-year row splits ${paIskRow.slice(2, 4).join(" + ")}, expected 20194 + 3939`);
+if (!/\(varavprivatsparande3939kr\/mån\)/.test(paIskKpi) || !/Allmänpension\+egetsparande,föreskatt\.$/.test(paIskKpi)) problems.push(`with an ISK the short answer's figure reads "${paIskKpi}"`);
+await paSetting("paSavingsKind").selectOption("1"); // Depå / VP-konto / Fondkonto
+await tab.waitForTimeout(100);
+const paDepotFirst = await paFirstYear();
+const paDepotLabels = [await paLabel("paSavingsCapital"), await paLabel("paSavingsMonthly")];
+const paDepotNote = (await paNotes())[1] ?? "";
+const paDepotHint = paNorm(await pa.locator('label:has([data-setting="paSavingsCapital"]) .field-hint').textContent());
+console.log(`pension age     : depot 400 000 + 1 000/month -> ${paDepotFirst} at 68, labels ${paDepotLabels.join(" | ")}`);
+if (paDepotFirst !== 24145) problems.push(`in a depot the first year at 68 reads ${paDepotFirst}, expected 24145`);
+if (!sameList(paDepotLabels, ["Depå/VP-konto/Fondkonto,kapital", "Depå/VP-konto/Fondkonto,månadssparande"])) problems.push(`choosing the depot labels the age tab's fields ${paDepotLabels.join(" | ")}`);
+if (!/30%reavinstskatt.*Angekapitalvärdetefterreavinstskatt–detduharattleva/.test(paDepotNote) || (await pa.locator(".pa-grid .saving-note-prompt").count()) !== 1) {
+  problems.push(`for a depot the age tab says "${paDepotNote}" (prompt ${await pa.locator(".pa-grid .saving-note-prompt").count()}), expected the prompt to enter the capital after capital gains tax`);
+}
+if (!/efterreavinstskatt/.test(paDepotHint)) problems.push(`the age tab's capital hint for a depot reads "${paDepotHint}", expected it to say after capital gains tax`);
+
+// After tax the private savings are the same and the tax is not split out of the rest.
+await pa.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(100);
+const paNetDepotFirst = await paFirstYear();
+const paNetHead = await paTimeHead();
+const paNetKpi = await paKpi();
+if (paNetDepotFirst !== 18640) problems.push(`after tax a depot's first year at 68 reads ${paNetDepotFirst}, expected 18640 (14689 net public + 3951 untaxed)`);
+if (paNetHead.some((text) => text.startsWith("varav"))) problems.push(`after tax the per-age table has columns ${paNetHead.join("|")}, expected no split`);
+if (!/Allmänpension\+egetsparande,efterskatt\.$/.test(paNetKpi) || /varav/.test(paNetKpi)) problems.push(`after tax the short answer's figure reads "${paNetKpi}"`);
+await pa.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(100);
+
+// Everything at once, with an agreement: each kind in its own column, and the agreement's switch leaves the rest alone.
+await paType("paCapital", 300000);
+await paType("paSaving", 2000);
+await paSetting("paScheme").selectOption("2"); // ITP-1
+await tab.waitForTimeout(100);
+const paAllFirst = await paFirstYear();
+const paAllHead = await paTimeHead();
+const paAllRow = await paTimeRow();
+const paAllKpi = await paKpi();
+console.log(`pension age     : everything + ITP-1 -> ${paAllFirst} at 68 (${paAllRow.slice(2, 6).join(" + ")})`);
+if (paAllFirst !== 37221 || !sameList(paAllRow.slice(1, 6), ["37221", "20194", "8207", "4869", "3951"])) {
+  problems.push(`everything at once splits ${paAllRow.slice(1, 6).join(" ")}, expected 37221 = 20194 + 8207 + 4869 + 3951`);
+}
+if (!sameList(paAllHead.slice(1, 6), ["Förstaåret", "varavallmän", "varavtjänstepension", "varavindividuellochprivat", "varavprivatsparande"])) {
+  problems.push(`everything at once gives the per-age table columns ${paAllHead.slice(0, 7).join("|")}`);
+}
+if (!/\(varavtjänstepension8207,individuellochprivatpension4869,privatsparande3951kr\/mån\)/.test(paAllKpi)) problems.push(`everything at once, the short answer's figure reads "${paAllKpi}"`);
+await paSetting("paIncludeOccupational").uncheck();
+await tab.waitForTimeout(100);
+const paAgreementOffFirst = await paFirstYear();
+if (paAgreementOffFirst !== 29014) problems.push(`with the agreement switched off the first year reads ${paAgreementOffFirst}, expected 29014 (the own saving stays)`);
+await paSetting("paIncludeOccupational").check();
+await paSetting("paScheme").selectOption("1");
+await tab.waitForTimeout(80);
+
+// The notes say what is counted and how.
+const paAllNotes = paNorm(await pa.locator('[data-role="pa-notes"]').textContent());
+if (!/Individuelltjänstepensionochprivatpension\(enpensionsförsäkringellerIPS\)räknassommodellensprivatapensionssparande\(IPS\)/.test(paAllNotes)) problems.push("the notes do not explain the individual and private pension");
+if (!/Privatsparandeärpengarsomredanärinkomstbeskattade.*Pådepå,VP-kontoochfondkontobeskattasvinstenmed30%närdusäljer/.test(paAllNotes)) problems.push("the notes do not explain the two tax categories of private savings");
+if (!/Sparandetfortsätterframtillrespektivepensionsålder/.test(paAllNotes) || !/Privatsparandeharingenutbetalningförlivet/.test(paAllNotes)) problems.push("the notes do not say that the saving goes on until each retirement age and that private savings have no payout for life");
+
+// English: the same fields, named in English.
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paLabelsEn = [await paLabel("paCapital"), await paLabel("paPrivCapital"), await paLabel("paSavingsCapital"), await paLabel("paSavingsKind")];
+if (!sameList(paLabelsEn, ["Individualoccupationalpension,capital", "Privatepension,capital", "Securitiesaccount/Fundaccount,capital", "Typeofsaving"])) {
+  problems.push(`in English the age tab's saving fields are labelled ${paLabelsEn.join(" | ")}`);
+}
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+
+// Reset puts the savings back to none, on the ISK the drop-down opens on.
+await pa.locator('[data-action="pa-reset"]').click();
+await tab.waitForTimeout(100);
+const paResetSavings = [];
+for (const name of ["paCapital", "paSaving", "paPrivCapital", "paPrivSaving", "paSavingsKind", "paSavingsCapital", "paSavingsMonthly"]) paResetSavings.push(await paSetting(name).inputValue());
+if (paResetSavings.join("/") !== "0/0/0/0/0/0/0" || (await paFirstYear()) !== 20194) {
+  problems.push(`Återställ left the savings at ${paResetSavings.join("/")} (first year ${await paFirstYear()}), expected none and 20194`);
+}
+if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("Återställ did not restore the short answer after savings were typed");
 
 // The exports: the matrix as CSV (whole kronor, Swedish delimiter) and a real .xlsx.
 const paMatrixActions = pa.locator('[data-role="pa-matrix-panel"] .panel-actions');
@@ -2764,6 +2977,19 @@ if (/varav/.test(cmpNetHead) || !(cmpNetBaseline > 0 && cmpNetBaseline < PA_AG_A
 }
 await pa.locator('button[data-basis="gross"]').click();
 await tab.waitForTimeout(150);
+
+// Own savings are in every agreement's total, the same for each, so what an agreement adds is what it was.
+await paType("paCapital", 300000);
+await paType("paSaving", 2000);
+await cmpFigures({ 1: [4981416, 0], 2: [6655644, 1674228], 4: [6599748, 1618332], 5: [6654624, 1673208], 7: [6806604, 1825188] }, "with a pension of one's own");
+const cmpOwnMonthly = paNorm(await cmpRow(1).locator("td").nth(5).textContent());
+const cmpOwnLead = paNorm(await pa.locator('[data-role="pa-compare-table-panel"] .pa-lead').first().textContent());
+console.log(`agreements      : with a pension of one's own -> baseline ${await cmpKr(1, 0)} / monthly ${cmpOwnMonthly}, ITP-1 +${await cmpKr(2, 1)}`);
+if (cmpOwnMonthly !== "25063") problems.push(`with a pension of one's own the baseline's monthly pension at the start reads ${cmpOwnMonthly}, expected 25063`);
+if (!/allmänpension\+tjänstepension\+egetsparande,föreskatt/.test(cmpOwnLead)) problems.push(`with own savings the comparison describes its sums as "${cmpOwnLead.slice(0, 160)}"`);
+await paType("paCapital", 0);
+await paType("paSaving", 0);
+await cmpFigures(PA_AG_AT_85, "once the pension of one's own is taken away");
 
 // The exports: best ages and totals per agreement and lifespan, whole kronor.
 const cmpActions = pa.locator('[data-role="pa-compare-grid-panel"] .panel-actions');
@@ -3106,7 +3332,7 @@ const plPairRows = () =>
     }),
   );
 const plSeq = await plSequence();
-const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "pl-field-note", "#Privat sparande", "plSavingsKind", "pl-field-note", "plSavingsCapital+plSavingsMonthly", "#Antaganden"];
+const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "saving-note", "#Privat sparande", "plSavingsKind", "saving-note", "plSavingsCapital+plSavingsMonthly", "#Antaganden"];
 const plSeqAt = plSeq.indexOf("#Pension");
 if (plSeqAt === -1 || !sameList(plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length), plWantedSeq)) {
   problems.push(`the input order from "Pension" on is ${plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length).join(" > ")}, expected ${plWantedSeq.join(" > ")}`);
@@ -3125,13 +3351,13 @@ if (!sameList(plKindOptions, ["ISK / Kapitalförsäkring / Depåförsäkring", "
   problems.push(`the kind of saving offers ${plKindOptions.join(" | ")}, expected the two tax categories: ISK / Kapitalförsäkring / Depåförsäkring and Depå / VP-konto / Fondkonto`);
 }
 // What the person is told: a private pension is a pension insurance or an IPS; each kind of saving says how it is taxed.
-const plNotes = async () => (await pl.locator(".pa-grid .pl-field-note").allTextContents()).map(plNorm);
+const plNotes = async () => (await pl.locator(".pa-grid .saving-note").allTextContents()).map(plNorm);
 const plNotesStart = await plNotes();
 if (!/Privatpensionärenpensionsförsäkringellerips\(individuelltpensionssparande\)/i.test(plNotesStart[0] ?? "")) {
   problems.push(`under the private pension fields the page says "${plNotesStart[0]}", expected that it is a pension insurance or an IPS`);
 }
-if (!/Schablonbeskattat/.test(plNotesStart[1] ?? "") || (await pl.locator(".pa-grid .pl-field-note-prompt").count()) !== 0) {
-  problems.push(`for an ISK the page says "${plNotesStart[1]}" (prompt ${await pl.locator(".pa-grid .pl-field-note-prompt").count()}), expected the standard-return note and no prompt`);
+if (!/Schablonbeskattat/.test(plNotesStart[1] ?? "") || (await pl.locator(".pa-grid .saving-note-prompt").count()) !== 0) {
+  problems.push(`for an ISK the page says "${plNotesStart[1]}" (prompt ${await pl.locator(".pa-grid .saving-note-prompt").count()}), expected the standard-return note and no prompt`);
 }
 
 // Private pension: the same pot as the individual occupational pension, so the same numbers; the two add up.
@@ -3167,8 +3393,8 @@ const plDepotHint = plNorm(await pl.locator('label:has([data-setting="plSavingsC
 console.log(`pension lasts   : depot 300 000 + 2 000/month -> lifelong ${plDepotLife[1]}, 5 years ${plDepotFive[1]}, labels ${plDepotLabels.join(" | ")}`);
 if (plDepotLife[1] !== "26483" || plDepotFive[1] !== "56022") problems.push(`in a depot the lifelong payout reads ${plDepotLife[1]} and 5 years ${plDepotFive[1]}, expected 26483 and 56022`);
 if (!sameList(plDepotLabels, ["Depå/VP-konto/Fondkonto,kapital", "Depå/VP-konto/Fondkonto,månadssparande"])) problems.push(`choosing the depot labels the fields ${plDepotLabels.join(" | ")}`);
-if (!/30%reavinstskatt.*Angekapitalvärdetefterreavinstskatt–detduharattleva/.test(plDepotNote) || (await pl.locator(".pa-grid .pl-field-note-prompt").count()) !== 1) {
-  problems.push(`for a depot the page says "${plDepotNote}" (prompt ${await pl.locator(".pa-grid .pl-field-note-prompt").count()}), expected the prompt to enter the capital after capital gains tax`);
+if (!/30%reavinstskatt.*Angekapitalvärdetefterreavinstskatt–detduharattleva/.test(plDepotNote) || (await pl.locator(".pa-grid .saving-note-prompt").count()) !== 1) {
+  problems.push(`for a depot the page says "${plDepotNote}" (prompt ${await pl.locator(".pa-grid .saving-note-prompt").count()}), expected the prompt to enter the capital after capital gains tax`);
 }
 if (!/efterreavinstskatt/.test(plDepotHint)) problems.push(`the capital field's hint for a depot reads "${plDepotHint}", expected it to say after capital gains tax`);
 
@@ -3200,6 +3426,16 @@ await plType("plSavingsMonthly", 0);
 const plIskGone = await plCells(0);
 if (plIskGone[1] !== "22289") problems.push(`emptying the ISK left the lifelong payout at ${plIskGone[1]}, expected 22289`);
 if ((await pl.locator('[data-role="pl-options"] thead th').count()) !== 8) problems.push("without anything tax-free the options table should not have the ISK column");
+
+// The age tab's Pension and Privat sparande sections are this tab's, field by field: the same markup, by construction
+// (one module builds both; the age tab's one extra box, which switches its agreement off, is left out). Its markup was taken
+// while that tab was on screen (`paSection`).
+const plSection = await sectionsOf(pl, "pl");
+const sectionDiffers = paSection.findIndex((html, i) => html !== plSection[i]);
+console.log(`pension lasts   : Pension and Privat sparande sections ${paSection.length} elements vs ${plSection.length} in the age tab, first difference at ${sectionDiffers}`);
+if (paSection.length < 8 || paSection.length !== plSection.length || sectionDiffers !== -1) {
+  problems.push(`the age tab's Pension and Privat sparande sections are not this tab's: ${paSection.length} against ${plSection.length} elements, first difference at ${sectionDiffers}: ${paSection[sectionDiffers] ?? ""} vs ${plSection[sectionDiffers] ?? ""}`);
+}
 
 // No agreement and nothing saved: nothing for a payout period to apply to, and the page says so.
 await plSetting("plScheme").selectOption("1");

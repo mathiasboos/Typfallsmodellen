@@ -58,6 +58,7 @@ import {
   comparisonToXlsxRows,
   computeComparison,
   defaultSchemes,
+  kindsPaid,
   schemeFitsCohort,
   schemeName,
   schemeSector,
@@ -141,7 +142,10 @@ const referenceStudy = (comparison: Comparison): Study => comparison.entries[0]!
 
 function measureOf(comparison: Comparison, l: Lang): string {
   const tax = comparison.input.afterTax ? say(l, "efter skatt", "after tax") : say(l, "före skatt", "before tax");
-  return say(l, `allmän pension + tjänstepension, ${tax}`, `public + occupational pension, ${tax}`);
+  // The same savings in every entry, so the baseline's say whether there are any.
+  const kinds = kindsPaid(referenceStudy(comparison));
+  const own = kinds.individual || kinds.savings ? say(l, " + eget sparande", " + own saving") : "";
+  return say(l, `allmän pension + tjänstepension${own}, ${tax}`, `public + occupational pension${own}, ${tax}`);
 }
 
 // --------------------------------------------------------------- the answer ---
@@ -541,8 +545,8 @@ function notesPanel(comparison: Comparison, l: Lang): HTMLElement {
     ),
     say(
       l,
-      `Pension är allmän pension plus tjänstepension enligt avtalsområdet, ${tax}, från pensionsstart; privat sparande ingår inte. Belopp i ${priceText(study, l)}, utan diskontering: en krona vid 90 års ålder räknas som en krona vid 70. Tjänstepensionen tas ut samtidigt som den allmänna pensionen, oavsett inställningen under Avancerat för uttagsålder.`,
-      `Pension is public pension plus the occupational pension of the agreement, ${tax}, from the start; private saving is not included. Amounts are in ${priceText(study, l)}, not discounted: a krona at 90 counts as much as one at 70. Occupational pension is drawn together with the public pension, whatever the Advanced setting for its start age says.`,
+      `Pension är allmän pension plus tjänstepension enligt avtalsområdet, ${tax}, från pensionsstart. Eventuell individuell tjänstepension, privat pension och privat sparande från fälten ovan ingår lika för alla avtalsområden (privat sparande är skattefritt och räknas lika före och efter skatt), så det är avtalets tillägg som skiljer dem åt. Belopp i ${priceText(study, l)}, utan diskontering: en krona vid 90 års ålder räknas som en krona vid 70. Tjänstepensionen tas ut samtidigt som den allmänna pensionen, oavsett inställningen under Avancerat för uttagsålder.`,
+      `Pension is public pension plus the occupational pension of the agreement, ${tax}, from the start. Any individual occupational pension, private pension and private savings from the fields above are included alike for every agreement (private savings are not taxed and count the same before and after tax), so it is the agreement's addition that sets them apart. Amounts are in ${priceText(study, l)}, not discounted: a krona at 90 counts as much as one at 70. Occupational pension is drawn together with the public pension, whatever the Advanced setting for its start age says.`,
     ),
     say(
       l,
@@ -556,8 +560,8 @@ function notesPanel(comparison: Comparison, l: Lang): HTMLElement {
     ),
     say(
       l,
-      `Personen, antagandena och livslängdsintervallet kommer från fälten ovan; valet av avtalsområde där och ”Räkna med tjänstepension” påverkar inte jämförelsen. Skatteinställningar, löneprofil och prisbas kommer från Avancerat. Standardantagandena (0 % inflation, 0 % real löneökning) skjuter brytpunkterna flera år framåt jämfört med antagandet om en växande lön – pröva ”Med löneökning” för att se hur mycket svaret beror på det.`,
-      `The person, the assumptions and the lifespan range come from the fields above; the agreement chosen there and “Include occupational pension” do not affect the comparison. Tax settings, wage profile and price basis come from Advanced. The default assumptions (0 % inflation, 0 % real wage growth) push the break-even points several years later than if wages grow – try “With wage growth” to see how much the answer depends on it.`,
+      `Personen, sparandet, antagandena och livslängdsintervallet kommer från fälten ovan; valet av avtalsområde där och ”Räkna med avtalets tjänstepension” påverkar inte jämförelsen. Skatteinställningar, löneprofil och prisbas kommer från Avancerat. Standardantagandena (0 % inflation, 0 % real löneökning) skjuter brytpunkterna flera år framåt jämfört med antagandet om en växande lön – pröva ”Med löneökning” för att se hur mycket svaret beror på det.`,
+      `The person, the savings, the assumptions and the lifespan range come from the fields above; the agreement chosen there and “Include the agreement's occupational pension” do not affect the comparison. Tax settings, wage profile and price basis come from Advanced. The default assumptions (0 % inflation, 0 % real wage growth) push the break-even points several years later than if wages grow – try “With wage growth” to see how much the answer depends on it.`,
     ),
     say(
       l,
@@ -709,8 +713,8 @@ export function createAgreementCompare(lang: Lang, onChange: () => void): Compar
     title.textContent = say(l, "Jämför avtalsområden", "Compare agreements");
     intro.textContent = say(
       l,
-      `Samma person och samma sju pensionsåldrar, men olika avtalsområden, sida vid sida. Personen, antagandena och livslängdsintervallet kommer från fälten ovan; ”${t("occupational", l)}” och ”Räkna med tjänstepension” där gäller bara det enskilda läget.`,
-      `The same person and the same seven retirement ages, but different collective agreements, side by side. The person, the assumptions and the lifespan range come from the fields above; “${t("occupational", l)}” and “Include occupational pension” there only apply to the single view.`,
+      `Samma person och samma sju pensionsåldrar, men olika avtalsområden, sida vid sida. Personen, sparandet, antagandena och livslängdsintervallet kommer från fälten ovan; ”${t("occupational", l)}” och ”Räkna med avtalets tjänstepension” där gäller bara det enskilda läget.`,
+      `The same person and the same seven retirement ages, but different collective agreements, side by side. The person, the savings, the assumptions and the lifespan range come from the fields above; “${t("occupational", l)}” and “Include the agreement's occupational pension” there only apply to the single view.`,
     );
     pickLabel.textContent = say(l, "Avtalsområden", "Agreements");
     chipsBox.setAttribute("aria-label", say(l, "Avtalsområden att jämföra", "Agreements to compare"));

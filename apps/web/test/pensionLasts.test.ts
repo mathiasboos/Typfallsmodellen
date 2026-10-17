@@ -25,7 +25,6 @@ import {
   LIFELONG,
   PAYOUTS,
   PAYOUT_YEARS,
-  SAVINGS_KINDS,
   TOLERANCE,
   assess,
   balanceText,
@@ -47,13 +46,9 @@ import {
   payoutName,
   runPayouts,
   runsKey,
-  savingYear,
-  savingsKindName,
   seriesToCsv,
   seriesToXlsxRows,
   slotOfPayout,
-  taxFreeSaving,
-  taxedSaving,
 } from "../src/pensionLasts.js";
 import type { Lasts, LastsInput } from "../src/pensionLasts.js";
 
@@ -198,22 +193,6 @@ describe("the context a payout is run with", () => {
     expect(lastsContext(context, { ...base, individualMonthly: 0.5 }, 10).ipsMonthly).toBe(0);
     expect(lastsContext(context, { ...base, individualMonthly: 2 }, 10).ipsMonthly).toBe(2);
     expect(lastsContext(context, { ...base, individualCapital: -5 }, 10).ipsOpening).toBe(0);
-  });
-
-  it("counts the saving from the model's today, or from the retirement year if that has passed", () => {
-    expect(savingYear(base, context)).toBe(context.ipsStart);
-    expect(savingYear({ ...base, born: 1959, retirementAge: 66 }, context)).toBe(2025);
-    expect(savingYear(base, { ...context, ipsStart: 2040 })).toBe(2040);
-  });
-
-  it("never counts it from so early that the run cannot book the capital", () => {
-    // Booked at the end of the year before, in a year the run covers: from the model's first age
-    // (1) or the age work starts, whichever is earlier. 1990 + 1 + 1 is the earliest for a 1990 cohort.
-    const early = { ...context, ipsStart: 1950 };
-    expect(savingYear({ ...base, born: 1990, retirementAge: 68 }, early)).toBe(1992);
-    expect(savingYear({ ...base, born: 1990, startWorkAge: 15, retirementAge: 68 }, { ...early, modelStartAge: 15 })).toBe(2006);
-    expect(savingYear({ ...base, born: 1990, retirementAge: 68 }, { ...context, ipsStart: 1992 })).toBe(1992);
-    expect(savingYear({ ...base, born: 1990, retirementAge: 68 }, { ...context, ipsStart: 1991 })).toBe(1992);
   });
 
   it("still pays out the capital when Avancerat's saving year is from before the person's time", () => {
@@ -660,36 +639,6 @@ describe("the private pension and the private savings", () => {
   const netOf = (l: Lasts, payout: number) => optionOf(l, payout).run.net;
 
   describe("as the model's saving", () => {
-    it("name the two kinds the drop-down offers, the schablon-taxed ones first, and the model's own number for each", () => {
-      expect(SAVINGS_KINDS.map((k) => [k.id, k.kind, k.sv])).toEqual([
-        ["isk", 2, "ISK / Kapitalförsäkring / Depåförsäkring"],
-        ["depot", 3, "Depå / VP-konto / Fondkonto"],
-      ]);
-      expect(savingsKindName("isk", "en")).toBe("ISK / Endowment insurance / Depot insurance");
-      expect(savingsKindName("depot", "en")).toBe("Securities account / Fund account");
-      expect(savingsKindName("depot", "sv")).toBe("Depå / VP-konto / Fondkonto");
-    });
-
-    it("add up the individual pension and the private pension, and nothing else", () => {
-      const both = { ...base, individualCapital: 100_000, individualMonthly: 1_000, privateCapital: 50_000, privateMonthly: 500 };
-      expect(taxedSaving(both)).toEqual({ capital: 150_000, monthly: 1_500 });
-      // Private savings are not taxed as income, whichever kind they are in, so they are no part of what is.
-      for (const savingsKind of ["isk", "depot"] as const) {
-        expect(taxedSaving({ ...both, savingsKind, savingsCapital: 25_000, savingsMonthly: 250 })).toEqual({
-          capital: 150_000,
-          monthly: 1_500,
-        });
-      }
-    });
-
-    it("keep the tax-free saving apart, as the model's ISK (2) or a depot (3), and none without anything in it", () => {
-      expect(taxFreeSaving(base)).toBeNull();
-      expect(taxFreeSaving({ ...base, ...isk })).toEqual({ capital: 400_000, monthly: 1_500, kind: 2 });
-      expect(taxFreeSaving({ ...base, ...isk, savingsKind: "depot" })).toEqual({ capital: 400_000, monthly: 1_500, kind: 3 });
-      expect(taxFreeSaving({ ...base, savingsKind: "depot", savingsMonthly: 1_000 })).toMatchObject({ capital: 0, kind: 3 });
-      expect(taxFreeSaving({ ...base, savingsKind: "isk", savingsCapital: -5, savingsMonthly: -5 })).toBeNull();
-    });
-
     it("give the pension run the sum as IPS, and the savings run its own amounts as an ISK or a depot", () => {
       const input = { ...base, individualCapital: 100_000, individualMonthly: 1_000, privateCapital: 50_000, privateMonthly: 500, ...isk };
       expect(lastsContext(context, input, 10)).toMatchObject({ privateSavingKind: 0, ipsOpening: 150_000, ipsMonthly: 1_500 });

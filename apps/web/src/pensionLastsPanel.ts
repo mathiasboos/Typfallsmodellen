@@ -54,7 +54,6 @@ import {
   BUDGET_BOUNDS,
   CHART_PAYOUTS,
   LIFELONG,
-  SAVINGS_KINDS,
   balanceText,
   budgetIdOf,
   budgetMatrix,
@@ -70,13 +69,13 @@ import {
   payoutName,
   runPayouts,
   runsKey,
-  savingYear,
-  savingsKindName,
   seriesToCsv,
   seriesToXlsxRows,
   slotOfPayout,
 } from "./pensionLasts.js";
 import type { Assessment, Lasts, LastsInput, PayoutOption, PayoutRuns } from "./pensionLasts.js";
+import { savingYear, savingsNotes } from "./privateSavings.js";
+import { createSavingsInputs } from "./savingsInputs.js";
 import { cell, headCell } from "./tables.js";
 
 // The sheet's own ranges, duplicated rather than imported for the same reason
@@ -87,8 +86,6 @@ const RETIREMENT: Bounds = { ...span(RETIREMENT_AGES), step: 1 };
 const LIFESPAN: Bounds = { ...LIFESPAN_BOUNDS, step: 1 };
 const SALARY: Bounds = { min: 0, max: 1_000_000, step: 100 };
 const BUDGET: Bounds = { ...BUDGET_BOUNDS };
-const CAPITAL: Bounds = { min: 0, max: 20_000_000, step: 10_000 };
-const SAVING: Bounds = { min: 0, max: 100_000, step: 100 };
 
 const clampTo = (value: number, bounds: Bounds): number => Math.min(Math.max(value, bounds.min), bounds.max);
 
@@ -245,6 +242,17 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     grid.append(title);
   }
 
+  const savingsUi = createSavingsInputs({
+    prefix: "pl",
+    grid,
+    relabels,
+    lang,
+    value: () => input,
+    update: (patch) => update(patch),
+    savingStart: () => savingStart(),
+    group,
+  });
+
   // Person
   group("Person", "Person");
   const bornField = number(input.born, BORN, (born) => update({ born }));
@@ -369,124 +377,10 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   relabels.push(schemeSelect.relabel);
   field(schemeSelect.element, (l) => ({ label: t("occupational", l) }), "field field-wide");
 
-  /**
-   * A line of small print across the grid, under the field it explains; the returned function
-   * redoes it. `prompt` marks one that asks the person to do something, which is set in ink.
-   */
-  function noteLine(text: (l: Lang) => string, prompt: () => boolean = () => false): { element: HTMLElement; relabel: (l: Lang) => void } {
-    const element = h("p", "pl-field-note");
-    const relabel = (l: Lang): void => {
-      element.textContent = text(l);
-      element.classList.toggle("pl-field-note-prompt", prompt());
-    };
-    relabel(lang);
-    relabels.push(relabel);
-    grid.append(element);
-    return { element, relabel };
-  }
-
-  /**
-   * Capital and monthly saving of one kind of saving, side by side. The grid would
-   * put two fields wherever its columns happen to fall; a pair is one row at every
-   * width, each caption over its own box, and is relabelled by `caption`.
-   */
-  function savingPair(
-    caption: (l: Lang) => { capital: string; monthly: string },
-    capital: { value: number; set: (value: number) => Partial<LastsInput>; setting: string },
-    monthly: { value: number; set: (value: number) => Partial<LastsInput>; setting: string },
-    capitalHint: (l: Lang) => string = (l) => say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
-  ) {
-    const pair = h("div", "field-pair");
-    grid.append(pair);
-    const own = fieldSet(pair, relabels, lang);
-    const capitalField = own.number(capital.value, CAPITAL, (value) => update(capital.set(value)));
-    capitalField.element.dataset.setting = capital.setting;
-    const relabelCapital = own.field(
-      capitalField.element,
-      (l) => ({ label: caption(l).capital, hint: capitalHint(l) }),
-      "field field-stack",
-    );
-    const monthlyField = own.number(monthly.value, SAVING, (value) => update(monthly.set(value)));
-    monthlyField.element.dataset.setting = monthly.setting;
-    const relabelMonthly = own.field(
-      monthlyField.element,
-      (l) => ({ label: caption(l).monthly, hint: say(l, "kr/mån fram till pensionen", "SEK/month until retirement") }),
-      "field field-stack",
-    );
-    /** The captions depend on the drop-down and the hint on the saving year, so they are redone when either changes. */
-    const relabel = (l: Lang): void => {
-      relabelCapital(l);
-      relabelMonthly(l);
-    };
-    return { capitalField, monthlyField, relabel };
-  }
-
-  const individual = savingPair(
-    (l) => ({
-      capital: say(l, "Individuell tjänstepension, kapital", "Individual occupational pension, capital"),
-      monthly: say(l, "Individuell tjänstepension, månadssparande", "Individual occupational pension, monthly saving"),
-    }),
-    { value: input.individualCapital, set: (individualCapital) => ({ individualCapital }), setting: "plCapital" },
-    { value: input.individualMonthly, set: (individualMonthly) => ({ individualMonthly }), setting: "plSaving" },
-  );
-  const privatePension = savingPair(
-    (l) => ({
-      capital: say(l, "Privat pension, kapital", "Private pension, capital"),
-      monthly: say(l, "Privat pension, månadssparande", "Private pension, monthly saving"),
-    }),
-    { value: input.privateCapital, set: (privateCapital) => ({ privateCapital }), setting: "plPrivCapital" },
-    { value: input.privateMonthly, set: (privateMonthly) => ({ privateMonthly }), setting: "plPrivSaving" },
-  );
-  noteLine((l) =>
-    say(
-      l,
-      "Privat pension är en pensionsförsäkring eller IPS (individuellt pensionssparande), och beskattas som inkomst när den betalas ut.",
-      "Private pension is a pension insurance or an IPS (individual pension saving), and is taxed as income when paid out.",
-    ),
-  );
-
-  // Private saving: what it is held in decides how it is taxed, and names the two fields.
-  group("Privat sparande", "Private savings");
-  const kindSelect = select(
-    SAVINGS_KINDS.map((k, index) => ({ value: index, label: (l: Lang) => say(l, k.sv, k.en) })),
-    SAVINGS_KINDS.findIndex((k) => k.id === input.savingsKind),
-    (index) => update({ savingsKind: SAVINGS_KINDS[index]!.id }),
-  );
-  kindSelect.element.dataset.setting = "plSavingsKind";
-  relabels.push(kindSelect.relabel);
-  field(kindSelect.element, (l) => ({ label: say(l, "Typ av sparande", "Type of saving") }), "field field-wide");
-  // What each kind means for the tax; for a depot the capital is asked for after the tax on its gain.
-  const kindNote = noteLine(
-    (l) =>
-      input.savingsKind === "depot"
-        ? say(
-            l,
-            "Vinsten beskattas med 30 % reavinstskatt när du säljer. Ange kapitalvärdet efter reavinstskatt – det du har att leva av.",
-            "The gain is taxed at 30% when you sell. Enter the capital value after capital gains tax – what you have to live on.",
-          )
-        : say(
-            l,
-            "Schablonbeskattat: skatten tas ut på kapitalet varje år, och utbetalningen är skattefri.",
-            "Taxed on a standard return: the tax is taken on the capital each year, and the payout is tax-free.",
-          ),
-    () => input.savingsKind === "depot",
-  );
-  const savings = savingPair(
-    (l) => ({
-      capital: `${savingsKindName(input.savingsKind, l)}, ${say(l, "kapital", "capital")}`,
-      monthly: `${savingsKindName(input.savingsKind, l)}, ${say(l, "månadssparande", "monthly saving")}`,
-    }),
-    { value: input.savingsCapital, set: (savingsCapital) => ({ savingsCapital }), setting: "plSavingsCapital" },
-    { value: input.savingsMonthly, set: (savingsMonthly) => ({ savingsMonthly }), setting: "plSavingsMonthly" },
-    (l) =>
-      input.savingsKind === "depot"
-        ? say(
-            l,
-            `kr · efter reavinstskatt, värde vid ${savingStart()} års början`,
-            `SEK · after capital gains tax, value at the start of ${savingStart()}`,
-          )
-        : say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
-  );
+  // The individual occupational pension, the private pension and the private savings: built by
+  // `savingsInputs.ts`, which "Bästa pensionsålder" is built with too, so the two tabs ask the same way.
+  savingsUi.appendPension();
+  savingsUi.appendPrivateSavings();
 
   // Assumptions: two ready-made sets, then the three numbers behind them.
   group("Antaganden", "Assumptions");
@@ -561,13 +455,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     budgetSelect.element.value = String(tier === undefined || tier < 0 ? OWN_BUDGET : tier);
     budgetField.setValue(input.budget);
     schemeSelect.element.value = String(input.scheme);
-    individual.capitalField.setValue(input.individualCapital);
-    individual.monthlyField.setValue(input.individualMonthly);
-    privatePension.capitalField.setValue(input.privateCapital);
-    privatePension.monthlyField.setValue(input.privateMonthly);
-    kindSelect.element.value = String(SAVINGS_KINDS.findIndex((k) => k.id === input.savingsKind));
-    savings.capitalField.setValue(input.savingsCapital);
-    savings.monthlyField.setValue(input.savingsMonthly);
+    savingsUi.sync(currentLang);
     inflationField.setValue(input.yearlyInflation);
     growthField.setValue(input.realGrowth);
     returnField.setValue(input.realReturn);
@@ -585,10 +473,6 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       relabelRetirement,
       relabelLifespan,
       relabelSalary,
-      individual.relabel,
-      privatePension.relabel,
-      savings.relabel,
-      kindNote.relabel,
     ]) {
       relabel(currentLang);
     }
@@ -1170,6 +1054,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     details.dataset.role = "pl-notes";
     details.append(h("summary", undefined, say(l, "Antaganden och metod", "Assumptions and method")));
     const bodyBox = h("div", "field-note-body");
+    const savings = savingsNotes(l, lasts.runs.savingYear);
     const paragraphs = [
       say(
         l,
@@ -1181,16 +1066,9 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
         `Utbetalningstiden är modellens inställning "Temporärt uttag" för tjänstepension och privat sparande: pensionen betalas ut jämnt under 5–20 hela år från pensionsstart och slutar sedan, eller livsvarigt. Allmän pension påverkas inte. Kortare tid ger mer per månad eftersom samma kapital delas på färre år; hur mycket styrs av avtalets egna antaganden om ränta och livslängd.`,
         `The payout period is the model's "Temporary withdrawal" setting for occupational pension and private saving: the pension is paid evenly over 5–20 whole years from the start and then stops, or for life. The public pension is not affected. A shorter time pays more a month because the same capital is shared over fewer years; how much is set by the agreement's own assumptions about interest and life expectancy.`,
       ),
-      say(
-        l,
-        `Individuell tjänstepension och privat pension (en pensionsförsäkring eller IPS) räknas som modellens privata pensionssparande (IPS) och beskattas som inkomst vid utbetalning, precis som tjänstepension. De behandlas lika och läggs därför ihop. Kapitalet du har, och månadssparandet fram till pensionen, räknas från ${lasts.runs.savingYear} (Avancerat > Sparandet börjar år; har pensionen redan börjat räknas kapitalet vid pensionsstart). Månadssparandet är ett fast belopp i kronor och räknas inte upp med inflationen. Allt betalas ut över samma period som avtalets tjänstepension.`,
-        `Individual occupational pension and private pension (a pension insurance or an IPS) are counted as the model's private pension saving (IPS) and are taxed as income when paid out, like an occupational pension. They are treated alike and so are added together. The capital you have, and the monthly saving until retirement, count from ${lasts.runs.savingYear} (Advanced > Saving starts in; if the pension has already started, the capital counts at the start). The monthly saving is a fixed number of kronor and is not raised with inflation. Everything is paid out over the same period as the agreement's occupational pension.`,
-      ),
-      say(
-        l,
-        `Privat sparande är pengar som redan är inkomstbeskattade, och betalas ut skattefritt. På ISK, kapitalförsäkring och depåförsäkring tas en schablonskatt ut på kapitalet varje år (modellens ISK). På depå, VP-konto och fondkonto beskattas vinsten med 30 % när du säljer: ange därför kapitalvärdet efter reavinstskatt, det du har att leva av. Avkastningen på det beskattas med 30 % varje år, som om vinsten realiserades då. Månadssparandet sätts av efter skatt.`,
-        `Private savings are money that has already been taxed as income, and are paid out tax-free. An ISK, an endowment insurance or a depot insurance pays a standard tax on the capital each year (the model's ISK). On a securities account or a fund account the gain is taxed at 30% when you sell: enter the capital value after capital gains tax, what you have to live on. Its return is taxed at 30% each year, as if the gain were realised then. The monthly saving is put aside after tax.`,
-      ),
+      // The two paragraphs about the savings are the other tab's too (`savingsNotes`); this tab adds how long they are paid.
+      `${savings.pension} ${say(l, "Allt betalas ut över samma period som avtalets tjänstepension.", "Everything is paid out over the same period as the agreement's occupational pension.")}`,
+      savings.savings,
       say(
         l,
         `Budgeten är ett belopp per månad efter skatt i dagens penningvärde: minPensions exempel (samma belopp som Pensionsöversikten) eller ditt eget. Före skatt visas den bruttoinkomst som modellens skatt gör till budgeten efter skatt, år för år, inte en genomsnittlig skattesats. Eftersom skatten aldrig lämnar mindre för mer täcker en pension budgeten före skatt precis när den täcker den efter skatt.`,
@@ -1264,7 +1142,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     const lasts = evaluate(runs, effective);
     derived = { finalSalary: runs.finalSalary, monthlySalary: effective.monthlySalary };
     relabelSalary(currentLang);
-    for (const pair of [individual, privatePension, savings]) pair.relabel(currentLang);
+    savingsUi.relabel(currentLang);
     results.replaceChildren(...buildResults(lasts, currentLang));
   }
 

@@ -30,10 +30,12 @@
  * - **Pension** is the model's own per-age matrix (`result.rows`, the same
  *   numbers Figur 2 and Table 2 are drawn from): allmän pension (income,
  *   supplementary and premium pension, guarantee pension and IPT) plus
- *   occupational pension, before tax; or `netto`, after tax, from retirement.
- *   Amounts are in whatever price basis the shared context asks for (fixed
- *   reference-year prices by default) and are **not discounted**: a krona at 90
- *   counts as much as one at 70.
+ *   occupational pension and the person's own pension saving (see below), before
+ *   tax; or `netto`, after tax, from retirement. Whatever is paid out without
+ *   tax (the private savings) is the same before and after. Amounts are in
+ *   whatever price basis the shared context asks for (fixed reference-year
+ *   prices by default) and are **not discounted**: a krona at 90 counts as much
+ *   as one at 70.
  * - **"Lever till D år"** means pension is paid for every year from retirement
  *   up to the year before the D-year birthday -- `D - retirement age` whole
  *   years. The model's row for age `a` is the year in which the person turns
@@ -45,20 +47,32 @@
  *   start has caught up with the earlier one, interpolated linearly inside the
  *   year (payments are monthly, so the running total is piecewise linear).
  *
- * Two settings of the shared (Avancerat) context are overridden, on purpose,
- * because they would break the question being asked:
+ * One setting of the shared (Avancerat) context is overridden, on purpose,
+ * because it would break the question being asked:
  *
  * - `tjpPar: 0` -- occupational pension follows each alternative's own
  *   retirement age. An Avancerat "draw occupational pension from age X" would
  *   otherwise pay it before the public pension starts for some alternatives
  *   and not others, and `netto` (which still contains salary before
  *   retirement) could not be summed from that age.
- * - `ipsMonthly`/`pbhIps: 0` -- private saving is out of scope here; the study
- *   is about allmän pension and the collective agreements.
  *
  * Every other shared setting (tax, wage profile, own salary path excluded --
  * that is a `TypfallInput` field this tab does not read -- price basis, the
  * "temporary occupational withdrawal" years, ...) applies as in the other tabs.
+ *
+ * **Own saving.** The person's pension saving beyond the public pension and the
+ * agreement is asked for, and carried by the model, exactly as "Hur länge räcker
+ * pensionen?" does (`privateSavings.ts` says what the kinds are and how the model
+ * is made to carry them): an individual occupational pension and a private pension
+ * -- one pot of taxed income, the model's IPS -- and private savings in an ISK or a
+ * depot, paid out tax-free and run on their own. Capital counts from the year
+ * Avancerat calls "Sparandet börjar år", and the monthly saving goes on until the
+ * alternative's own retirement age -- so a later start also means more years of
+ * saving and of return, which is part of what waiting is worth. They are paid out
+ * over the shared "temporary withdrawal" years (lifelong unless Avancerat says
+ * otherwise): an IPS for as long as the person lives, money until it is spent. The
+ * private savings do not depend on the agreement, so a comparison of agreements
+ * runs them once per age and not once per agreement.
  *
  * **Comparing agreements** (`computeComparison`). The same person, the same
  * seven alternatives, run once per collective agreement: "Saknar tjänstepension"
@@ -91,6 +105,8 @@ import type {
 
 import type { Lang } from "./i18n.js";
 import { retirementAge } from "./kpis.js";
+import { defaultSavings, savingSettings, taxFreeSaving } from "./privateSavings.js";
+import type { SavingPerson, SavingsInput } from "./privateSavings.js";
 import { csvLine, delimiterFor } from "./tables.js";
 import { kronorCell } from "./xlsx.js";
 import type { SheetData } from "./xlsx.js";
@@ -127,7 +143,7 @@ export function slotOf(offset: number): Slot {
 
 // ------------------------------------------------------------------ input ---
 
-export interface StudyInput {
+export interface StudyInput extends SavingsInput {
   readonly born: number;
   readonly startWorkAge: number;
   /** Per month, in the reference year's money -- `TypfallInput.monthlySalary`. */
@@ -143,7 +159,7 @@ export interface StudyInput {
   readonly lifespanTo: number;
   /** Sum `netto` (after tax) instead of the pension before tax. */
   readonly afterTax: boolean;
-  /** False runs every alternative as if no collective agreement applied. */
+  /** False runs every alternative as if no collective agreement applied; the person's own saving still counts. */
   readonly includeOccupational: boolean;
 }
 
@@ -168,6 +184,7 @@ export function defaultStudyInput(): StudyInput {
     lifespanTo: 95,
     afterTax: false,
     includeOccupational: true,
+    ...defaultSavings(),
   };
 }
 
@@ -211,9 +228,28 @@ export function studyTypfall(input: StudyInput, retirementAgeValue: number): Typ
   });
 }
 
-/** The shared context with the two settings the question cannot survive turned off (see the file comment). */
+/** The shared context with the setting the question cannot survive turned off (see the file comment). */
 export function studyContext(shared: ModelContext): ModelContext {
-  return { ...shared, tjpPar: 0, ipsMonthly: 0, pbhIps: 0 };
+  return { ...shared, tjpPar: 0 };
+}
+
+/** The person as the saving sees them: it runs until the alternative's own retirement age. */
+function studyPerson(input: StudyInput, retirementAgeValue: number): SavingPerson {
+  return { born: input.born, startWorkAge: input.startWorkAge, retirementAge: retirementAgeValue };
+}
+
+/**
+ * The context for one alternative's run: the study's, with the model's private saving carrying
+ * the pension side of the savings -- the individual occupational pension and the private
+ * pension, the model's IPS, taxed as income.
+ */
+export function pensionContext(shared: ModelContext, input: StudyInput, retirementAgeValue: number): ModelContext {
+  return { ...studyContext(shared), ...savingSettings(shared, studyPerson(input, retirementAgeValue), input, "pension") };
+}
+
+/** The same for the other run: the private savings, an ISK or a depot, paid out tax-free (`savingSettings`). */
+export function savingsContext(shared: ModelContext, input: StudyInput, retirementAgeValue: number): ModelContext {
+  return { ...studyContext(shared), ...savingSettings(shared, studyPerson(input, retirementAgeValue), input, "savings") };
 }
 
 // ---------------------------------------------------------------- results ---
@@ -228,19 +264,27 @@ export interface StudyOption {
   readonly annual: readonly number[];
   /** Of which occupational pension, before tax -- also in the after-tax view, where it cannot be split out of net income and is not shown. */
   readonly occupational: readonly number[];
+  /** Of which individual occupational pension and private pension (the model's IPS), before tax; taxed as income, so not split out of net income either. */
+  readonly individual: readonly number[];
+  /** Of which private savings (ISK, depot): not taxed as income, so the same before and after tax. */
+  readonly savings: readonly number[];
   /** `cumulative[x]`: kronor paid out before the x-th birthday. */
   readonly cumulative: readonly number[];
   /** The first year's measure per month -- what the first row of the age matrix says. */
   readonly firstYearMonthly: number;
   /** Table 1's own "Slutlön", per month. */
   readonly finalSalaryMonthly: number;
-  /** Table 1's own total at retirement (gross or after tax), per month -- which counts
+  /** Table 1's own total at retirement (gross or after tax), per month, with the private savings -- which counts
    * the last year's pension right straight away, where the yearly flow picks it up in year two. */
   readonly table1Monthly: number;
   /** Table 1's share of final salary for the same line. */
   readonly table1Share: number;
   /** Table 1's occupational pension line, per month, before tax. */
   readonly table1OccupationalMonthly: number;
+  /** Table 1's private pension saving line (individual and private pension), per month, before tax. */
+  readonly table1IndividualMonthly: number;
+  /** Table 1's private savings line, per month; not taxed. Also in `table1Monthly`. */
+  readonly table1SavingsMonthly: number;
   readonly warnings: readonly string[];
 }
 
@@ -291,48 +335,115 @@ function cumulativeOf(annual: readonly number[]): number[] {
   return out;
 }
 
+function table1Row(result: TypfallResult, key: string): TypfallResult["table1"][number] | undefined {
+  return result.table1.find((r) => r.key === key);
+}
+
 function table1(result: TypfallResult, key: string): { monthly: number; share: number } {
-  const row = result.table1.find((r) => r.key === key);
+  const row = table1Row(result, key);
   return { monthly: row?.monthly ?? 0, share: row?.shareOfFinalSalary ?? 0 };
+}
+
+/** What the tax-free private savings pay out when the person retires at one age. */
+export interface SavingsPayout {
+  /** Kronor a year at each age 0..`LAST_AGE`; zero before the retirement age. */
+  readonly annual: readonly number[];
+  /** Table 1's private savings line at retirement: per month, and in kronor a year at retirement's prices. */
+  readonly table1Monthly: number;
+  readonly table1Adjusted: number;
+  readonly warnings: readonly string[];
+}
+
+/** Payouts already worked out, by retirement age -- valid for studies of one person, whatever their agreement. */
+export type SavingsPayouts = Map<number, SavingsPayout>;
+
+/**
+ * The private savings' payouts for one retirement age; undefined when there are no private
+ * savings. They are a run of their own -- the model carries one kind of private saving at a
+ * time, and this one is not taxed as income (`savingSettings`) -- and the agreement plays no
+ * part in them, so the run is made without one and `known` keeps it for the next study of the
+ * same person.
+ */
+function savingsPayout(
+  input: StudyInput,
+  shared: ModelContext,
+  deaths: DeathProbabilities,
+  requested: number,
+  known: SavingsPayouts,
+): SavingsPayout | undefined {
+  if (taxFreeSaving(input) === null) return undefined;
+  const kept = known.get(requested);
+  if (kept !== undefined) return kept;
+
+  const typfall = { ...studyTypfall(input, requested), scheme: Scheme.None };
+  const result = run(typfall, savingsContext(shared, input, requested), { deaths });
+  const par = retirementAge(typfall, result);
+  const annual = new Array<number>(LAST_AGE + 1).fill(0);
+  for (const row of result.rows) {
+    if (row.age >= par && row.age <= LAST_AGE) annual[row.age] = row.pps;
+  }
+  const line = table1Row(result, Table1Key.PrivateSavingAfterTax);
+  const payout: SavingsPayout = {
+    annual,
+    table1Monthly: line?.monthly ?? 0,
+    table1Adjusted: line?.adjusted ?? 0,
+    warnings: result.warnings.map((w) => w.message),
+  };
+  known.set(requested, payout);
+  return payout;
 }
 
 function buildOption(
   input: StudyInput,
-  context: ModelContext,
+  shared: ModelContext,
   deaths: DeathProbabilities,
   requested: number,
   middle: number,
+  known: SavingsPayouts,
 ): StudyOption | undefined {
   const typfall = studyTypfall(input, requested);
-  const result = run(typfall, context, { deaths });
+  const result = run(typfall, pensionContext(shared, input, requested), { deaths });
   const par = retirementAge(typfall, result);
   // A run that corrected the age is another alternative's twin -- skip it
   // rather than draw the same line twice under the wrong label.
   if (par !== requested) return undefined;
+  const own = savingsPayout(input, shared, deaths, requested, known);
 
   const annual = new Array<number>(LAST_AGE + 1).fill(0);
   const occupational = new Array<number>(LAST_AGE + 1).fill(0);
+  const individual = new Array<number>(LAST_AGE + 1).fill(0);
+  const savings = new Array<number>(LAST_AGE + 1).fill(0);
   for (const row of result.rows) {
     if (row.age < par || row.age > LAST_AGE) continue;
     const publicPension = row.ip + row.tp + row.pp + row.garp + row.ptillagg;
-    annual[row.age] = input.afterTax ? row.netto : publicPension + row.tjp;
+    const untaxed = own?.annual[row.age] ?? 0;
+    annual[row.age] = (input.afterTax ? row.netto : publicPension + row.tjp + row.ips) + untaxed;
     occupational[row.age] = row.tjp;
+    individual[row.age] = row.ips;
+    savings[row.age] = untaxed;
   }
 
+  // Table 1's total counts the private savings too: they are not in its gross, and its own line for them is a separate row.
   const total = table1(result, input.afterTax ? Table1Key.PensionAfterTax : Table1Key.TotalGross);
+  const base = table1Row(result, input.afterTax ? Table1Key.SalaryAfterTax : Table1Key.FinalSalary)?.adjusted ?? 0;
+  const savingsShare = own !== undefined && base > 0 ? own.table1Adjusted / base : 0;
   return {
     offset: requested - middle,
     slot: slotOf(requested - middle),
     par,
     annual,
     occupational,
+    individual,
+    savings,
     cumulative: cumulativeOf(annual),
     firstYearMonthly: (annual[par] ?? 0) / 12,
     finalSalaryMonthly: table1(result, Table1Key.FinalSalary).monthly,
-    table1Monthly: total.monthly,
-    table1Share: total.share,
+    table1Monthly: total.monthly + (own?.table1Monthly ?? 0),
+    table1Share: total.share + savingsShare,
     table1OccupationalMonthly: table1(result, Table1Key.OccupationalPension).monthly,
-    warnings: result.warnings.map((w) => w.message),
+    table1IndividualMonthly: table1(result, Table1Key.PrivateSaving).monthly,
+    table1SavingsMonthly: own?.table1Monthly ?? 0,
+    warnings: [...result.warnings.map((w) => w.message), ...(own?.warnings ?? [])],
   };
 }
 
@@ -375,15 +486,24 @@ export function lifespanRow(options: readonly StudyOption[], lifespan: number): 
   };
 }
 
-/** Runs the study: one `run()` per alternative, then the sums and break-evens. */
-export function computeStudy(input: StudyInput, shared: ModelContext, deaths: DeathProbabilities): Study {
+/**
+ * Runs the study: one `run()` per alternative -- two, with private savings -- then the sums and
+ * break-evens. `known` holds the private savings' payouts already worked out for this person,
+ * and is filled in with any that were not (`computeComparison` shares one between agreements).
+ */
+export function computeStudy(
+  input: StudyInput,
+  shared: ModelContext,
+  deaths: DeathProbabilities,
+  known: SavingsPayouts = new Map(),
+): Study {
   const context = studyContext(shared);
   const ages = alternativeAges(input.born, input.centre);
   const middle = referenceAge(input.born, input.centre);
 
   const options: StudyOption[] = [];
   for (const age of ages) {
-    const option = buildOption(input, context, deaths, age, middle);
+    const option = buildOption(input, shared, deaths, age, middle, known);
     if (option !== undefined) options.push(option);
   }
 
@@ -429,6 +549,26 @@ export function computeStudy(input: StudyInput, shared: ModelContext, deaths: De
   };
 }
 
+/** Which kinds of pension a study pays in the first year of its alternatives -- what a table can split that year into. */
+export interface KindsPaid {
+  /** The agreement's occupational pension. */
+  readonly occupational: boolean;
+  /** The individual occupational pension and the private pension. */
+  readonly individual: boolean;
+  /** The private savings. */
+  readonly savings: boolean;
+}
+
+export function kindsPaid(study: Study): KindsPaid {
+  const paid = (pick: (option: StudyOption) => readonly number[]): boolean =>
+    study.options.some((option) => (pick(option)[option.par] ?? 0) > 0);
+  return {
+    occupational: paid((o) => o.occupational),
+    individual: paid((o) => o.individual),
+    savings: paid((o) => o.savings),
+  };
+}
+
 /** Which alternative is best over each unbroken run of lifespans: "80-82: 65, 83: 66, ...". */
 export function bestRuns(study: Study): readonly { from: number; to: number; option: StudyOption }[] {
   const runs: { from: number; to: number; option: StudyOption }[] = [];
@@ -470,7 +610,7 @@ export function finalSalaryOf(
   shared: ModelContext,
   deaths: DeathProbabilities,
 ): number {
-  const result = run(studyTypfall(input, retirementAgeValue), studyContext(shared), { deaths });
+  const result = run(studyTypfall(input, retirementAgeValue), pensionContext(shared, input, retirementAgeValue), { deaths });
   return table1(result, Table1Key.FinalSalary).monthly;
 }
 
@@ -637,11 +777,13 @@ export function computeComparison(
   cache: Map<SchemeId, Study> = new Map(),
 ): Comparison {
   const entries: AgreementEntry[] = [];
+  // The same person under every agreement, so their private savings pay out the same: worked out once per age.
+  const known: SavingsPayouts = new Map();
   for (const scheme of SCHEME_ORDER) {
     if (scheme !== Scheme.None && !schemes.includes(scheme)) continue;
     let study = cache.get(scheme);
     if (study === undefined) {
-      study = computeStudy({ ...input, scheme, includeOccupational: true }, shared, deaths);
+      study = computeStudy({ ...input, scheme, includeOccupational: true }, shared, deaths, known);
       cache.set(scheme, study);
     }
     entries.push({ scheme, fits: schemeFitsCohort(scheme, input.born), study });

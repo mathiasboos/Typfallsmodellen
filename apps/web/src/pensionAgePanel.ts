@@ -15,7 +15,7 @@
  * click, the same one-time snapshot Mikrosim's import button takes. What it does
  * read live is the shared `ModelContext` (Avancerat: tax, wage profile, price
  * basis, ...), which `main.ts` hands over through `setContext` on every render --
- * `pensionAge.ts` says which two of those settings it deliberately ignores.
+ * `pensionAge.ts` says which of those settings it deliberately ignores.
  *
  * Results are live, in the same way as everywhere else here: a change runs the
  * model once per alternative retirement age (seven runs, a few milliseconds) and
@@ -43,7 +43,7 @@
  * row for any of it. The field captions that do have one (birth year, start of
  * work, occupational pension, ...) use it, so they read exactly as in Prognos.
  */
-import { BIRTH_YEARS, RETIREMENT_AGES, SCHEME_CHOICES, Scheme, riktalderFor } from "@typfallsmodellen/engine";
+import { BIRTH_YEARS, RETIREMENT_AGES, SCHEME_CHOICES, Scheme, defaultContext, riktalderFor } from "@typfallsmodellen/engine";
 import type { DeathProbabilities, ModelContext, SchemeId, TypfallInput } from "@typfallsmodellen/engine";
 
 import type { Bounds, Relabel } from "./controls.js";
@@ -60,6 +60,7 @@ import {
   centreBounds,
   computeStudy,
   defaultStudyInput,
+  kindsPaid,
   matrixToCsv,
   matrixToXlsxRows,
   monthlySalaryForTarget,
@@ -88,6 +89,8 @@ import {
   tableOf,
   tkr,
 } from "./pensionAgeUi.js";
+import { savingYear, savingsNotes } from "./privateSavings.js";
+import { createSavingsInputs } from "./savingsInputs.js";
 import { cell, headCell } from "./tables.js";
 
 // The sheet's own ranges; duplicated rather than imported for the same reason
@@ -99,6 +102,9 @@ const SALARY: Bounds = { min: 0, max: 1_000_000, step: 100 };
 const LIFESPAN: Bounds = { ...LIFESPAN_BOUNDS, step: 1 };
 
 const clampTo = (value: number, bounds: Bounds): number => Math.min(Math.max(value, bounds.min), bounds.max);
+
+/** What the saving year is before the shared context has arrived. */
+const DEFAULT_CONTEXT = defaultContext();
 
 /** The two sets of economic assumptions the tab offers a button for. */
 const PRESETS = [
@@ -190,6 +196,19 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     grid.append(title);
   }
 
+  // The individual occupational pension, the private pension and the private savings are asked for by
+  // `savingsInputs.ts`, the module "Hur länge räcker pensionen?" is built with too, so the two tabs ask the same way.
+  const savingsUi = createSavingsInputs({
+    prefix: "pa",
+    grid,
+    relabels,
+    lang,
+    value: () => input,
+    update: (patch) => update(patch),
+    savingStart: () => savingStart(),
+    group,
+  });
+
   // Person
   group("Person", "Person");
   const bornField = number(input.born, BORN, (born) => update({ born }));
@@ -202,6 +221,22 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   const startField = number(input.startWorkAge, START_WORK, (startWorkAge) => update({ startWorkAge }));
   startField.element.dataset.setting = "paStartWork";
   field(startField.element, (l) => ({ label: t("startWorkAge", l), hint: rangeHint(START_WORK) }));
+
+  const centreField = number(input.centre, RETIREMENT, (centre) => update({ centre }));
+  centreField.element.dataset.setting = "paCentre";
+  const relabelCentre = field(centreField.element, (l) => {
+    const alternatives = alternativeRange();
+    return {
+      label: say(l, "Referensålder", "Reference age"),
+      hint: say(l, `Jämför ${alternatives}`, `Compares ${alternatives}`),
+    };
+  });
+  const riktalderBox = check(riktalderLocked, (locked) => {
+    riktalderLocked = locked;
+    update({});
+  });
+  riktalderBox.dataset.setting = "paRiktalder";
+  field(riktalderBox, (l) => ({ label: t("riktalderCheckbox", l) }), "field field-check");
 
   const salaryAsSelect = select(
     [
@@ -261,7 +296,7 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   const relabelInclude = field(
     includeBox,
     (l) => ({
-      label: say(l, "Räkna med tjänstepension", "Include occupational pension"),
+      label: say(l, "Räkna med avtalets tjänstepension", "Include the agreement's occupational pension"),
       ...(input.scheme === Scheme.None
         ? { hint: say(l, "Välj ett avtalsområde ovan", "Pick an agreement area above") }
         : {}),
@@ -269,21 +304,9 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     "field field-check",
   );
 
-  const centreField = number(input.centre, RETIREMENT, (centre) => update({ centre }));
-  centreField.element.dataset.setting = "paCentre";
-  const relabelCentre = field(centreField.element, (l) => {
-    const alternatives = alternativeRange();
-    return {
-      label: say(l, "Referensålder", "Reference age"),
-      hint: say(l, `Jämför ${alternatives}`, `Compares ${alternatives}`),
-    };
-  });
-  const riktalderBox = check(riktalderLocked, (locked) => {
-    riktalderLocked = locked;
-    update({});
-  });
-  riktalderBox.dataset.setting = "paRiktalder";
-  field(riktalderBox, (l) => ({ label: t("riktalderCheckbox", l) }), "field field-check");
+  // The individual occupational pension and the private pension, then the group of private savings.
+  savingsUi.appendPension();
+  savingsUi.appendPrivateSavings();
 
   // Lifespan
   group("Livslängd", "Lifespan");
@@ -352,6 +375,12 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
 
   // ---- state -> controls -------------------------------------------------------
 
+  /** The year capital and saving count from, as the engine will use it -- for the reference age, the alternatives' middle. */
+  function savingStart(): number {
+    const retirement = referenceAge(input.born, input.centre);
+    return savingYear({ born: input.born, startWorkAge: input.startWorkAge, retirementAge: retirement }, context ?? DEFAULT_CONTEXT);
+  }
+
   function alternativeRange(): string {
     const { min } = centreBounds(input.born);
     const middle = referenceAge(input.born, input.centre);
@@ -375,6 +404,7 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     schemeSelect.element.value = String(input.scheme);
     includeBox.checked = input.includeOccupational;
     includeBox.disabled = input.scheme === Scheme.None;
+    savingsUi.sync(currentLang);
     centreField.setValue(input.centre);
     centreField.element.disabled = riktalderLocked;
     riktalderBox.checked = riktalderLocked;
@@ -518,16 +548,22 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     ribbonBox.append(ribbon);
     body.append(ribbonBox);
 
-    // What the reference age pays at the start, in Table 1's own terms.
-    const occupationalMonthly = reference.table1OccupationalMonthly;
+    // What the reference age pays at the start, in Table 1's own terms, and before tax what it is made of.
+    const kinds = kindsPaid(study);
+    const parts: string[] = [];
+    if (!study.input.afterTax) {
+      if (kinds.occupational) {
+        parts.push(say(l, `tjänstepension ${kronor(reference.table1OccupationalMonthly, l)}`, `occupational pension ${kronor(reference.table1OccupationalMonthly, l)}`));
+      }
+      if (kinds.individual) {
+        parts.push(say(l, `individuell och privat pension ${kronor(reference.table1IndividualMonthly, l)}`, `individual and private pension ${kronor(reference.table1IndividualMonthly, l)}`));
+      }
+      if (kinds.savings) {
+        parts.push(say(l, `privat sparande ${kronor(reference.table1SavingsMonthly, l)}`, `private savings ${kronor(reference.table1SavingsMonthly, l)}`));
+      }
+    }
     const occupationalPart =
-      !study.input.afterTax && study.input.includeOccupational && study.input.scheme !== Scheme.None
-        ? say(
-            l,
-            ` (varav tjänstepension ${kronor(occupationalMonthly, l)} kr/mån)`,
-            ` (of which occupational pension ${kronor(occupationalMonthly, l)} SEK/month)`,
-          )
-        : "";
+      parts.length === 0 ? "" : say(l, ` (varav ${parts.join(", ")} kr/mån)`, ` (of which ${parts.join(", ")} SEK/month)`);
     body.append(
       h(
         "p",
@@ -727,8 +763,9 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   // ---- tables ---------------------------------------------------------------
 
   function timePanel(study: Study, l: Lang): HTMLElement {
-    const occupational =
-      !study.input.afterTax && study.input.includeOccupational && study.input.scheme !== Scheme.None;
+    // Before tax the first year splits into what each kind pays; after tax the tax is not split out of net income.
+    const kinds = kindsPaid(study);
+    const split = !study.input.afterTax && (kinds.occupational || kinds.individual || kinds.savings);
     const last = study.input.lifespanTo;
     const firstPar = Math.min(...study.options.map((o) => o.par));
     const ages: number[] = [];
@@ -744,9 +781,10 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     const head = [
       headCell(say(l, "Start vid", "Start at")),
       headCell(say(l, "Första året", "First year")),
-      ...(occupational
-        ? [headCell(say(l, "varav allmän", "of which public")), headCell(say(l, "varav tjänstepension", "of which occupational"))]
-        : []),
+      ...(split ? [headCell(say(l, "varav allmän", "of which public"))] : []),
+      ...(split && kinds.occupational ? [headCell(say(l, "varav tjänstepension", "of which occupational"))] : []),
+      ...(split && kinds.individual ? [headCell(say(l, "varav individuell och privat", "of which individual and private"))] : []),
+      ...(split && kinds.savings ? [headCell(say(l, "varav privat sparande", "of which private savings"))] : []),
       ...ages.map((age) => headCell(`${age} ${say(l, "år", "yrs")}`)),
       headCell(say(l, "Slutlön", "Final salary")),
     ];
@@ -755,9 +793,14 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
         optionCell(o, optionName(study, o, l)),
         cell(kronor(o.firstYearMonthly, l), "num"),
       ];
-      if (occupational) {
+      if (split) {
         const occ = (o.occupational[o.par] ?? 0) / 12;
-        cells.push(cell(kronor(o.firstYearMonthly - occ, l), "num"), cell(kronor(occ, l), "num"));
+        const ind = (o.individual[o.par] ?? 0) / 12;
+        const sav = (o.savings[o.par] ?? 0) / 12;
+        cells.push(cell(kronor(o.firstYearMonthly - occ - ind - sav, l), "num"));
+        if (kinds.occupational) cells.push(cell(kronor(occ, l), "num"));
+        if (kinds.individual) cells.push(cell(kronor(ind, l), "num"));
+        if (kinds.savings) cells.push(cell(kronor(sav, l), "num"));
       }
       for (const age of ages) cells.push(cell(age >= o.par ? kronor((o.annual[age] ?? 0) / 12, l) : "–", "num"));
       cells.push(cell(kronor(o.finalSalaryMonthly, l), "num"));
@@ -897,11 +940,12 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     details.dataset.role = "pa-notes";
     details.append(h("summary", undefined, say(l, "Antaganden och metod", "Assumptions and method")));
     const bodyBox = h("div", "field-note-body");
+    const savings = savingsNotes(l, savingStart());
     const paragraphs = [
       say(
         l,
-        `Pension är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg) plus tjänstepension om du räknar med den, från pensionsstart. Privat sparande ingår inte. Efter skatt är modellens nettoinkomst. Belopp i ${priceText(study, l)}, utan diskontering: en krona vid 90 års ålder räknas som en krona vid 70.`,
-        `Pension is public pension (income pension, premium pension, guarantee pension and the income-pension supplement) plus occupational pension if you include it, from the start. Private saving is not included. After tax is the model's net income. Amounts are in ${priceText(study, l)}, not discounted: a krona at 90 counts as much as one at 70.`,
+        `Pension är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg) plus tjänstepension om du räknar med den, och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart. Efter skatt är modellens nettoinkomst; privat sparande beskattas inte vid utbetalning och räknas lika före och efter skatt. Belopp i ${priceText(study, l)}, utan diskontering: en krona vid 90 års ålder räknas som en krona vid 70.`,
+        `Pension is public pension (income pension, premium pension, guarantee pension and the income-pension supplement) plus occupational pension if you include it, and any individual occupational pension, private pension and private savings, from the start. After tax is the model's net income; private savings are not taxed when paid out and count the same before and after tax. Amounts are in ${priceText(study, l)}, not discounted: a krona at 90 counts as much as one at 70.`,
       ),
       say(
         l,
@@ -913,6 +957,17 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
         `Tjänstepensionen tas ut samtidigt som den allmänna pensionen i den här fliken, oavsett inställningen under Avancerat för uttagsålder. Avtalsområdet avgör beloppet; modellen varnar inte om det inte hör ihop med födelseåret (ITP-1 gäller födda 1979 och senare, AKAP-KR födda 1986 och senare, PA16 avd 1 födda 1988 och senare).`,
         `Occupational pension is drawn together with the public pension in this tab, whatever the Advanced setting for its start age says. The agreement area decides the amount; the model does not warn if it does not fit the birth year (ITP-1 is for those born 1979 or later, AKAP-KR 1986 or later, PA16 avd 1 1988 or later).`,
       ),
+      // The two paragraphs about the savings are the other tab's too (`savingsNotes`); this tab adds what is its own.
+      `${savings.pension} ${say(
+        l,
+        "Sparandet fortsätter fram till respektive pensionsålder, så ett senare val ger också fler år av sparande och avkastning. Allt betalas ut under samma tid som avtalets tjänstepension (Avancerat > Temporärt uttag; annars livsvarigt).",
+        "The saving goes on until each retirement age, so a later choice also means more years of saving and of return. Everything is paid out over the same time as the agreement's occupational pension (Advanced > Temporary withdrawal; otherwise for life).",
+      )}`,
+      `${savings.savings} ${say(
+        l,
+        "Privat sparande har ingen utbetalning för livet: pengarna fördelas över din förväntade återstående livslängd (modellens regel) och är sedan slut, medan en pension betalas ut så länge du lever.",
+        "Private savings have no payout for life: the money is spread over your expected remaining life (the model's rule) and is then gone, where a pension is paid for as long as you live.",
+      )}`,
       say(
         l,
         `Standardantagandena (0 % inflation, 0 % real löneökning) ger i fast penningvärde en inkomstpension som sjunker ungefär 1,6 % per år, och garantipensionen, som följer priserna, fyller på allt mer i hög ålder. Det skjuter brytpunkterna flera år framåt jämfört med antagandet om en växande lön – pröva knappen "Med löneökning" för att se hur mycket svaret beror på det.`,
@@ -920,8 +975,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
       ),
       say(
         l,
-        `Fliken har egna indata och följer inte formuläret till vänster; "Hämta från Prognos" kopierar dem en gång. Skatteinställningar, löneprofil och prisbas kommer från Avancerat.`,
-        `The tab has its own inputs and does not follow the form on the left; "Use the Forecast values" copies them once. Tax settings, wage profile and price basis come from Advanced.`,
+        `Fliken har egna indata och följer inte formuläret till vänster; "Hämta från Prognos" kopierar dem en gång (sparandet följer inte med). Skatteinställningar, löneprofil och prisbas kommer från Avancerat. Kända kapitalvärden som anges under Avancerat gäller också här.`,
+        `The tab has its own inputs and does not follow the form on the left; "Use the Forecast values" copies them once (the savings do not come along). Tax settings, wage profile and price basis come from Advanced. Known capital values entered under Advanced apply here too.`,
       ),
     ];
     for (const text of paragraphs) bodyBox.append(h("p", undefined, text));
@@ -940,6 +995,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   }
 
   function redraw(): void {
+    // The year the capital counts from is the shared context's, which may have changed.
+    savingsUi.relabel(currentLang);
     if (context === undefined || deaths === undefined) return;
     let effective = input;
     if (salaryAs === "final") {
@@ -967,8 +1024,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     inputsTitle.textContent = say(l, "Bästa pensionsålder", "Best retirement age");
     intro.textContent = say(
       l,
-      "Jämför sju pensionsåldrar kring en referensålder och se vilken som ger mest pension totalt, beroende på hur länge du lever. Ändra personen, avtalsområdet eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
-      "Compares seven retirement ages around a reference age and shows which pays the most in total, depending on how long you live. Change the person, the agreement area or the assumptions and everything is recalculated at once. The tab has its own inputs and is affected only by the settings under Advanced.",
+      "Jämför sju pensionsåldrar kring en referensålder och se vilken som ger mest pension totalt, beroende på hur länge du lever. Ändra personen, avtalsområdet, sparandet eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
+      "Compares seven retirement ages around a reference age and shows which pays the most in total, depending on how long you live. Change the person, the agreement area, the savings or the assumptions and everything is recalculated at once. The tab has its own inputs and is affected only by the settings under Advanced.",
     );
     importButton.textContent = say(l, "Hämta från Prognos", "Use the Forecast values");
     resetButton.textContent = say(l, "Återställ", "Reset");

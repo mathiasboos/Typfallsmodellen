@@ -96,6 +96,8 @@ import type { DeathProbabilities, ModelContext, MvaluesRow, SchemeId, TypfallInp
 import type { Lang } from "./i18n.js";
 import { retirementAge } from "./kpis.js";
 import { LAST_AGE, LIFESPAN_BOUNDS, monthlySalaryForFinalSalary, referenceAge } from "./pensionAge.js";
+import { defaultSavings, savingSettings, savingYear, taxFreeSaving } from "./privateSavings.js";
+import type { SavingPart, SavingsInput } from "./privateSavings.js";
 import { csvLine, delimiterFor } from "./tables.js";
 import { kronorCell } from "./xlsx.js";
 import type { SheetData } from "./xlsx.js";
@@ -173,33 +175,7 @@ export const BUDGET_BOUNDS = { min: 0, max: 200_000, step: 100 } as const;
 
 // ----------------------------------------------------------------- input ---
 
-/**
- * What private saving can be held in -- two kinds, as the money is taxed, in the order the
- * drop-down offers them.
- *
- * - `isk`: ISK, kapitalförsäkring and depåförsäkring, which are taxed on a standard return
- *   while the money is saved (schablonbeskattade) and paid out tax-free. The model's
- *   ISK (2); a kapitalförsäkring (1) differs from it by a hair, in how the tax base is
- *   taken, so one stands for the group.
- * - `depot`: depå, VP-konto and fondkonto, where the gain is taxed 30% when it is sold.
- *   The model has no such saving (the engine got `SavingType.Depot`, 3, for this): the
- *   capital is taken after that tax, as the person is asked to type it, and the return
- *   is taxed each year, as if the gain were realised then. Paid out tax-free, the tax
- *   being paid.
- */
-export const SAVINGS_KINDS = [
-  { id: "isk", kind: 2, sv: "ISK / Kapitalförsäkring / Depåförsäkring", en: "ISK / Endowment insurance / Depot insurance" },
-  { id: "depot", kind: 3, sv: "Depå / VP-konto / Fondkonto", en: "Securities account / Fund account" },
-] as const;
-
-export type SavingsKind = (typeof SAVINGS_KINDS)[number]["id"];
-
-export function savingsKindName(kind: SavingsKind, lang: Lang): string {
-  const found = SAVINGS_KINDS.find((k) => k.id === kind) ?? SAVINGS_KINDS[0];
-  return say(lang, found.sv, found.en);
-}
-
-export interface LastsInput {
+export interface LastsInput extends SavingsInput {
   readonly born: number;
   readonly startWorkAge: number;
   /** The age the public and the occupational pension start at. */
@@ -211,20 +187,6 @@ export interface LastsInput {
   readonly scheme: SchemeId;
   /** A month after tax, in the reference year's money. */
   readonly budget: number;
-  /** Individual occupational pension already saved, kronor. */
-  readonly individualCapital: number;
-  /** Individual occupational pension saved each month until retirement, kronor. */
-  readonly individualMonthly: number;
-  /** Private pension (pension insurance, IPS) already saved, kronor. */
-  readonly privateCapital: number;
-  /** Private pension saved each month until retirement, kronor. */
-  readonly privateMonthly: number;
-  /** What the private saving below is held in. */
-  readonly savingsKind: SavingsKind;
-  /** Private saving already saved, kronor. */
-  readonly savingsCapital: number;
-  /** Private saving put aside each month until retirement, kronor. */
-  readonly savingsMonthly: number;
   readonly yearlyInflation: number;
   readonly realGrowth: number;
   readonly realReturn: number;
@@ -249,13 +211,7 @@ export function defaultLastsInput(): LastsInput {
     monthlySalary: base.monthlySalary,
     scheme: Scheme.Itp1,
     budget: BUDGETS[1].amount,
-    individualCapital: 0,
-    individualMonthly: 0,
-    privateCapital: 0,
-    privateMonthly: 0,
-    savingsKind: "isk",
-    savingsCapital: 0,
-    savingsMonthly: 0,
+    ...defaultSavings(),
     yearlyInflation: base.yearlyInflation,
     realGrowth: base.realGrowth,
     realReturn: base.realReturn,
@@ -273,19 +229,6 @@ export function normaliseLasts(input: LastsInput): LastsInput {
   return { ...input, retirementAge: retirement, lifespan };
 }
 
-/**
- * The year the capital and the saving count from -- the model's today, or the retirement year if that has passed.
- *
- * Never so early that the run cannot book the capital: it is credited at the end of
- * the year before, which has to be a year the run covers, and the run starts at the
- * model's first age or the age work starts, whichever is earlier. A "Sparandet börjar
- * år" in Avancerat from before the person's time would otherwise drop the capital.
- */
-export function savingYear(input: LastsInput, shared: ModelContext): number {
-  const earliest = input.born + Math.min(shared.modelStartAge, input.startWorkAge) + 1;
-  return Math.max(Math.min(shared.ipsStart, input.born + input.retirementAge), earliest);
-}
-
 export function lastsTypfall(input: LastsInput): TypfallInput {
   return defaultInput({
     born: input.born,
@@ -299,69 +242,26 @@ export function lastsTypfall(input: LastsInput): TypfallInput {
   });
 }
 
-/** A saving's capital already saved and what is put aside each month, kronor. */
-export interface Saving {
-  readonly capital: number;
-  readonly monthly: number;
-}
-
-const amount = (n: number): number => (Number.isFinite(n) ? Math.max(n, 0) : 0);
-
-/**
- * What is paid out as taxed income: the individual occupational pension and the private
- * pension -- a pension insurance or an IPS. The model has one pot for both (its IPS): the
- * same return, the same payout period, the same tax, so what is saved in each simply adds up.
- */
-export function taxedSaving(input: LastsInput): Saving {
-  return {
-    capital: amount(input.individualCapital) + amount(input.privateCapital),
-    monthly: amount(input.individualMonthly) + amount(input.privateMonthly),
-  };
-}
-
-/**
- * What is paid out tax-free -- the private savings, whichever of the two kinds they are held
- * in, the tax on them having been paid already or being paid on the way -- and the model's
- * number for the kind; null when there is nothing in them.
- */
-export function taxFreeSaving(input: LastsInput): (Saving & { readonly kind: 2 | 3 }) | null {
-  const found = SAVINGS_KINDS.find((k) => k.id === input.savingsKind) ?? SAVINGS_KINDS[0];
-  const saving = { capital: amount(input.savingsCapital), monthly: amount(input.savingsMonthly) };
-  if (saving.capital <= 0 && saving.monthly <= 0) return null;
-  return { ...saving, kind: found.kind };
-}
-
 /**
  * The shared context with what the question needs: the payout period for both
  * pensions, the occupational pension starting with the public one, fixed prices,
- * and the model's private saving carrying one of two things.
- *
- * `"pension"` is everything paid out as taxed income (`taxedSaving`): the model's
- * IPS, `privateSavingKind: 0`. `"savings"` is the private savings (`taxFreeSaving`),
- * an ISK or a depot, run on its own because the model carries one kind of private
- * saving per run. Nothing else differs between the two, and the two payouts just
- * add: the tax-free one is no part of what the tax is taken from.
- *
- * `ipsMonthly` of 1 or less would be read as a share of income (a landmine
- * `advanced.ts` describes), so a saving that small is none.
+ * and the model's private saving carrying one of two things (`savingSettings`):
+ * `"pension"`, everything paid out as taxed income, or `"savings"`, the tax-free
+ * private savings, which are a run of their own.
  */
 export function lastsContext(
   shared: ModelContext,
   input: LastsInput,
   payout: number,
-  part: "pension" | "savings" = "pension",
+  part: SavingPart = "pension",
 ): ModelContext {
-  const saving = part === "pension" ? { ...taxedSaving(input), kind: 0 } : (taxFreeSaving(input) ?? { capital: 0, monthly: 0, kind: 0 });
   return {
     ...shared,
     tjpPar: 0,
     priceBasis: 1,
     tempTjpUttag: payout,
     tempIpsUttag: payout,
-    privateSavingKind: saving.kind,
-    ipsMonthly: saving.monthly > 1 ? saving.monthly : 0,
-    ipsStart: savingYear(input, shared),
-    ipsOpening: saving.capital,
+    ...savingSettings(shared, input, input, part),
   };
 }
 

@@ -11,11 +11,10 @@
  * Nothing here holds state. It lives in a module of its own because the two
  * panels would otherwise have to import each other.
  */
-import { Scheme } from "@typfallsmodellen/engine";
-
 import { kronor, locale } from "./format.js";
 import { t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
+import { kindsPaid } from "./pensionAge.js";
 import type { Study, StudyOption } from "./pensionAge.js";
 import { cell } from "./tables.js";
 
@@ -116,11 +115,13 @@ export const priceText = (study: Study, l: Lang): string => {
   return say(l, "löpande priser", "current prices");
 };
 
+/** What a study adds up, in a few words: "allmän pension + tjänstepension + eget sparande, före skatt". */
 export const measureText = (study: Study, l: Lang): string => {
-  const occupational = study.input.includeOccupational && study.input.scheme !== Scheme.None;
-  const kind = occupational
+  const kinds = kindsPaid(study);
+  const kind = kinds.occupational
     ? say(l, "allmän pension + tjänstepension", "public + occupational pension")
     : say(l, "allmän pension", "public pension");
+  const own = kinds.individual || kinds.savings ? say(l, " + eget sparande", " + own saving") : "";
   const tax = study.input.afterTax ? say(l, "efter skatt", "after tax") : say(l, "före skatt", "before tax");
-  return `${kind}, ${tax}`;
+  return `${kind}${own}, ${tax}`;
 };

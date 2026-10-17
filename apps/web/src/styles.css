@@ -1188,10 +1188,11 @@ body {
   max-width: 34rem;
 }
 .field-pair > .field-stack { grid-row: span 3; grid-template-rows: subgrid; }
-/* Small print under a field of "Hur länge räcker pensionen?": what a kind of saving is, or what to
-   enter. One that asks the person to do something is set in ink. */
-.pl-field-note { grid-column: 1 / -1; margin: -4px 0 0; max-width: 60ch; font-size: 0.74rem; color: var(--text-muted); }
-.pl-field-note-prompt { color: var(--text-primary); font-weight: 600; }
+/* Small print under a field of the savings inputs ("Hur länge räcker pensionen?", "Bästa
+   pensionsålder"): what a kind of saving is, or what to enter. One that asks the person to do
+   something is set in ink. */
+.saving-note { grid-column: 1 / -1; margin: -4px 0 0; max-width: 60ch; font-size: 0.74rem; color: var(--text-muted); }
+.saving-note-prompt { color: var(--text-primary); font-weight: 600; }
 .field-stack { grid-template-columns: minmax(0, 1fr); align-content: start; }
 .field-stack > .field-label { grid-column: 1; grid-row: 1; align-self: end; }
 .field-stack > input { grid-column: 1; grid-row: 2; }

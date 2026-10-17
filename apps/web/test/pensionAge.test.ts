@@ -43,11 +43,14 @@ import {
   defaultSchemes,
   defaultStudyInput,
   finalSalaryOf,
+  kindsPaid,
   lifespanRow,
   matrixToCsv,
   monthlySalaryForFinalSalary,
   monthlySalaryForTarget,
+  pensionContext,
   referenceAge,
+  savingsContext,
   schemeFitsCohort,
   schemeName,
   schemeSector,
@@ -59,6 +62,7 @@ import {
   totalSeries,
 } from "../src/pensionAge.js";
 import type { Study, StudyOption } from "../src/pensionAge.js";
+import { LIFELONG, defaultLastsInput, normaliseLasts, runPayouts } from "../src/pensionLasts.js";
 import { kronorCell } from "../src/xlsx.js";
 
 const deaths = loadDeathProbabilities();
@@ -137,16 +141,51 @@ describe("the typfall and context an alternative is run with", () => {
     expect(studyTypfall({ ...base, scheme: Scheme.SafLo, includeOccupational: true }, 68).scheme).toBe(Scheme.SafLo);
   });
 
-  it("force occupational pension to follow retirement and leave private saving out", () => {
-    const shared = { ...context, tjpPar: 62, ipsMonthly: 5000, pbhIps: 250_000 };
+  it("force occupational pension to follow retirement", () => {
+    const shared = { ...context, tjpPar: 62 };
     const used = studyContext(shared);
     expect(used.tjpPar).toBe(0);
-    expect(used.ipsMonthly).toBe(0);
-    expect(used.pbhIps).toBe(0);
     // Everything else is the shared context untouched.
     expect(used.priceBasis).toBe(shared.priceBasis);
     expect(used.referenceYear).toBe(shared.referenceYear);
     expect(used.marginal).toBe(shared.marginal);
+    expect(used.ipsMonthly).toBe(shared.ipsMonthly);
+  });
+
+  it("leave the model's private saving to the study's own savings, whatever Avancerat says", () => {
+    const shared = { ...context, ipsMonthly: 5000, privateSavingKind: 2, ipsOpening: 123_456 };
+    // No savings typed: no saving at all, and no ISK either.
+    const none = pensionContext(shared, base, 67);
+    expect([none.privateSavingKind, none.ipsMonthly, none.ipsOpening]).toEqual([0, 0, 0]);
+    expect(savingsContext(shared, base, 67).ipsOpening).toBe(0);
+    // Typed: the individual and the private pension are one pot, taxed as income (kind 0); the savings are another, tax-free.
+    const saved = {
+      ...base,
+      individualCapital: 100_000,
+      individualMonthly: 1_000,
+      privateCapital: 200_000,
+      privateMonthly: 2_000,
+      savingsKind: "depot" as const,
+      savingsCapital: 50_000,
+      savingsMonthly: 500,
+    };
+    const pension = pensionContext(shared, saved, 67);
+    expect([pension.privateSavingKind, pension.ipsMonthly, pension.ipsOpening]).toEqual([0, 3_000, 300_000]);
+    const savings = savingsContext(shared, saved, 67);
+    expect([savings.privateSavingKind, savings.ipsMonthly, savings.ipsOpening]).toEqual([3, 500, 50_000]);
+    // Both carry the study's own overrides.
+    expect(pension.tjpPar).toBe(0);
+    expect(savings.tjpPar).toBe(0);
+  });
+
+  it("count the saving from the model's own start year until the alternative's retirement", () => {
+    const early = pensionContext(context, { ...base, individualCapital: 1 }, 62);
+    const late = pensionContext(context, { ...base, individualCapital: 1 }, 70);
+    expect(early.ipsStart).toBe(context.ipsStart);
+    expect(late.ipsStart).toBe(context.ipsStart);
+    // A cohort whose retirement falls before the model's start year counts from the retirement year.
+    const old = pensionContext(context, { ...base, born: 1960, individualCapital: 1 }, 62);
+    expect(old.ipsStart).toBe(Math.min(context.ipsStart, 1960 + 62));
   });
 });
 
@@ -275,11 +314,223 @@ describe("the collective agreements", () => {
 });
 
 describe("the shared context", () => {
-  it("is not allowed to start occupational pension early or add private saving", () => {
-    const shared = { ...context, tjpPar: 62, ipsMonthly: 5000, pbhIps: 250_000 };
+  it("is not allowed to start occupational pension early or add private saving of its own", () => {
+    const shared = { ...context, tjpPar: 62, ipsMonthly: 5000, privateSavingKind: 2, ipsOpening: 250_000 };
     const overridden = computeStudy({ ...base, scheme: Scheme.Itp1 }, shared, deaths);
     const plain = computeStudy({ ...base, scheme: Scheme.Itp1 }, context, deaths);
     expect(overridden.rows.map((r) => r.totals)).toEqual(plain.rows.map((r) => r.totals));
+  });
+});
+
+describe("the person's own savings", () => {
+  const plain = study;
+  const pensionOnly = { ...base, individualCapital: 300_000, individualMonthly: 2_000 };
+  const savingsOnly = { ...base, savingsKind: "isk" as const, savingsCapital: 400_000, savingsMonthly: 1_000 };
+  /** Both kinds at once: the pension fields of `pensionOnly` and the savings of `savingsOnly`. */
+  const everyKind = { ...pensionOnly, savingsKind: savingsOnly.savingsKind, savingsCapital: savingsOnly.savingsCapital, savingsMonthly: savingsOnly.savingsMonthly };
+  const withPension = computeStudy(pensionOnly, context, deaths);
+  const withSavings = computeStudy(savingsOnly, context, deaths);
+
+  it("change nothing when there are none -- or one krona a month, which the model would read as a share of income", () => {
+    const nothing = computeStudy({ ...base, privateMonthly: 1, savingsMonthly: 1, savingsKind: "depot" }, context, deaths);
+    expect(nothing.rows.map((r) => r.totals)).toEqual(plain.rows.map((r) => r.totals));
+    for (const option of nothing.options) {
+      expect(option.individual.every((v) => v === 0)).toBe(true);
+      expect(option.savings.every((v) => v === 0)).toBe(true);
+      expect(option.table1SavingsMonthly).toBe(0);
+    }
+  });
+
+  it("add a lifelong pension of their own from each alternative's retirement age, taxed as income", () => {
+    withPension.options.forEach((option, i) => {
+      const without = plain.options[i]!;
+      expect(option.individual[option.par - 1]).toBe(0);
+      expect(option.individual[option.par]).toBeGreaterThan(0);
+      expect(option.individual[LAST_AGE - 1]).toBe(option.individual[option.par]);
+      expect(option.savings.every((v) => v === 0)).toBe(true);
+      for (let age = option.par; age <= LAST_AGE; age += 1) {
+        expect(option.annual[age]).toBeCloseTo(without.annual[age]! + option.individual[age]!, 6);
+      }
+    });
+  });
+
+  it("are one pot of taxed income whichever of the two pension fields they are typed in", () => {
+    const split = computeStudy(
+      { ...base, individualCapital: 100_000, privateCapital: 200_000, individualMonthly: 500, privateMonthly: 1_500 },
+      context,
+      deaths,
+    );
+    expect(split.rows.map((r) => r.totals)).toEqual(withPension.rows.map((r) => r.totals));
+  });
+
+  it("pay a later start more, since it saves for longer and the capital earns longer", () => {
+    const monthly = computeStudy({ ...base, individualMonthly: 3_000 }, context, deaths);
+    const first = monthly.options.map((o) => o.individual[o.par]!);
+    first.forEach((amount, i) => {
+      if (i > 0) expect(amount).toBeGreaterThan(first[i - 1]!);
+    });
+    const savings = computeStudy({ ...base, savingsMonthly: 3_000 }, context, deaths);
+    const kept = savings.options.map((o) => o.savings[o.par]!);
+    kept.forEach((amount, i) => {
+      if (i > 0) expect(amount).toBeGreaterThan(kept[i - 1]!);
+    });
+  });
+
+  it("can move the best age: waiting is worth more with saving to wait for", () => {
+    expect(runsOf(plain)).toEqual(["80-82:65", "83-83:66", "84-86:68", "87-95:71"]);
+    expect(runsOf(withPension)).toEqual(["80-82:65", "83-83:67", "84-85:68", "86-95:71"]);
+  });
+
+  it("are paid out tax-free when they are private savings, so the same before and after tax", () => {
+    const net = computeStudy({ ...savingsOnly, afterTax: true }, context, deaths);
+    const plainNet = computeStudy({ ...base, afterTax: true }, context, deaths);
+    withSavings.options.forEach((option, i) => {
+      expect(option.savings[option.par]).toBeGreaterThan(0);
+      expect(net.options[i]!.savings).toEqual(option.savings);
+      // The tax on everything else is what it was: the savings come on top of the net pension.
+      for (let age = option.par; age <= LAST_AGE; age += 1) {
+        expect(net.options[i]!.annual[age]! - net.options[i]!.savings[age]!).toBeCloseTo(plainNet.options[i]!.annual[age]!, 6);
+        expect(option.annual[age]).toBeCloseTo(plain.options[i]!.annual[age]! + option.savings[age]!, 6);
+      }
+    });
+  });
+
+  it("spend the money until it is gone, where a pension of their own is paid for life", () => {
+    const option = withSavings.options[3]!;
+    expect(option.savings[option.par]).toBeGreaterThan(0);
+    expect(option.savings[LAST_AGE - 1]).toBe(0);
+    const lifelong = withPension.options[3]!;
+    expect(lifelong.individual[LAST_AGE - 1]).toBeGreaterThan(0);
+  });
+
+  it("take the tax on a pension of their own out of the after-tax total, but not the tax-free savings", () => {
+    const grossGain = computeStudy(pensionOnly, context, deaths).rows[0]!.totals[3]! - plain.rows[0]!.totals[3]!;
+    const netPlain = computeStudy({ ...base, afterTax: true }, context, deaths);
+    const netGain = computeStudy({ ...pensionOnly, afterTax: true }, context, deaths).rows[0]!.totals[3]! - netPlain.rows[0]!.totals[3]!;
+    expect(netGain).toBeGreaterThan(0);
+    expect(netGain).toBeLessThan(grossGain);
+
+    const savingsGain = computeStudy({ ...savingsOnly, afterTax: true }, context, deaths).rows[0]!.totals[3]! - netPlain.rows[0]!.totals[3]!;
+    const savingsGross = withSavings.rows[0]!.totals[3]! - plain.rows[0]!.totals[3]!;
+    expect(savingsGain).toBeCloseTo(savingsGross, 6);
+  });
+
+  it("pay out as the other tab pays them, for the same savings and the same retirement age", () => {
+    const savings = {
+      individualCapital: 250_000,
+      individualMonthly: 1_500,
+      privateCapital: 50_000,
+      privateMonthly: 500,
+      savingsCapital: 120_000,
+      savingsMonthly: 800,
+    };
+    const shared = { ...context, priceBasis: 1, tempIpsUttag: 0, tempTjpUttag: 0 };
+    for (const savingsKind of ["isk", "depot"] as const) {
+      const here = computeStudy({ ...base, ...savings, savingsKind }, shared, deaths);
+      for (const option of here.options) {
+        const there = runPayouts(
+          normaliseLasts({ ...defaultLastsInput(), ...savings, savingsKind, retirementAge: option.par }),
+          shared,
+          deaths,
+        );
+        const lifelong = there.runs.find((r) => r.payout === LIFELONG)!;
+        expect(option.individual, `${savingsKind} ${option.par}: individual`).toEqual(lifelong.individual);
+        expect(option.savings, `${savingsKind} ${option.par}: savings`).toEqual(lifelong.savings);
+      }
+    }
+  });
+
+  it("differ between an ISK and a depot, which are taxed differently while they are saved", () => {
+    const isk = withSavings.options[3]!;
+    const depot = computeStudy({ ...savingsOnly, savingsKind: "depot" }, context, deaths).options[3]!;
+    expect(depot.savings[depot.par]).toBeGreaterThan(0);
+    expect(depot.savings[depot.par]).not.toBe(isk.savings[isk.par]);
+  });
+
+  it("count the private savings in Table 1's total, and the pension of their own in its gross", () => {
+    const at = 3;
+    const without = plain.options[at]!;
+    const saved = withSavings.options[at]!;
+    expect(saved.table1SavingsMonthly).toBeGreaterThan(0);
+    expect(saved.table1IndividualMonthly).toBe(0);
+    expect(saved.table1Monthly).toBeCloseTo(without.table1Monthly + saved.table1SavingsMonthly, 6);
+    expect(saved.table1Share).toBeGreaterThan(without.table1Share);
+
+    const own = withPension.options[at]!;
+    expect(own.table1IndividualMonthly).toBeGreaterThan(0);
+    expect(own.table1SavingsMonthly).toBe(0);
+    expect(own.table1Monthly).toBeCloseTo(without.table1Monthly + own.table1IndividualMonthly, 6);
+  });
+
+  it("count the private savings in the after-tax Table 1 total too", () => {
+    const net = computeStudy({ ...base, afterTax: true }, context, deaths).options[3]!;
+    const saved = computeStudy({ ...savingsOnly, afterTax: true }, context, deaths).options[3]!;
+    expect(saved.table1Monthly).toBeCloseTo(net.table1Monthly + saved.table1SavingsMonthly, 6);
+    expect(saved.table1Share).toBeGreaterThan(net.table1Share);
+  });
+
+  it("are told apart from the agreement's pension by what the first year is made of", () => {
+    expect(kindsPaid(plain)).toEqual({ occupational: false, individual: false, savings: false });
+    expect(kindsPaid(withPension)).toEqual({ occupational: false, individual: true, savings: false });
+    expect(kindsPaid(withSavings)).toEqual({ occupational: false, individual: false, savings: true });
+    const everything = computeStudy({ ...everyKind, scheme: Scheme.Itp1 }, context, deaths);
+    expect(kindsPaid(everything)).toEqual({ occupational: true, individual: true, savings: true });
+    const agreementOff = computeStudy({ ...pensionOnly, scheme: Scheme.Itp1, includeOccupational: false }, context, deaths);
+    expect(kindsPaid(agreementOff)).toEqual({ occupational: false, individual: true, savings: false });
+  });
+
+  it("leave the final salary alone", () => {
+    expect(finalSalaryOf(everyKind, 67, context, deaths)).toBe(finalSalaryOf(base, 67, context, deaths));
+  });
+
+  it("are worked out once per age however many agreements the same person is run under", () => {
+    const known = new Map();
+    const first = computeStudy({ ...savingsOnly, scheme: Scheme.None }, context, deaths, known);
+    expect(known.size).toBe(first.options.length);
+    const kept = [...known.values()];
+    const second = computeStudy({ ...savingsOnly, scheme: Scheme.Itp1 }, context, deaths, known);
+    expect(known.size).toBe(first.options.length);
+    [...known.values()].forEach((payout, i) => expect(payout).toBe(kept[i]));
+    // ... and an agreement makes no difference to them.
+    second.options.forEach((option, i) => expect(option.savings).toEqual(first.options[i]!.savings));
+    // Nothing is kept when there is nothing to keep.
+    const none = new Map();
+    computeStudy(base, context, deaths, none);
+    expect(none.size).toBe(0);
+  });
+
+  it("are part of what a comparison of agreements is cached for, and of every agreement's total", () => {
+    expect(comparisonKey({ ...base, savingsCapital: 1_000 })).not.toBe(comparisonKey(base));
+    expect(comparisonKey({ ...base, individualMonthly: 1_000 })).not.toBe(comparisonKey(base));
+    expect(comparisonKey({ ...base, savingsKind: "depot" })).not.toBe(comparisonKey(base));
+
+    const schemes = [Scheme.Itp1, Scheme.SafLo];
+    const own = computeComparison(everyKind, schemes, context, deaths);
+    const bare = computeComparison(base, schemes, context, deaths);
+    const rowsOwn = comparisonRows(own, 85, 67);
+    const rowsBare = comparisonRows(bare, 85, 67);
+    rowsOwn.forEach((row, i) => {
+      // Everyone's savings pay out the same, so each total is higher by the same amount ...
+      expect(row.total - rowsBare[i]!.total).toBeCloseTo(rowsOwn[0]!.total - rowsBare[0]!.total, 6);
+      // ... and what an agreement adds is what it was.
+      expect(row.extra).toBeCloseTo(rowsBare[i]!.extra, 6);
+    });
+    expect(rowsOwn[0]!.total).toBeGreaterThan(rowsBare[0]!.total);
+    own.entries.forEach((entry) => {
+      expect(entry.study.options.map((o) => o.savings)).toEqual(own.entries[0]!.study.options.map((o) => o.savings));
+    });
+  });
+
+  it("are not switched off by leaving the agreement out", () => {
+    const off = computeStudy({ ...pensionOnly, scheme: Scheme.Itp1, includeOccupational: false }, context, deaths);
+    expect(off.rows.map((r) => r.totals)).toEqual(withPension.rows.map((r) => r.totals));
+    expect(off.options[0]!.individual[off.options[0]!.par]).toBeGreaterThan(0);
+  });
+
+  it("are counted from the model's start year, as Avancerat sets it", () => {
+    const later = computeStudy(pensionOnly, { ...context, ipsStart: 2030 }, deaths);
+    // Four years of the capital's return, and of the saving, are missing.
+    expect(later.options[3]!.individual[later.options[3]!.par]).toBeLessThan(withPension.options[3]!.individual[withPension.options[3]!.par]!);
   });
 });
 
@@ -316,12 +567,16 @@ describe("break-even", () => {
       par,
       annual: flow,
       occupational: flow.map(() => 0),
+      individual: flow.map(() => 0),
+      savings: flow.map(() => 0),
       cumulative,
       firstYearMonthly: annual / 12,
       finalSalaryMonthly: 0,
       table1Monthly: 0,
       table1Share: 0,
       table1OccupationalMonthly: 0,
+      table1IndividualMonthly: 0,
+      table1SavingsMonthly: 0,
       warnings: [],
     };
   };
