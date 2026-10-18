@@ -20,6 +20,7 @@
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
+import { createAboutPanel } from "./about.js";
 import { createAdvancedPanel } from "./advanced.js";
 import { renderDisposable, renderFigure1, renderFigure2, renderTaxChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
@@ -34,6 +35,7 @@ import { createMikrosimPanel } from "./mikrosim.js";
 import { createPensionAgePanel } from "./pensionAgePanel.js";
 import { createPensionLastsPanel } from "./pensionLastsPanel.js";
 import { createPgbGrid } from "./pgb.js";
+import { commitOnPress } from "./pressCommit.js";
 import { createSalaryPath } from "./salaryPath.js";
 import {
   renderTable1,
@@ -61,8 +63,8 @@ interface View {
 type Mode = "normal" | "advanced";
 
 /** Not a workbook mode -- a second, third, fourth and fifth top-level view
- * alongside the forecast. */
-type Screen = "single" | "compare" | "mikrosim" | "retirement" | "lasts";
+ * alongside the forecast, and the page about the site. */
+type Screen = "single" | "compare" | "mikrosim" | "retirement" | "lasts" | "about";
 
 const deaths = loadDeathProbabilities();
 
@@ -104,6 +106,10 @@ let advancedInput: Partial<TypfallInput> = {};
 
 const root = document.querySelector("#app");
 if (!(root instanceof HTMLElement)) throw new Error("#app is missing from the page");
+
+// Before any panel is built: a number is applied when its field loses focus, which redraws, and
+// that must not happen under a pointer that is on its way to a button.
+commitOnPress();
 
 const header = document.createElement("header");
 header.className = "masthead";
@@ -162,6 +168,8 @@ const pensionAgePanel = createPensionAgePanel(view.lang, () => runInput());
 // The same for "Hur länge räcker pensionen?": its own person, budget and payout
 // periods, with the Forecast form's person copied across on the click.
 const pensionLastsPanel = createPensionLastsPanel(view.lang, () => runInput());
+// Static text, no model run: what the site is for, the disclaimer and how to reach it.
+const aboutPanel = createAboutPanel(view.lang);
 
 /** Everything advanced mode adds, hidden until the mode is switched. */
 const advancedBox = document.createElement("div");
@@ -245,8 +253,9 @@ function screenToggle(): HTMLElement {
     // A proper noun from the workbook's own sheet name -- the same word in
     // both languages, so no `say()`-style branching is needed here.
     { screen: "mikrosim", label: () => "Mikrosim" },
-    { screen: "retirement", label: (l) => (l === "sv" ? "Bästa pensionsålder" : "Best retirement age") },
+    { screen: "retirement", label: (l) => (l === "sv" ? "Bästa pensionsålder?" : "Best retirement age?") },
     { screen: "lasts", label: (l) => (l === "sv" ? "Hur länge räcker pensionen?" : "How long does the pension last?") },
+    { screen: "about", label: (l) => (l === "sv" ? "Om Pensionslyft" : "About Pensionslyft") },
   ];
   for (const choice of choices) {
     const button = document.createElement("button");
@@ -315,6 +324,7 @@ function renderHeading(): void {
       mikrosimPanel.relabel(lang);
       pensionAgePanel.relabel(lang);
       pensionLastsPanel.relabel(lang);
+      aboutPanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
     });
@@ -468,6 +478,11 @@ function render(): void {
     // The same: its own person and budget, always kronor per month in fixed
     // prices; what it reads live is the shared context (Avancerat).
     pensionLastsPanel.setContext(context, deaths);
+    return;
+  }
+
+  if (screen === "about") {
+    results.append(aboutPanel.element);
     return;
   }
 
