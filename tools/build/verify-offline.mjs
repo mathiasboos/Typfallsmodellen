@@ -1483,9 +1483,9 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 5) {
+if (screenButtons !== 6) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 5 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder / Hur länge räcker pensionen?)`,
+    `screen toggle has ${screenButtons} buttons, expected 6 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Om Pensionslyft)`,
   );
 }
 
@@ -2728,7 +2728,7 @@ const paHeadEn = (await pa.locator("section.panel > h2 span").first().textConten
 const paLabelEn = (await pa.locator(".pa-ribbon-label").textContent()) ?? "";
 const paButtonEn = (await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').textContent()) ?? "";
 console.log(`pension age     : "${paHeadSv}" / "${paHeadEn}", "${paLabelEn}", button "${paButtonEn}"`);
-if (paHeadSv !== "Bästa pensionsålder" || paHeadEn !== "Best retirement age" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "Best retirement age") {
+if (paHeadSv !== "Bästa pensionsålder?" || paHeadEn !== "Best retirement age?" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "Best retirement age?") {
   problems.push(`the tab's language switch reads "${paHeadSv}"/"${paHeadEn}"/"${paLabelEn}"/"${paButtonEn}"`);
 }
 if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("switching language changed the short answer");
@@ -3610,6 +3610,46 @@ await tab.waitForTimeout(100);
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 
+// ---- Om Pensionslyft -----------------------------------------------------------
+//
+// The last entry of the main menu: what the site is for, the disclaimer and how to reach it.
+
+const aboutTexts = async () => ({
+  head: ((await tab.locator('[data-role="about-panel"] section.panel > h2 span').first().textContent()) ?? "").trim(),
+  headings: (await tab.locator('[data-role="about-panel"] h3').allTextContents()).map((text) => text.trim()),
+  body: (await tab.locator('[data-role="about-panel"]').textContent()) ?? "",
+  link: await tab.locator('[data-role="about-panel"] a').first().getAttribute("href"),
+});
+const tabNamesSv = (await tab.locator(".screen-toggle .panel-btn").allTextContents()).map((text) => text.trim());
+await tab.locator('.screen-toggle .panel-btn[data-screen="about"]').click();
+await tab.waitForTimeout(100);
+const aboutSv = await aboutTexts();
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const aboutEn = await aboutTexts();
+const tabNameEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="about"]').textContent()) ?? "").trim();
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+console.log(`about           : menu ${tabNamesSv.join(" / ")}; "${aboutSv.head}" / "${aboutEn.head}", ${aboutSv.headings.join("/")}, link ${aboutSv.link}`);
+if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Bästa pensionsålder?", "Hur länge räcker pensionen?", "Om Pensionslyft"])) {
+  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Om Pensionslyft`);
+}
+if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
+  problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);
+}
+if (!sameList(aboutSv.headings, ["Syfte", "Friskrivning", "Kontakt"]) || !sameList(aboutEn.headings, ["Purpose", "Disclaimer", "Contact"])) {
+  problems.push(`the about page's sections are ${aboutSv.headings.join("/")} and ${aboutEn.headings.join("/")}`);
+}
+for (const [what, ok] of [
+  ["the purpose", aboutSv.body.includes("förmedla kunskap, inspirera och lyfta pensionsfrågan") && aboutSv.body.includes("välinformerade beslut som passar dig och din situation")],
+  ["the 'not financial advice' disclaimer", aboutSv.body.includes("Inte finansiell rådgivning") && /not financial advice/i.test(aboutEn.body)],
+  ["the contact: the website", aboutSv.link === "https://pensionslyft.se" && aboutSv.body.includes("pensionslyft.se")],
+]) {
+  if (!ok) problems.push(`the about page lacks ${what}`);
+}
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
 // ---- The first press ---------------------------------------------------------
 //
 // A number is applied when its field loses focus, and the press on a button is what takes the focus
@@ -3682,6 +3722,13 @@ await fpTyped(fpSalary, "512345");
 await fpPress(fp, fpScreen("retirement"));
 await fp.waitForTimeout(150);
 fpExpect("Prognos: the 'Bästa pensionsålder' tab", await fpActive(fpScreen("retirement")));
+await fpPress(fp, fpScreen("single"));
+await fp.waitForTimeout(150);
+
+await fpTyped(fpSalary, "498765");
+await fpPress(fp, fpScreen("about"));
+await fp.waitForTimeout(150);
+fpExpect("Prognos: the 'Om Pensionslyft' entry", await fpActive(fpScreen("about")));
 await fpPress(fp, fpScreen("single"));
 await fp.waitForTimeout(150);
 

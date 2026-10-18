@@ -1342,6 +1342,17 @@ and un-picking, the retirement age, the lifespan to read at, the chart toggle, a
 chosen agreement marked, the cohort swapping the defaults, both downloads, both languages, reset and
 375px, and a pension of one's own in every agreement's total with what an agreement adds unchanged.
 
+### Om Pensionslyft
+
+The sixth and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
+languages: the purpose of the site, a disclaimer (not financial, legal or tax advice; forecasts under the
+reader's own assumptions, not guarantees; a simplified model; unofficial; at the reader's own risk; check
+against minPension and the pension provider; nothing leaves the browser) and the contact, which is the
+website, `pensionslyft.se`, as a link. No e-mail address is shown because none was given. It has no state and
+runs no model, so `render()` only appends its element. The header's short "Inofficiell version" notice stays;
+this page is where the longer text lives. The fourth view's name, in the menu and as its heading, ends in a
+question mark ("Bästa pensionsålder?", "Best retirement age?"), as the fifth's does.
+
 ### Hur länge räcker pensionen?
 
 A fifth top-level view, on request, for the question the other tabs leave open: *given a budget, how

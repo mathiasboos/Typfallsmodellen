@@ -1536,3 +1536,9 @@ td.pl-floor-name { font-style: italic; }
 
   a { text-decoration: none; color: inherit; }
 }
+
+/* "Om Pensionslyft" (about.ts): static text, read at length, so a measure that suits reading. */
+.about-panel .pa-body { gap: 10px; max-width: 72ch; }
+.about-panel h3 { margin: 6px 0 0; font-size: 1rem; }
+.about-panel p, .about-panel ul { margin: 0; line-height: 1.5; }
+.about-panel ul { padding-left: 1.2em; display: grid; gap: 8px; }
