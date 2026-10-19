@@ -52,6 +52,11 @@ import { capital, decimals, h, mkr, panel, row, say, signed, tableOf } from "./p
 import {
   BUDGETS,
   BUDGET_BOUNDS,
+  amountSeriesToCsv,
+  amountSeriesToXlsxRows,
+  amountsToCsv,
+  amountsToXlsxRows,
+  totalPaid,
   CHART_PAYOUTS,
   LIFELONG,
   balanceText,
@@ -187,7 +192,19 @@ const monthlyAt = (lasts: Lasts, option: PayoutOption, age: number): number => o
 
 // ------------------------------------------------------------------ panel ---
 
-export function createPensionLastsPanel(lang: Lang, getForecastInput: () => TypfallInput): PensionLastsHandle {
+/**
+ * Which tab the panel is. "lasts" is "Hur länge räcker pensionen?"; "amount" is "Hur mycket får jag?", the
+ * same person, agreement, savings and assumptions and the same runs, answering what the pension pays a month
+ * under each payout period rather than how long a budget lasts -- so it has no budget, and none of what is
+ * about one.
+ */
+export type LastsVariant = "lasts" | "amount";
+
+export function createPensionLastsPanel(
+  lang: Lang,
+  getForecastInput: () => TypfallInput,
+  variant: LastsVariant = "lasts",
+): PensionLastsHandle {
   let currentLang = lang;
   let input: LastsInput = normaliseLasts(defaultLastsInput());
   let salaryAs: "monthly" | "final" = "monthly";
@@ -205,8 +222,8 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   /** The monthly salary found for a typed final salary, kept for the same reason. */
   let salaryCache: { key: string; context: ModelContext; value: number } | undefined;
 
-  const element = h("div", "pension-lasts-panel pension-age-panel");
-  element.dataset.role = "pension-lasts-panel";
+  const element = h("div", `${variant === "lasts" ? "pension-lasts-panel" : "pension-amount-panel"} pension-age-panel`);
+  element.dataset.role = variant === "lasts" ? "pension-lasts-panel" : "pension-amount-panel";
 
   // ---- the inputs, built once -------------------------------------------------
   const inputsSection = h("section", "panel");
@@ -334,9 +351,10 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
           ),
   }));
 
-  // Budget
-  group("Budget", "Budget");
-  const budgetSelect = select(
+  // Budget -- built either way, which keeps `sync` as it is, but only shown where there is a budget to read.
+  const budgetSet = fieldSet(variant === "lasts" ? grid : h("div"), relabels, lang);
+  if (variant === "lasts") group("Budget", "Budget");
+  const budgetSelect = budgetSet.select(
     [
       ...BUDGETS.map((b, index) => ({
         value: index,
@@ -354,14 +372,14 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   );
   budgetSelect.element.dataset.setting = "plBudgetChoice";
   relabels.push(budgetSelect.relabel);
-  field(budgetSelect.element, (l) => ({ label: say(l, "Budget som pensionär", "Budget as a pensioner") }), "field field-wide");
+  budgetSet.field(budgetSelect.element, (l) => ({ label: say(l, "Budget som pensionär", "Budget as a pensioner") }), "field field-wide");
 
-  const budgetField = number(input.budget, BUDGET, (value) => {
+  const budgetField = budgetSet.number(input.budget, BUDGET, (value) => {
     ownBudget = budgetIdOf(value) === undefined;
     update({ budget: value });
   });
   budgetField.element.dataset.setting = "plBudget";
-  field(budgetField.element, (l) => ({
+  budgetSet.field(budgetField.element, (l) => ({
     label: say(l, "Budget per månad efter skatt", "Budget per month after tax"),
     hint: say(l, "kr/mån i dagens penningvärde", "SEK/month in today's money"),
   }));
@@ -794,27 +812,39 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
         format: (value: number) => `${kronor(value, l)} ${perMonth(l)}`,
       };
     });
-    series.push({
-      payout: BUDGET_SERIES,
-      name: `${say(l, "Budget", "Budget")}, ${taxText(lasts.input.afterTax, l)}`,
-      end: say(l, "Budget", "Budget"),
-      colour: "--text-muted",
-      dashed: true,
-      essential: true,
-      points: ages.map((age) => [age, lasts.budgetMonthly[age - lasts.from]!] as const),
-      format: (value: number) => `${kronor(value, l)} ${perMonth(l)}`,
-    });
+    if (variant === "lasts") {
+      series.push({
+        payout: BUDGET_SERIES,
+        name: `${say(l, "Budget", "Budget")}, ${taxText(lasts.input.afterTax, l)}`,
+        end: say(l, "Budget", "Budget"),
+        colour: "--text-muted",
+        dashed: true,
+        essential: true,
+        points: ages.map((age) => [age, lasts.budgetMonthly[age - lasts.from]!] as const),
+        format: (value: number) => `${kronor(value, l)} ${perMonth(l)}`,
+      });
+    }
     const top = Math.max(1, ...series.flatMap((s) => s.points.map((p) => p[1])));
     const ticks = niceTicks(0, top, 5);
     return renderLineChart({
-      role: "pl-fig-income",
+      role: variant === "lasts" ? "pl-fig-income" : "pm-fig-income",
       lang: l,
-      title: say(l, "Pension per månad mot budgeten", "Pension per month against the budget"),
-      subtitle: say(
-        l,
-        `${measure}, ${priceText(lasts, l)}. Varje linje är pensionen vid en utbetalningstid; den streckade är budgeten. Linjerna slutar vid ${lasts.to - 1} år, året före ${lasts.to}-årsdagen.`,
-        `${measure}, ${priceText(lasts, l)}. Each line is the pension under one payout period; the dashed one is the budget. The lines stop at ${lasts.to - 1}, the year before the ${lasts.to}th birthday.`,
-      ),
+      title:
+        variant === "lasts"
+          ? say(l, "Pension per månad mot budgeten", "Pension per month against the budget")
+          : say(l, "Pension per månad", "Pension per month"),
+      subtitle:
+        variant === "lasts"
+          ? say(
+              l,
+              `${measure}, ${priceText(lasts, l)}. Varje linje är pensionen vid en utbetalningstid; den streckade är budgeten. Linjerna slutar vid ${lasts.to - 1} år, året före ${lasts.to}-årsdagen.`,
+              `${measure}, ${priceText(lasts, l)}. Each line is the pension under one payout period; the dashed one is the budget. The lines stop at ${lasts.to - 1}, the year before the ${lasts.to}th birthday.`,
+            )
+          : say(
+              l,
+              `${measure}, ${priceText(lasts, l)}. Varje linje är pensionen vid en utbetalningstid. Linjerna slutar vid ${lasts.to - 1} år, året före ${lasts.to}-årsdagen.`,
+              `${measure}, ${priceText(lasts, l)}. Each line is the pension under one payout period. The lines stop at ${lasts.to - 1}, the year before the ${lasts.to}th birthday.`,
+            ),
       xMin: lasts.from,
       xMax: Math.max(lasts.to - 1, lasts.from + 1),
       xTitle: say(l, "Ålder", "Age"),
@@ -824,7 +854,7 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
       heading: (x) => `${say(l, "Ålder", "Age")} ${x}`,
       series,
       endRoom: 74,
-      ...(lasts.input.afterTax
+      ...(lasts.input.afterTax || variant === "amount"
         ? {}
         : {
             note: say(
@@ -883,20 +913,28 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
 
   /** The first chart's numbers, at the retirement age and every fifth age after it -- its table twin, with the per-year export. */
   function timePanel(lasts: Lasts, l: Lang): HTMLElement {
-    const actions = [
-      csvExportButton(l, say(l, "pension-per-ar.csv", "pension-per-year.csv"), () => seriesToCsv(lasts, l)),
-      xlsxExportButton(l, say(l, "pension-per-ar.xlsx", "pension-per-year.xlsx"), () => seriesToXlsxRows(lasts, l)),
-    ];
+    const actions =
+      variant === "lasts"
+        ? [
+            csvExportButton(l, say(l, "pension-per-ar.csv", "pension-per-year.csv"), () => seriesToCsv(lasts, l)),
+            xlsxExportButton(l, say(l, "pension-per-ar.xlsx", "pension-per-year.xlsx"), () => seriesToXlsxRows(lasts, l)),
+          ]
+        : [
+            csvExportButton(l, say(l, "pension-per-ar.csv", "pension-per-year.csv"), () => amountSeriesToCsv(lasts, l)),
+            xlsxExportButton(l, say(l, "pension-per-ar.xlsx", "pension-per-year.xlsx"), () => amountSeriesToXlsxRows(lasts, l)),
+          ];
     const { section, body } = panel(say(l, "Pension per månad vid olika åldrar", "Pension per month at different ages"), actions);
-    section.dataset.role = "pl-time";
+    section.dataset.role = variant === "lasts" ? "pl-time" : "pm-time";
     const ages: number[] = [lasts.from];
     for (let age = Math.ceil((lasts.from + 1) / 5) * 5; age < lasts.to; age += 5) ages.push(age);
 
     const head = [headCell(say(l, "Utbetalningstid", "Payout period")), ...ages.map((age) => headCell(`${age} ${say(l, "år", "yrs")}`))];
     const rows: HTMLTableRowElement[] = [];
-    const budget = cell("");
-    budget.append(h("span", "pa-key pl-key-budget"), document.createTextNode(`${say(l, "Budget", "Budget")}, ${taxText(lasts.input.afterTax, l)}`));
-    rows.push(row([budget, ...ages.map((age) => cell(kronor(lasts.budgetMonthly[age - lasts.from]!, l), "num"))], { payout: String(BUDGET_SERIES) }));
+    if (variant === "lasts") {
+      const budget = cell("");
+      budget.append(h("span", "pa-key pl-key-budget"), document.createTextNode(`${say(l, "Budget", "Budget")}, ${taxText(lasts.input.afterTax, l)}`));
+      rows.push(row([budget, ...ages.map((age) => cell(kronor(lasts.budgetMonthly[age - lasts.from]!, l), "num"))], { payout: String(BUDGET_SERIES) }));
+    }
     for (const payout of CHART_PAYOUTS) {
       const option = optionOf(lasts, payout);
       rows.push(
@@ -1104,9 +1142,230 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
     return details;
   }
 
+  // ---- "Hur mycket får jag?" ----------------------------------------------------
+
+  /** The payout periods the tab shows: 5, 10, 15 and 20 years, and for life. */
+  const shownOptions = (lasts: Lasts): PayoutOption[] => CHART_PAYOUTS.map((p) => optionOf(lasts, p));
+
+  function amountAnswer(lasts: Lasts, l: Lang): HTMLElement {
+    const { section, body } = panel(say(l, "Svar i korthet", "Short answer"));
+    section.dataset.role = "pm-answer";
+    section.classList.add("pa-answer");
+    const { from, to } = lasts;
+    const tax = taxText(lasts.input.afterTax, l);
+    const life = optionOf(lasts, LIFELONG);
+    const short = optionOf(lasts, 5);
+
+    body.append(
+      h(
+        "p",
+        "pa-lead",
+        say(
+          l,
+          `Så mycket får du i månaden ${tax}, i ${priceText(lasts, l)}, från pensionsstart vid ${from} år om du tar ut tjänstepensionen, den individuella tjänstepensionen, den privata pensionen och det privata sparandet under 5, 10, 15 eller 20 år eller livsvarigt. Allmän pension betalas alltid ut livet ut. Kortare tid ger mer per månad men tar slut.`,
+          `This is what you get a month ${tax}, in ${priceText(lasts, l)}, from the start at ${from} if you draw the occupational pension, the individual occupational pension, the private pension and the private savings over 5, 10, 15 or 20 years or for life. The public pension is always paid for life. A shorter time pays more a month but runs out.`,
+        ),
+      ),
+    );
+
+    const ribbonBox = h("div", "pa-ribbon-box");
+    ribbonBox.append(h("div", "pa-ribbon-label", say(l, "Utbetalningstid och pension per månad", "Payout period and pension per month")));
+    const ribbon = h("ol", "pa-ribbon pl-ribbon");
+    ribbon.dataset.role = "pm-ribbon";
+    for (const option of shownOptions(lasts)) {
+      const { during, after } = option.view;
+      const item = h("li", "pa-ribbon-item pl-ribbon-item");
+      item.dataset.payout = String(option.payout);
+      item.append(
+        chip(option.payout, payoutName(option.payout, l)),
+        h("span", "pl-ribbon-d", during === null ? "" : amount(during.income, l)),
+        h(
+          "span",
+          "pa-ribbon-m",
+          option.payout === LIFELONG
+            ? say(l, "livet ut", "for life")
+            : after === null
+              ? say(l, `till ${to} år`, `to ${to}`)
+              : say(l, `därefter ${amount(after.income, l)}`, `then ${amount(after.income, l)}`),
+        ),
+      );
+      ribbon.append(item);
+    }
+    ribbonBox.append(ribbon);
+    ribbonBox.append(
+      h(
+        "div",
+        "pa-ribbon-label",
+        say(
+          l,
+          "Siffran överst är pensionen per månad under själva utbetalningen (i snitt); under den vad som återstår därefter, när bara allmän pension är kvar.",
+          "The figure on top is the pension a month during the payout itself (on average); beneath it what is left afterwards, when only the public pension remains.",
+        ),
+      ),
+    );
+    body.append(ribbonBox);
+
+    const list = h("ul", "pa-points");
+    const bullet = (text: string): void => {
+      list.append(h("li", undefined, text));
+    };
+    if (!lasts.flexible) {
+      bullet(
+        say(
+          l,
+          "Du har ingen tjänstepension, privat pension eller annat sparande att välja utbetalningstid för, så allmän pension är allt. Välj ett avtalsområde eller fyll i kapital och sparande för att se vad utbetalningstiden gör.",
+          "You have no occupational pension, private pension or other saving to choose a payout period for, so the public pension is all there is. Pick an agreement area, or fill in capital and saving, to see what the payout period does.",
+        ),
+      );
+    } else {
+      const shortDuring = short.view.during?.income ?? 0;
+      const lifeDuring = life.view.during?.income ?? 0;
+      bullet(
+        say(
+          l,
+          `5 års utbetalning ger ${amount(shortDuring, l)} ${tax} under utbetalningen, livsvarig ${amount(lifeDuring, l)}.`,
+          `A 5-year payout gives ${amount(shortDuring, l)} ${tax} during the payout, a lifelong one ${amount(lifeDuring, l)}.`,
+        ),
+      );
+      const floor = lasts.publicOnly.during;
+      if (floor !== null) {
+        bullet(
+          say(
+            l,
+            `När en tidsbegränsad utbetalning är slut återstår bara allmän pension: i snitt ${amount(floor.income, l)} ${tax}.`,
+            `When a temporary payout ends only the public pension is left: on average ${amount(floor.income, l)} ${tax}.`,
+          ),
+        );
+      }
+      bullet(
+        say(
+          l,
+          `Summerat till ${to} år blir det ${mkr(totalPaid(short.view), l)} Mkr med 5 års utbetalning och ${mkr(totalPaid(life.view), l)} Mkr med livsvarig, ${tax}.`,
+          `Added up to ${to} that is ${mkr(totalPaid(short.view), l)} MSEK with a 5-year payout and ${mkr(totalPaid(life.view), l)} MSEK with a lifelong one, ${tax}.`,
+        ),
+      );
+    }
+    body.append(list);
+    return section;
+  }
+
+  function amountPanel(lasts: Lasts, l: Lang): HTMLElement {
+    const afterTax = lasts.input.afterTax;
+    const actions = [
+      csvExportButton(l, say(l, "belopp-per-manad.csv", "monthly-amounts.csv"), () => amountsToCsv(lasts, l)),
+      xlsxExportButton(l, say(l, "belopp-per-manad.xlsx", "monthly-amounts.xlsx"), () => amountsToXlsxRows(lasts, l)),
+    ];
+    const { section, body } = panel(say(l, "Pension per månad och utbetalningstid", "Pension per month and payout period"), actions);
+    section.dataset.role = "pm-options-panel";
+    body.append(
+      h(
+        "p",
+        "pa-lead",
+        say(
+          l,
+          `Per månad ${taxText(afterTax, l)}, i ${priceText(lasts, l)}. "Under" är själva utbetalningen (i snitt), "efter" åren därefter då bara allmän pension återstår.`,
+          `Per month ${taxText(afterTax, l)}, in ${priceText(lasts, l)}. "During" is the payout itself (on average), "after" the years that follow when only the public pension is left.`,
+        ),
+      ),
+    );
+    const head = [
+      headCell(say(l, "Utbetalningstid", "Payout period")),
+      headCell(say(l, "Under utbetalningen", "During the payout")),
+      ...(afterTax
+        ? []
+        : [
+            headCell(say(l, "varav allmän", "of which public")),
+            headCell(say(l, "varav tjänstepension", "of which occupational")),
+            headCell(say(l, "varav individuell och privat", "of which individual and private")),
+            ...(lasts.taxFree ? [headCell(say(l, "varav privat sparande, uppräknat", "of which private savings, grossed up"))] : []),
+          ]),
+      headCell(say(l, "Efter utbetalningen", "After the payout")),
+      headCell(say(l, `Totalt till ${lasts.to} år, tkr`, `In all to ${lasts.to}, thousand kr`)),
+    ];
+    const average = (option: PayoutOption, pick: (o: PayoutOption) => readonly number[]): number => {
+      const during = option.view.during;
+      if (during === null) return 0;
+      let sum = 0;
+      for (let age = during.from; age < during.to; age += 1) sum += pick(option)[age] ?? 0;
+      return sum / during.years / 12;
+    };
+    const rows: HTMLTableRowElement[] = [];
+    {
+      const a = lasts.publicOnly;
+      const cells: HTMLTableCellElement[] = [cell(say(l, "Bara allmän pension", "Public pension only"), "pl-floor-name"), cell(kronor(a.during?.income ?? 0, l), "num")];
+      if (!afterTax) cells.push(...Array.from({ length: lasts.taxFree ? 4 : 3 }, () => cell("–", "num")));
+      cells.push(cell("–", "num"), cell(kronor(Math.round(totalPaid(a) / 1000), l), "num"));
+      rows.push(row(cells, { payout: "floor" }));
+    }
+    for (const option of shownOptions(lasts)) {
+      const a = option.view;
+      const cells: HTMLTableCellElement[] = [payoutCell(option.payout, payoutName(option.payout, l)), cell(kronor(a.during?.income ?? 0, l), "num")];
+      if (!afterTax) {
+        cells.push(
+          cell(kronor(average(option, (o) => o.run.publicPension), l), "num"),
+          cell(kronor(average(option, (o) => o.run.occupational), l), "num"),
+          cell(kronor(average(option, (o) => o.run.individual), l), "num"),
+          ...(lasts.taxFree ? [cell(kronor(average(option, (o) => o.savings), l), "num")] : []),
+        );
+      }
+      cells.push(cell(a.after === null ? "–" : kronor(a.after.income, l), "num"), cell(kronor(Math.round(totalPaid(a) / 1000), l), "num"));
+      rows.push(row(cells, { payout: String(option.payout) }));
+    }
+    body.append(tableOf("pm-amounts", "pl-options", head, rows));
+    return section;
+  }
+
+  function amountNotes(lasts: Lasts, l: Lang): HTMLElement {
+    const details = h("details", "field-note pa-notes");
+    details.dataset.role = "pm-notes";
+    details.append(h("summary", undefined, say(l, "Antaganden och metod", "Assumptions and method")));
+    const bodyBox = h("div", "field-note-body");
+    const savings = savingsNotes(l, lasts.runs.savingYear);
+    const paragraphs = [
+      say(
+        l,
+        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart till och med året före ${lasts.to}-årsdagen. Belopp i ${priceText(lasts, l)}, utan diskontering. Bidrag som bostadstillägg räknas inte med; efter skatt är modellens nettoinkomst.`,
+        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, private pension and private savings, from the start up to the year before the ${lasts.to}th birthday. Amounts are in ${priceText(lasts, l)}, not discounted. Benefits such as housing supplement are not counted; after tax is the model's net income.`,
+      ),
+      say(
+        l,
+        `Utbetalningstiden är modellens inställning "Temporärt uttag" för tjänstepension och privat sparande: pensionen betalas ut jämnt under 5–20 hela år från pensionsstart och slutar sedan, eller livsvarigt. Allmän pension påverkas inte. Kortare tid ger mer per månad eftersom samma kapital delas på färre år; hur mycket styrs av avtalets egna antaganden om ränta och livslängd.`,
+        `The payout period is the model's "Temporary withdrawal" setting for occupational pension and private saving: the pension is paid evenly over 5–20 whole years from the start and then stops, or for life. The public pension is not affected. A shorter time pays more a month because the same capital is shared over fewer years; how much is set by the agreement's own assumptions about interest and life expectancy.`,
+      ),
+      `${savings.pension} ${say(l, "Allt betalas ut över samma period som avtalets tjänstepension.", "Everything is paid out over the same period as the agreement's occupational pension.")}`,
+      savings.savings,
+      say(
+        l,
+        `"Under utbetalningen" är genomsnittet per månad över utbetalningsåren; "efter" är genomsnittet de åren som följer fram till ${lasts.to} år, då bara allmän pension återstår. Modellens skatt är högre åren innan det förhöjda grundavdraget för äldre börjar, så de första åren kan ligga lägre än de följande; det visas som det är. Fliken har egna indata och följer inte formuläret till vänster; "Hämta från Prognos" kopierar dem en gång. Skatteinställningar och löneprofil kommer från Avancerat; prisbasen är alltid fasta priser, och tjänstepensionen börjar alltid vid pensionsåldern.`,
+        `"During the payout" is the monthly average over the years of the payout; "after" is the average over the years that follow up to ${lasts.to}, when only the public pension is left. The model's tax is higher in the years before the higher basic allowance for older people begins, so the first years can lie lower than the ones after; it is shown as it is. The tab has its own inputs and does not follow the form on the left; "Use the Forecast values" copies them once. Tax settings and wage profile come from Advanced; prices are always constant, and the occupational pension always starts at the retirement age.`,
+      ),
+      ...(lasts.taxFree
+        ? [
+            say(
+              l,
+              "Privat sparande har ingen utbetalning för livet: Livsvarigt betyder här att pengarna fördelas över din förväntade återstående livslängd (modellens regel), och sedan är de slut. En pension betalas i stället ut så länge du lever.",
+              "Private savings have no payout for life: Lifelong here means the money is spread over your expected remaining life (the model's rule), and then it is gone. A pension, by contrast, is paid for as long as you live.",
+            ),
+            say(
+              l,
+              "Före skatt räknas utbetalningen från det privata sparandet upp till den bruttoinkomst som ger lika mycket efter skatt (med modellens skatt, år för år). Annars skulle en skattefri krona räknas som en beskattad och vyerna före och efter skatt ge olika svar. Efter skatt visas utbetalningen som den är.",
+              "Before tax, the payout from the private savings is grossed up to the gross income that leaves the same amount after tax (with the model's tax, year by year). Otherwise an untaxed krona would count as a taxed one and the views before and after tax would give different answers. After tax the payout is shown as it is.",
+            ),
+          ]
+        : []),
+    ];
+    for (const text of paragraphs) bodyBox.append(h("p", undefined, text));
+    details.append(bodyBox);
+    return details;
+  }
+
   function buildResults(lasts: Lasts, l: Lang): HTMLElement[] {
     const out: HTMLElement[] = [];
     if (lasts.runs.warnings.length > 0) out.push(warningsBox(lasts.runs.warnings));
+    if (variant === "amount") {
+      out.push(amountAnswer(lasts, l), incomeFigure(lasts, l), timePanel(lasts, l), amountPanel(lasts, l), amountNotes(lasts, l));
+      return out;
+    }
     out.push(
       answerPanel(lasts, l),
       incomeFigure(lasts, l),
@@ -1149,8 +1408,13 @@ export function createPensionLastsPanel(lang: Lang, getForecastInput: () => Typf
   // ---- language ---------------------------------------------------------------
 
   const applyText = (l: Lang): void => {
-    inputsTitle.textContent = say(l, "Hur länge räcker pensionen?", "How long does the pension last?");
-    intro.textContent = say(
+    inputsTitle.textContent =
+      variant === "lasts" ? say(l, "Hur länge räcker pensionen?", "How long does the pension last?") : say(l, "Hur mycket får jag?", "How much do I get?");
+    intro.textContent = variant === "amount" ? say(
+      l,
+      "Se hur mycket pengar du får i månaden om du tar ut tjänstepensionen, den individuella tjänstepensionen, den privata pensionen och det privata sparandet under 5, 10, 15 eller 20 år eller livsvarigt. Allmän pension betalas alltid ut livet ut. Ändra personen, avtalsområdet, sparandet eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
+      "See how much money you get a month if you draw the occupational pension, the individual occupational pension, the private pension and the private savings over 5, 10, 15 or 20 years or for life. The public pension is always paid for life. Change the person, the agreement area, the savings or the assumptions and everything is recalculated at once. The tab has its own inputs and is affected only by the settings under Advanced.",
+    ) : say(
       l,
       "Sätt din pension mot en budget och se hur länge den räcker, beroende på hur du tar ut tjänstepensionen, den individuella tjänstepensionen, den privata pensionen och det privata sparandet: under 5–20 år eller livsvarigt. Allmän pension betalas alltid ut livet ut. Ändra personen, avtalsområdet, budgeten eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
       "Set your pension against a budget and see how long it lasts, depending on how you draw the occupational pension, the individual occupational pension, the private pension and the private savings: over 5–20 years or for life. The public pension is always paid for life. Change the person, the agreement area, the budget or the assumptions and everything is recalculated at once. The tab has its own inputs and is affected only by the settings under Advanced.",

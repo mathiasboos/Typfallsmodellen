@@ -22,6 +22,11 @@ import { LAST_AGE, LIFESPAN_BOUNDS } from "../src/pensionAge.js";
 import {
   BUDGETS,
   CHART_PAYOUTS,
+  amountSeriesToCsv,
+  amountSeriesToXlsxRows,
+  amountsToCsv,
+  amountsToXlsxRows,
+  totalPaid,
   LIFELONG,
   PAYOUTS,
   PAYOUT_YEARS,
@@ -904,5 +909,47 @@ describe("the exports", () => {
     expect(rows).toHaveLength(18);
     expect(rows[0]!.split(";")).toHaveLength(1 + 3 + 1);
     expect(matrixToXlsxRows(matrix, budgets, "sv")).toHaveLength(18);
+  });
+});
+
+describe('"Hur mycket får jag?" -- what each payout pays a month', () => {
+  const split = (csv: string) => csv.split("\r\n").map((line) => line.split(";"));
+
+  it("has a row for 5, 10, 15 and 20 years and for life, from the same runs as the other tab", () => {
+    const rows = split(amountsToCsv(lasts, "sv"));
+    expect(rows).toHaveLength(1 + CHART_PAYOUTS.length);
+    expect(rows.slice(1).map((r) => r[0])).toEqual(CHART_PAYOUTS.map((p) => payoutName(p, "sv")));
+    for (const [i, payout] of CHART_PAYOUTS.entries()) {
+      const option = optionOf(lasts, payout);
+      expect(Number(rows[i + 1]![1])).toBe(Math.round(option.view.during!.income));
+      expect(Number(rows[i + 1]![rows[i + 1]!.length - 1])).toBe(Math.round(totalPaid(option.view)));
+    }
+  });
+
+  it("pays more a month the shorter the payout, and ends in the public pension alone", () => {
+    const during = CHART_PAYOUTS.map((p) => optionOf(lasts, p).view.during!.income);
+    for (let i = 1; i < during.length; i += 1) expect(during[i - 1]!).toBeGreaterThan(during[i]!);
+    expect(optionOf(lasts, 5).view.after!.income).toBeCloseTo(lasts.publicOnly.during!.income, -3);
+    expect(optionOf(lasts, LIFELONG).view.after).toBeNull();
+  });
+
+  it("adds up the years from the retirement age to the lifespan", () => {
+    const option = optionOf(lasts, 10);
+    expect(totalPaid(option.view)).toBeCloseTo(option.view.income.reduce((a, b) => a + b, 0), 6);
+    expect(option.view.income).toHaveLength(lasts.to - lasts.from);
+  });
+
+  it("is exported by age, one column a payout, in both formats", () => {
+    const rows = split(amountSeriesToCsv(lasts, "sv"));
+    expect(rows).toHaveLength(1 + lasts.to - lasts.from);
+    expect(rows[0]).toHaveLength(1 + CHART_PAYOUTS.length);
+    expect(amountSeriesToXlsxRows(lasts, "sv")).toHaveLength(rows.length);
+    expect(amountsToXlsxRows(lasts, "sv")).toHaveLength(1 + CHART_PAYOUTS.length);
+  });
+
+  it("is split out before tax and only there", () => {
+    const gross = computeLasts({ ...base, individualCapital: 300_000, afterTax: false }, context, deaths);
+    expect(split(amountsToCsv(gross, "sv"))[0]).toContain("varav individuell och privat pension");
+    expect(split(amountsToCsv(lasts, "sv"))[0]).not.toContain("varav individuell och privat pension");
   });
 });

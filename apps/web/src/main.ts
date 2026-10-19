@@ -64,7 +64,7 @@ type Mode = "normal" | "advanced";
 
 /** Not a workbook mode -- a second, third, fourth and fifth top-level view
  * alongside the forecast, and the page about the site. */
-type Screen = "single" | "compare" | "mikrosim" | "retirement" | "lasts" | "about";
+type Screen = "single" | "compare" | "mikrosim" | "retirement" | "lasts" | "amount" | "about";
 
 const deaths = loadDeathProbabilities();
 
@@ -168,6 +168,8 @@ const pensionAgePanel = createPensionAgePanel(view.lang, () => runInput());
 // The same for "Hur länge räcker pensionen?": its own person, budget and payout
 // periods, with the Forecast form's person copied across on the click.
 const pensionLastsPanel = createPensionLastsPanel(view.lang, () => runInput());
+// "Hur mycket får jag?" is the same panel with no budget: what the pension pays a month under each payout period.
+const pensionAmountPanel = createPensionLastsPanel(view.lang, () => runInput(), "amount");
 // Static text, no model run: what the site is for, the disclaimer and how to reach it.
 const aboutPanel = createAboutPanel(view.lang);
 
@@ -255,6 +257,7 @@ function screenToggle(): HTMLElement {
     { screen: "mikrosim", label: () => "Mikrosim" },
     { screen: "retirement", label: (l) => (l === "sv" ? "Bästa pensionsålder?" : "Best retirement age?") },
     { screen: "lasts", label: (l) => (l === "sv" ? "Hur länge räcker pensionen?" : "How long does the pension last?") },
+    { screen: "amount", label: (l) => (l === "sv" ? "Hur mycket får jag?" : "How much do I get?") },
     { screen: "about", label: (l) => (l === "sv" ? "Om Pensionslyft" : "About Pensionslyft") },
   ];
   for (const choice of choices) {
@@ -324,6 +327,7 @@ function renderHeading(): void {
       mikrosimPanel.relabel(lang);
       pensionAgePanel.relabel(lang);
       pensionLastsPanel.relabel(lang);
+      pensionAmountPanel.relabel(lang);
       aboutPanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
@@ -478,6 +482,12 @@ function render(): void {
     // The same: its own person and budget, always kronor per month in fixed
     // prices; what it reads live is the shared context (Avancerat).
     pensionLastsPanel.setContext(context, deaths);
+    return;
+  }
+
+  if (screen === "amount") {
+    results.append(pensionAmountPanel.element);
+    pensionAmountPanel.setContext(context, deaths);
     return;
   }
 

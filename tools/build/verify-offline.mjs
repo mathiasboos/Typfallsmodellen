@@ -1483,9 +1483,9 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 6) {
+if (screenButtons !== 7) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 6 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Om Pensionslyft)`,
+    `screen toggle has ${screenButtons} buttons, expected 7 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
   );
 }
 
@@ -3610,6 +3610,77 @@ await tab.waitForTimeout(100);
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 
+// ---- Hur mycket får jag? -------------------------------------------------------
+//
+// The lasts tab's person, agreement, savings and assumptions without the budget, answering what each
+// payout pays a month: 5, 10, 15 and 20 years, and for life.
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="amount"]').click();
+await tab.waitForSelector('[data-role="pension-amount-panel"] [data-role="pm-ribbon"]');
+await tab.waitForTimeout(250);
+const am = tab.locator('[data-role="pension-amount-panel"]');
+const amRibbon = async () =>
+  am.locator('[data-role="pm-ribbon"] li').evaluateAll((items) =>
+    items.map((li) => ({ payout: li.dataset.payout, text: li.innerText.replace(/\s+/g, " ").trim() })),
+  );
+const amDuring = (items) => items.map((item) => Number(item.text.match(/(\d[\d\s]*) kr\/mån/)?.[1].replace(/\s/g, "")));
+const amStart = await amRibbon();
+const amHeadSv = ((await am.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
+const amBudgetFields = await am.locator('[data-setting="plBudget"], [data-setting="plBudgetChoice"]').count();
+const amGroups = (await am.locator(".pa-group").allTextContents()).map((text) => text.trim());
+console.log(`how much        : "${amHeadSv}", ${amStart.map((i) => i.payout).join("/")} -> ${amDuring(amStart).join("/")} kr/month, groups ${amGroups.join("/")}, budget fields ${amBudgetFields}`);
+if (amHeadSv !== "Hur mycket får jag?") problems.push(`the tab is headed "${amHeadSv}", expected "Hur mycket får jag?"`);
+if (!sameList(amStart.map((i) => i.payout), ["5", "10", "15", "20", "0"])) problems.push(`the answer boxes are for ${amStart.map((i) => i.payout).join(",")}, expected 5,10,15,20,0 (life)`);
+if (!sameList(amDuring(amStart), [38997, 28977, 25242, 23294, 22131])) problems.push(`the answer boxes read ${amDuring(amStart).join(",")} kr/month, expected 38997,28977,25242,23294,22131 (the same runs as "Hur länge räcker pensionen?")`);
+if (amBudgetFields !== 0 || amGroups.includes("Budget")) problems.push(`the tab has a budget (${amBudgetFields} fields, groups ${amGroups.join("/")}), expected none`);
+if (!amGroups.includes("Person") || !amGroups.includes("Pension") || !amGroups.includes("Privat sparande") || !amGroups.includes("Antaganden")) {
+  problems.push(`the tab's groups are ${amGroups.join("/")}, expected Person, Lön, Pension, Privat sparande, Antaganden, Visa`);
+}
+// A shorter payout pays more a month, and the temporary ones leave the public pension alone behind them.
+const amTable = await am.locator('[data-role="pm-options-panel"] tbody tr').evaluateAll((trs) =>
+  trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.innerText.replace(/\s+/g, " ").trim())),
+);
+console.log(`how much        : table ${amTable.map((r) => r.join(" | ")).join(" ; ")}`);
+if (amTable.length !== 6 || !amTable[0][0].startsWith("Bara allmän pension")) problems.push(`the amounts table has ${amTable.length} rows, expected the public pension alone and five payouts`);
+const amAfter = amTable.slice(1, 5).map((r) => Number(r[2].replace(/\s/g, "")));
+if (!amAfter.every((v, i) => i === 0 || v < amAfter[i - 1] + 1) || amTable[5][2] !== "–") {
+  problems.push(`what is left after the temporary payouts reads ${amAfter.join(",")} and for life "${amTable[5][2]}"`);
+}
+
+// Capital of one's own raises every payout, the 5-year one most.
+await am.locator('[data-setting="plCapital"]').fill("300000");
+await am.locator('[data-setting="plCapital"]').dispatchEvent("change");
+await am.locator('[data-setting="plCapital"]').evaluate((el) => el.blur());
+await tab.waitForTimeout(150);
+const amWith = amDuring(await amRibbon());
+console.log(`how much        : with an individual pension of 300 000 -> ${amWith.join("/")}`);
+if (!amWith.every((v, i) => v > amDuring(amStart)[i])) problems.push(`an individual pension of 300 000 did not raise every payout: ${amWith.join(",")} against ${amDuring(amStart).join(",")}`);
+if (amWith[0] - amDuring(amStart)[0] <= amWith[4] - amDuring(amStart)[4]) problems.push("the 5-year payout did not gain more a month than the lifelong one from the same capital");
+
+// The downloads, and a phone.
+const amCsv = await download(am.locator('.export-btn[data-file="belopp-per-manad.csv"]'));
+const amSeries = await download(am.locator('.export-btn[data-file="pension-per-ar.csv"]'));
+const amXlsx = await download(am.locator('.export-btn[data-file="belopp-per-manad.xlsx"]'));
+const amCsvLines = amCsv.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+console.log(`how much        : ${amCsv.filename} ${amCsvLines.length} lines, ${amSeries.filename}, ${amXlsx.filename}`);
+if (amCsvLines.length !== 6 || !looksLikeXlsx(amXlsx.buffer) || amSeries.buffer.length < 100) problems.push(`the tab's downloads are ${amCsvLines.length} lines / xlsx ${looksLikeXlsx(amXlsx.buffer)} / series ${amSeries.buffer.length} bytes`);
+
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(150);
+const amHeadEn = ((await am.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
+const amButtonEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="amount"]').textContent()) ?? "").trim();
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(150);
+if (amHeadEn !== "How much do I get?" || amButtonEn !== "How much do I get?") problems.push(`in English the tab reads "${amHeadEn}" / "${amButtonEn}"`);
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(150);
+const amOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+if (amOverflow > 1) problems.push(`the Hur mycket får jag? tab widens the page by ${amOverflow}px at 375px`);
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
 // ---- Om Pensionslyft -----------------------------------------------------------
 //
 // The last entry of the main menu: what the site is for, the disclaimer and how to reach it.
@@ -3631,8 +3702,8 @@ const tabNameEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="ab
 await tab.locator(".langs button", { hasText: "SV" }).click();
 await tab.waitForTimeout(100);
 console.log(`about           : menu ${tabNamesSv.join(" / ")}; "${aboutSv.head}" / "${aboutEn.head}", ${aboutSv.headings.join("/")}, link ${aboutSv.link}`);
-if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Bästa pensionsålder?", "Hur länge räcker pensionen?", "Om Pensionslyft"])) {
-  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Om Pensionslyft`);
+if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Bästa pensionsålder?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
+  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
 }
 if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
   problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);
