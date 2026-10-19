@@ -1344,7 +1344,7 @@ chosen agreement marked, the cohort swapping the defaults, both downloads, both 
 
 ### Om Pensionslyft
 
-The sixth and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
+The seventh and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
 languages: the purpose of the site, a disclaimer (not financial, legal or tax advice; forecasts under the
 reader's own assumptions, not guarantees; a simplified model; unofficial; at the reader's own risk; check
 against minPension and the pension provider; nothing leaves the browser) and the contact, which is the
@@ -1352,6 +1352,20 @@ website, `pensionslyft.se`, as a link. No e-mail address is shown because none w
 runs no model, so `render()` only appends its element. The header's short "Inofficiell version" notice stays;
 this page is where the longer text lives. The fourth view's name, in the menu and as its heading, ends in a
 question mark ("Bästa pensionsålder?", "Best retirement age?"), as the fifth's does.
+
+### Hur mycket får jag?
+
+The same panel as the next section's, asked a different question: `createPensionLastsPanel(lang, getForecastInput, "amount")`.
+The inputs are the fifth tab's — person, salary, agreement, the individual and private pension, the private savings,
+the assumptions, before or after tax — without the budget group (the budget fields are still built, into a detached
+element, so that `sync` stays as it is); the state is its own, so the two tabs do not follow each other. The engine runs
+are the same seventeen, so what it shows is exactly what the other tab's charts draw. The results are an answer box for 5,
+10, 15 and 20 years and for life (the monthly average during the payout, and beneath it what is left afterwards, when only the
+public pension remains), the line chart and the per-age table without a budget line, a table of what each payout pays
+during it, after it (split by kind of pension before tax, the private savings grossed up as in the other tab) and added up to the
+lifespan, and the same notes. `amountsToCsv`/`amountSeriesToCsv` and their Excel twins are the exports. Checked by the five
+unit tests under `"Hur mycket får jag?"` in `pensionLasts.test.ts` and a block in `verify-offline.mjs` (the boxes read the numbers the other
+tab's runs give, no budget field, a pension of one's own raising the 5-year payout most, the downloads, English, 375px).
 
 ### Hur länge räcker pensionen?
 
@@ -1381,7 +1395,7 @@ Five modules and two test files, split the way "Bästa pensionsålder" is:
   prompt for a depot -- is the same in both by construction.
 - `pensionAgeChart.ts` -- the same line chart "Bästa pensionsålder" draws, asked for two more things (a
   dashed line, and a label where a payout ends instead of at the right edge).
-- `apps/web/test/pensionLasts.test.ts` -- 76 tests, and `apps/web/test/privateSavings.test.ts` -- 13 for
+- `apps/web/test/pensionLasts.test.ts` -- 81 tests, and `apps/web/test/privateSavings.test.ts` -- 13 for
   the shared model (the kinds, the sums, the year it counts from, the settings of each run); the engine
   side has `test/netProbe.test.ts`, a block in `test/mcalcDrawdown.test.ts` and the depot's tests in
   `test/privateSaving.test.ts`.
@@ -1517,7 +1531,7 @@ lifespan, benefits (housing supplement), and choosing the payout period of one p
 the other's -- the private savings too are drawn over the same period. A composition chart (how much of the pension is public, occupational, individual) is the
 natural next step; the before-tax table already splits it.
 
-**Checked** by the 76 unit tests (and 13 for the shared model) -- the payout periods and budgets, the input held inside what the cohort
+**Checked** by the 81 unit tests (and 13 for the shared model) -- the payout periods and budgets, the input held inside what the cohort
 may draw, what each context setting is overridden to, that a fixed payout stops after its years and pays
 more the shorter it is, that the lifelong run is a plain run of the model, capital and saving added
 separately and together, a private pension exactly as an individual one, private savings in an ISK or in a

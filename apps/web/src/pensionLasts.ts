@@ -823,6 +823,97 @@ export function optionsToXlsxRows(lasts: Lasts, lang: Lang): SheetData {
   return rows;
 }
 
+/** "Hur mycket får jag?": what each payout pays a month, during it and after it, and in all to the lifespan. */
+function amountsHeader(lasts: Lasts, lang: Lang): string[] {
+  const tax = basisText(lasts.input, lang);
+  return [
+    say(lang, "Utbetalningstid", "Payout period"),
+    say(lang, `Under utbetalningen, kr/mån ${tax}`, `During the payout, SEK/month ${tax}`),
+    ...(lasts.input.afterTax
+      ? []
+      : [
+          say(lang, "varav allmän pension", "of which public pension"),
+          say(lang, "varav tjänstepension", "of which occupational pension"),
+          say(lang, "varav individuell och privat pension", "of which individual and private pension"),
+          ...(lasts.taxFree
+            ? [say(lang, "varav privat sparande, uppräknat", "of which private savings, grossed up")]
+            : []),
+        ]),
+    say(lang, `Efter utbetalningen, kr/mån ${tax}`, `After the payout, SEK/month ${tax}`),
+    say(lang, `Totalt till ${lasts.to} år, kr ${tax}`, `In all to ${lasts.to}, SEK ${tax}`),
+  ];
+}
+
+/** The total over the years from the retirement age to the lifespan, in the basis shown. */
+export const totalPaid = (a: Assessment): number => a.income.reduce((sum, value) => sum + value, 0);
+
+function amountRow(lasts: Lasts, option: PayoutOption, lang: Lang): (string | number)[] {
+  const { view } = option;
+  const { during, after } = view;
+  const average = (series: readonly number[]): number => {
+    if (during === null) return 0;
+    let sum = 0;
+    for (let age = during.from; age < during.to; age += 1) sum += series[age] ?? 0;
+    return sum / during.years / 12;
+  };
+  return [
+    payoutName(option.payout, lang),
+    during?.income ?? 0,
+    ...(lasts.input.afterTax
+      ? []
+      : [
+          average(option.run.publicPension),
+          average(option.run.occupational),
+          average(option.run.individual),
+          ...(lasts.taxFree ? [average(option.savings)] : []),
+        ]),
+    after === null ? "" : after.income,
+    totalPaid(view),
+  ];
+}
+
+/** The payout periods the tab shows, one row each. */
+const amountOptions = (lasts: Lasts): PayoutOption[] => CHART_PAYOUTS.map((p) => lasts.options.find((o) => o.payout === p)!);
+
+export function amountsToCsv(lasts: Lasts, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const lines = [csvLine(amountsHeader(lasts, lang), delimiter)];
+  for (const option of amountOptions(lasts)) {
+    lines.push(csvLine(amountRow(lasts, option, lang).map((cell) => (typeof cell === "number" ? whole(cell) : cell)), delimiter));
+  }
+  return lines.join("\r\n");
+}
+
+export function amountsToXlsxRows(lasts: Lasts, lang: Lang): SheetData {
+  const rows: SheetData = [amountsHeader(lasts, lang)];
+  for (const option of amountOptions(lasts)) {
+    rows.push(amountRow(lasts, option, lang).map((cell) => (typeof cell === "number" ? kronorCell(cell) : cell)));
+  }
+  return rows;
+}
+
+function amountSeriesHeader(lasts: Lasts, lang: Lang): string[] {
+  const unit = say(lang, "kr/mån", "SEK/month");
+  const tax = basisText(lasts.input, lang);
+  return [say(lang, "Ålder", "Age"), ...amountOptions(lasts).map((o) => `${payoutName(o.payout, lang)} ${tax}, ${unit}`)];
+}
+
+/** Per age: each payout's pension a month. */
+export function amountSeriesToCsv(lasts: Lasts, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const lines = [csvLine(amountSeriesHeader(lasts, lang), delimiter)];
+  for (let age = lasts.from; age < lasts.to; age += 1) {
+    lines.push(csvLine([String(age), ...amountOptions(lasts).map((o) => whole(monthlyOf(lasts, o, age)))], delimiter));
+  }
+  return lines.join("\r\n");
+}
+
+export function amountSeriesToXlsxRows(lasts: Lasts, lang: Lang): SheetData {
+  const rows: SheetData = [amountSeriesHeader(lasts, lang)];
+  for (let age = lasts.from; age < lasts.to; age += 1) rows.push([age, ...amountOptions(lasts).map((o) => kronorCell(monthlyOf(lasts, o, age)))]);
+  return rows;
+}
+
 /** The ages the series exports cover: the retirement age up to the year before the lifespan. */
 function seriesAges(lasts: Lasts): number[] {
   const ages: number[] = [];
