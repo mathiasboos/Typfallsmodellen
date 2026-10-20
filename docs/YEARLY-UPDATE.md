@@ -87,6 +87,10 @@ This is the part that needs judgement. Look for:
 Mirror each new VBA function in `packages/engine/src/`, keeping the 1:1 structure described in
 `docs/VBA-MAPPING.md`. Add the dispatcher branch. Update the mapping doc.
 
+Also update `SOURCE.version` in `apps/web/src/about.ts` to the new workbook's version: the page names
+Pensionsmyndigheten as the source with that version (the agency's licence asks for the source to be named), in the
+"Om modellen" notice and on the "Om Pensionslyft" page.
+
 ### 6. Re-verify
 
 ```bash

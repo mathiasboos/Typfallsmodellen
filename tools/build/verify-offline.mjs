@@ -3689,7 +3689,8 @@ const aboutTexts = async () => ({
   head: ((await tab.locator('[data-role="about-panel"] section.panel > h2 span').first().textContent()) ?? "").trim(),
   headings: (await tab.locator('[data-role="about-panel"] h3').allTextContents()).map((text) => text.trim()),
   body: (await tab.locator('[data-role="about-panel"]').textContent()) ?? "",
-  link: await tab.locator('[data-role="about-panel"] a').first().getAttribute("href"),
+  link: await tab.locator('[data-role="about-panel"] a').last().getAttribute("href"),
+  sourceLink: await tab.locator('[data-role="about-panel"] a').first().getAttribute("href"),
 });
 const tabNamesSv = (await tab.locator(".screen-toggle .panel-btn").allTextContents()).map((text) => text.trim());
 await tab.locator('.screen-toggle .panel-btn[data-screen="about"]').click();
@@ -3708,12 +3709,13 @@ if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Bästa 
 if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
   problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);
 }
-if (!sameList(aboutSv.headings, ["Syfte", "Friskrivning", "Kontakt"]) || !sameList(aboutEn.headings, ["Purpose", "Disclaimer", "Contact"])) {
+if (!sameList(aboutSv.headings, ["Syfte", "Källa och bearbetning", "Friskrivning", "Kontakt"]) || !sameList(aboutEn.headings, ["Purpose", "Source and adaptation", "Disclaimer", "Contact"])) {
   problems.push(`the about page's sections are ${aboutSv.headings.join("/")} and ${aboutEn.headings.join("/")}`);
 }
 for (const [what, ok] of [
   ["the purpose", aboutSv.body.includes("förmedla kunskap, inspirera och lyfta pensionsfrågan") && aboutSv.body.includes("välinformerade beslut som passar dig och din situation")],
   ["the 'not financial advice' disclaimer", aboutSv.body.includes("Inte finansiell rådgivning") && /not financial advice/i.test(aboutEn.body)],
+  ["the source: Pensionsmyndigheten, with a link and the model's version", aboutSv.sourceLink?.startsWith("https://www.pensionsmyndigheten.se/") === true && aboutSv.body.includes("Källa: Pensionsmyndigheten") && aboutSv.body.includes("ver. 4.8") && /Source: Pensionsmyndigheten/.test(aboutEn.body) && aboutSv.body.includes("bearbetad version")],
   ["the contact: the website", aboutSv.link === "https://pensionslyft.se" && aboutSv.body.includes("pensionslyft.se")],
 ]) {
   if (!ok) problems.push(`the about page lacks ${what}`);
@@ -3936,6 +3938,10 @@ if (!/inofficiell|unofficial/i.test(noticeText)) {
 }
 if (!noticeText.includes("Pensionsmyndigheten")) {
   problems.push("the disclaimer does not name Pensionsmyndigheten");
+}
+const noticeLink = await tab.locator('[data-role="disclaimer"] a').first().getAttribute("href");
+if (!noticeText.includes("Källa:") || !noticeText.includes("ver. 4.8") || !noticeText.includes("bearbetad version") || !noticeLink?.startsWith("https://www.pensionsmyndigheten.se/")) {
+  problems.push(`the notice does not name Pensionsmyndigheten as the source with a link and the version, nor say it is an adapted version (link ${noticeLink})`);
 }
 if (noticeText.includes("typfallsmodellen@pensionsmyndigheten.se")) {
   problems.push("the disclaimer still names the agency's address for model questions, expected it removed");

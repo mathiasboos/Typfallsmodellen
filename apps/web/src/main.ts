@@ -20,7 +20,7 @@
 import { contextFromSettings, defaultInput, run } from "@typfallsmodellen/engine";
 import type { ModelContext, TypfallInput, TypfallResult } from "@typfallsmodellen/engine";
 
-import { createAboutPanel } from "./about.js";
+import { SOURCE, createAboutPanel } from "./about.js";
 import { createAdvancedPanel } from "./advanced.js";
 import { renderDisposable, renderFigure1, renderFigure2, renderTaxChart } from "./chart.js";
 import type { FigureView } from "./chart.js";
@@ -354,16 +354,29 @@ function renderHeading(): void {
 function applyNoticeText(l: Lang): void {
   noticeSummary.textContent = l === "sv" ? "Om modellen" : "About the model";
   noticeStrong.textContent = l === "sv" ? "Inofficiell version." : "Unofficial version.";
-  noticeRest.textContent =
+  // The source is named, with a link, because the agency lets the tool be spread and modified on that condition.
+  const link = document.createElement("a");
+  link.href = SOURCE.href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = SOURCE.text;
+  noticeRest.replaceChildren(
     l === "sv"
-      ? " Den här sidan är inte utvecklad av, kopplad till eller godkänd av " +
-        "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. " +
-        "Resultatet är en prognos under de antaganden du anger – inte ett besked om din " +
-        "pension."
-      : " This page is not built by, affiliated with or endorsed by Pensionsmyndigheten, " +
-        "the Swedish Pensions Agency. The model, its data and its user manual are theirs. " +
-        "What it shows is a forecast under the assumptions you enter – not a statement " +
-        "about your pension.";
+      ? ` Beräkningarna bygger på Typfallsmodellen (ver. ${SOURCE.version}) från Pensionsmyndigheten. Källa: `
+      : ` The calculations are based on Pensionsmyndigheten's Typfallsmodellen (ver. ${SOURCE.version}). Source: `,
+    link,
+    l === "sv"
+      ? ". Det här är en bearbetad version som inte är utvecklad av, kopplad till eller godkänd av " +
+          "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. Flikarna " +
+          "Jämför scenarier, Mikrosim, Bästa pensionsålder?, Hur länge räcker pensionen? och " +
+          "Hur mycket får jag? är egna tillägg. Resultatet är en prognos under de antaganden du " +
+          "anger – inte ett besked om din pension."
+      : ". This is an adapted version that is not built by, affiliated with or endorsed by " +
+          "Pensionsmyndigheten, the Swedish Pensions Agency. The model, its data and its user manual " +
+          "are theirs. The tabs Compare scenarios, Mikrosim, Best retirement age?, How long does the " +
+          "pension last? and How much do I get? are additions of our own. What it shows is a forecast " +
+          "under the assumptions you enter – not a statement about your pension.",
+  );
 }
 
 /**
