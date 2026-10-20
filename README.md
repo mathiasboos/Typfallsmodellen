@@ -14,6 +14,13 @@ computes entirely in the browser, and can absorb the yearly data release through
 
 > **Unofficial.** Not affiliated with or endorsed by Pensionsmyndigheten. The model, its data and
 > its user manual are theirs.
+>
+> **Source.** Based on Pensionsmyndigheten's Typfallsmodellen (ver. 4.8),
+> [pensionsmyndigheten.se](https://www.pensionsmyndigheten.se/statistik-och-rapporter/pensionsmodellen/typfallsmodellen).
+> The agency allows the tool to be spread and modified as long as it is named as the source. This is an
+> adapted version: the model is rewritten for the web, and the views "Jämför scenarier", "Mikrosim",
+> "Bästa pensionsålder?", "Hur länge räcker pensionen?" and "Hur mycket får jag?", and the private saving,
+> are additions that are not part of the agency's model.
 
 ## Layout
 
