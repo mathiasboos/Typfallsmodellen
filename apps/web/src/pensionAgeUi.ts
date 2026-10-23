@@ -1,5 +1,5 @@
 /**
- * The small pieces "Bästa pensionsålder" builds its panels from, shared by the
+ * The small pieces "Hur maxa pensionen?" builds its panels from, shared by the
  * tab's own panel (`pensionAgePanel.ts`) and by the agreement comparison
  * (`pensionAgeCompare.ts`): element and table builders, the number formats the
  * two use, and the few phrases both need to describe a study ("fasta priser

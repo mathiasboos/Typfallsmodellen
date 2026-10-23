@@ -119,7 +119,7 @@
   --fig-retirement-line: #dfdfdf;
 
   /*
-   * pensionAgeChart.ts's seven lines -- "Bästa pensionsålder" compares one
+   * pensionAgeChart.ts's seven lines -- "Hur maxa pensionen?" compares one
    * retirement age against the others, so the colour says how much earlier
    * (warm) or later (cool) than the reference age a line is, and the reference
    * itself is plain ink. A diverging scale, not seven categorical hues: the
@@ -189,7 +189,7 @@
    * is a ramp, not four hues: SEB's gold stepped in OKLCH lightness at fixed spacing
    * (0.40, 0.48, 0.55, 0.63 in light; 0.86, 0.78, 0.70, 0.62 in dark), the shortest
    * payout the strongest against its surface, and lifelong -- the one that does not
-   * run out -- plain ink, as the reference age is in "Bästa pensionsålder". Validated
+   * run out -- plain ink, as the reference age is in "Hur maxa pensionen?". Validated
    * with the `dataviz` skill's `validate_palette.js` as an ordinal ramp against this
    * app's own chart surfaces (`#ffffff` light, `#003824` dark): monotone lightness,
    * every adjacent step >= 0.06 apart, lightest step >= 3:1 against the surface
@@ -1141,7 +1141,7 @@ body {
 .footnote { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
 
 /*
- * "Bästa pensionsålder" (pensionAgePanel.ts / pensionAgeChart.ts): its own
+ * "Hur maxa pensionen?" (pensionAgePanel.ts / pensionAgeChart.ts): its own
  * inputs, a short answer built around a row of coloured boxes, three line
  * charts and a handful of tables. Everything else it needs is already here --
  * `.panel`, `.field`, `.figure`, `.table`, `.legend`, `.tooltip`.
@@ -1358,7 +1358,7 @@ button.pa-agr[aria-pressed="true"]::before { content: "✓"; }
 
 /*
  * "Hur länge räcker pensionen?" (pensionLastsPanel.ts): the same panel, charts and
- * tables as "Bästa pensionsålder" (it reuses their classes), with its own payout
+ * tables as "Hur maxa pensionen?" (it reuses their classes), with its own payout
  * period colours, a short answer built around a row of boxes -- one per way of taking
  * the pension out, with how long the budget lasts underneath -- and tables whose cells
  * say how a budget stands. Status is never colour alone: the text says it, and a

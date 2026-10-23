@@ -67,7 +67,7 @@ function lookupPublished(table: PublishedTable, cohort: number, age: number): nu
  * far the most expensive thing a model run does -- about two thirds of the run
  * (6 ms of 9, measured). Each run builds its own `DeltalTables`, so without this
  * every run recomputed the figures for the same cohort, and a caller that runs
- * the model dozens of times for one person (the web app's "Bästa pensionsålder"
+ * the model dozens of times for one person (the web app's "Hur maxa pensionen?"
  * runs it seven times per agreement and compares up to eight agreements) paid
  * for that every time. Keyed by the table object rather than by its contents: a
  * different table is a different key, and nothing is kept once a table is

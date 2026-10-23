@@ -1,5 +1,5 @@
 /**
- * "Bästa pensionsålder": the tab that answers *which retirement age pays out the
+ * "Hur maxa pensionen?": the tab that answers *which retirement age pays out the
  * most over a lifetime* -- for a typfall of your own, a collective agreement of
  * your own, and a lifespan you can only guess at.
  *
@@ -1021,7 +1021,7 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   // ---- language ---------------------------------------------------------------
 
   const applyText = (l: Lang): void => {
-    inputsTitle.textContent = say(l, "Bästa pensionsålder?", "Best retirement age?");
+    inputsTitle.textContent = say(l, "Hur maxa pensionen?", "How to maximise the pension?");
     intro.textContent = say(
       l,
       "Jämför sju pensionsåldrar kring en referensålder och se vilken som ger mest pension totalt, beroende på hur länge du lever. Ändra personen, avtalsområdet, sparandet eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
