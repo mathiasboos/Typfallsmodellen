@@ -844,7 +844,6 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
         cells.push(cell(kronor(o.finalSalaryMonthly, l), "num"));
         return row(cells, { par: String(o.par) });
       });
-      const reference = study.options[study.reference]!;
       return [
         tableOf("pa-time-table", "pa-time", head, rows),
         h(
@@ -852,8 +851,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
           "figure-note",
           say(
             l,
-            `Appens Tabell 1 visar något högre belopp vid pensionering (t.ex. ${kronor(reference.table1Monthly, l)} kr/mån vid ${reference.par} mot ${kronor(reference.firstYearMonthly, l)} kr/mån här): den räknar in sista årets pensionsrätt direkt, medan den i år-för-år-flödet, som diagrammen och summorna bygger på, kommer med från andra året.`,
-            `The app's Table 1 shows a slightly higher amount at retirement (e.g. ${kronor(reference.table1Monthly, l)} SEK/month at ${reference.par} against ${kronor(reference.firstYearMonthly, l)} SEK/month here): it counts the last year's pension right at once, while the year-by-year flow the charts and totals are built on picks it up from the second year.`,
+            "Första året är samma belopp som Prognos visar vid pensionering (Tabell 1). Därefter följer pensionen modellens år-för-år-flöde, som diagrammen och summorna bygger på.",
+            "The first year is the same amount Prognos shows at retirement (Table 1). After that the pension follows the model's year-by-year flow, which the charts and totals are built on.",
           ),
         ),
       ];

@@ -565,8 +565,8 @@ function notesPanel(comparison: Comparison, l: Lang): HTMLElement {
     ),
     say(
       l,
-      `Månadspension vid start är första årets belopp i år-för-år-flödet som diagrammen och summorna bygger på; appens Tabell 1 visar något högre belopp vid pensionering, eftersom den räknar in sista årets pensionsrätt direkt.`,
-      `Monthly pension at the start is the first year's amount in the year-by-year flow the charts and totals are built on; the app's Table 1 shows a slightly higher amount at retirement, because it counts the last year's pension right at once.`,
+      `Månadspension vid start är samma belopp som Prognos visar vid pensionering (Tabell 1); därefter följer pensionen år-för-år-flödet som diagrammen och summorna bygger på.`,
+      `Monthly pension at the start is the same amount Prognos shows at retirement (Table 1); after that the pension follows the year-by-year flow the charts and totals are built on.`,
     ),
   ];
   for (const text of paragraphs) bodyBox.append(h("p", undefined, text));

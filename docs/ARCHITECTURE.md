@@ -1262,10 +1262,19 @@ would rise smoothly from 80.3 to 83.8; it is what makes the pattern uneven (the 
 riktålder to one year later needs a *longer* life than the next one does). The tab says so in its own
 notes and puts the two assumption sets one click apart rather than choosing for the user.
 
-**Table 1 and the yearly flow differ by up to about 2 %, and the tab says so.** Table 1 counts the
-final year's pension right at once; the per-age matrix picks it up from the second year (the model's
-own order). The short answer's one-line summary quotes Table 1 (so it matches Prognos); every sum and
-chart is built on the per-age flow, which is what a lifetime total has to be built on.
+**The first year is Table 1's, so the tab starts where Prognos does.** The model draws Table 1 in a second
+pass at the retirement age, once the last working year's pension right has changed the gross
+(`docs/VBA-MAPPING.md`, "The second pass at the retirement age"); the per-age rows, drawn in the first pass,
+leave that right out of their first row and have it from the next one. Left as they were, the first row said
+about 0.7 % less than Prognos at the same inputs, all of it in the public pension -- the income and premium
+pensions lower, the guarantee pension higher (it tops the income-based pension up to its level), the
+occupational pension the same. So `buildOption`, `savingsPayout` and the lasts tabs' `runPayouts` take the
+first year -- the total, the occupational, individual and savings parts, and after tax the net -- from Table 1,
+and every later year from the flow. The year after is then within a fraction of a per cent of it, which is
+what the model's own indexation of a pension in payment gives. A lifetime total is the sum over this series,
+so every total here is a little higher than it was, and a best age that was a near-tie can change
+(tested: `the first year` in `pensionAge.test.ts` and `pensionLasts.test.ts`; the offline run compares the tab
+with Prognos's own figure for the same person).
 
 **The second view: all the agreements side by side.** A switch below the inputs ("Ett avtalsområde" /
 "Jämför avtalsområden") chooses what the results are. The comparison (`pensionAgeCompare.ts`, over

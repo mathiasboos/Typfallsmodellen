@@ -270,12 +270,13 @@ export interface StudyOption {
   readonly savings: readonly number[];
   /** `cumulative[x]`: kronor paid out before the x-th birthday. */
   readonly cumulative: readonly number[];
-  /** The first year's measure per month -- what the first row of the age matrix says. */
+  /** The first year's measure per month -- Table 1's own figure, the one Prognos shows at retirement. */
   readonly firstYearMonthly: number;
   /** Table 1's own "Slutlön", per month. */
   readonly finalSalaryMonthly: number;
   /** Table 1's own total at retirement (gross or after tax), per month, with the private savings -- which counts
-   * the last year's pension right straight away, where the yearly flow picks it up in year two. */
+   * the last year's pension right straight away, where the yearly flow's own first row leaves it out. The first
+   * year is this figure (`firstYearMonthly` equals it); every later year is the flow's. */
   readonly table1Monthly: number;
   /** Table 1's share of final salary for the same line. */
   readonly table1Share: number;
@@ -383,6 +384,8 @@ function savingsPayout(
     if (row.age >= par && row.age <= LAST_AGE) annual[row.age] = row.pps;
   }
   const line = table1Row(result, Table1Key.PrivateSavingAfterTax);
+  // Table 1's own figure is the first year's, as it is for the pensions (see `buildOption`).
+  if (line !== undefined && par <= LAST_AGE) annual[par] = line.monthly * 12;
   const payout: SavingsPayout = {
     annual,
     table1Monthly: line?.monthly ?? 0,
@@ -425,6 +428,16 @@ function buildOption(
 
   // Table 1's total counts the private savings too: they are not in its gross, and its own line for them is a separate row.
   const total = table1(result, input.afterTax ? Table1Key.PensionAfterTax : Table1Key.TotalGross);
+  // The first year is what Table 1 -- and so Prognos -- says. The model draws Table 1 in a second pass at the
+  // retirement age, once the last working year's pension right is in; the yearly flow has it from the next year, so
+  // its own first row is a little lower. Every later year stays the flow's. The pension is paid out against the
+  // amount the person was told at retirement, which is what Prognos shows.
+  if (par <= LAST_AGE) {
+    annual[par] = total.monthly * 12 + (own?.annual[par] ?? 0);
+    occupational[par] = table1(result, Table1Key.OccupationalPension).monthly * 12;
+    individual[par] = table1(result, Table1Key.PrivateSaving).monthly * 12;
+    savings[par] = own?.annual[par] ?? 0;
+  }
   const base = table1Row(result, input.afterTax ? Table1Key.SalaryAfterTax : Table1Key.FinalSalary)?.adjusted ?? 0;
   const savingsShare = own !== undefined && base > 0 ? own.table1Adjusted / base : 0;
   return {
