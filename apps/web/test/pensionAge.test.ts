@@ -49,6 +49,9 @@ import {
   matrixToCsv,
   monthlySalaryForFinalSalary,
   monthlySalaryForTarget,
+  optimalRows,
+  optimalToCsv,
+  optimalToXlsxRows,
   pensionContext,
   referenceAge,
   savingsContext,
@@ -628,6 +631,36 @@ describe("final salary as the input", () => {
     expect(monthlySalaryForFinalSalary(31_000, (s) => s * 1.24)).toBe(25_000);
     expect(monthlySalaryForFinalSalary(0, (s) => s)).toBe(0);
     expect(monthlySalaryForFinalSalary(1000, () => 0)).toBe(1000);
+  });
+});
+
+describe("the best age by lifespan", () => {
+  it("has one column per lifespan: the winning age, what it pays a month on average and in all", () => {
+    const rows = optimalRows(study);
+    expect(rows).toHaveLength(16);
+    expect(rows.map((r) => r.lifespan)).toEqual(study.rows.map((r) => r.lifespan));
+    study.rows.forEach((r, i) => {
+      const best = study.options[r.best]!;
+      expect(rows[i]!.par).toBe(best.par);
+      expect(rows[i]!.total).toBe(r.totals[r.best]);
+      expect(rows[i]!.monthly! * (r.lifespan - best.par) * 12).toBeCloseTo(r.totals[r.best]!, 4);
+    });
+    expect(rows[0]).toMatchObject({ lifespan: 80, par: 65, total: 2972916 });
+    expect(rows[0]!.monthly).toBeCloseTo(2972916 / 180, 6);
+  });
+
+  it("downloads as the table is laid out: a row per measure, whole kronor, millions with two decimals", () => {
+    const sv = optimalToCsv(study, "sv").split("\r\n");
+    expect(sv).toHaveLength(4);
+    expect(sv[0]).toBe("Livslängd;80;81;82;83;84;85;86;87;88;89;90;91;92;93;94;95");
+    expect(sv[1]!.startsWith("Pensionsålder;65;65;65;")).toBe(true);
+    expect(sv[2]!.startsWith("Månadsbelopp kr;16516;")).toBe(true);
+    expect(sv[3]!.startsWith("Livsutbetalning mkr;2,97;")).toBe(true);
+    const en = optimalToCsv(study, "en").split("\r\n");
+    expect(en[3]!.startsWith("Lifetime payout MSEK,2.97,")).toBe(true);
+    const sheet = optimalToXlsxRows(study, "sv");
+    expect(sheet).toHaveLength(4);
+    expect(sheet.every((line) => line.length === 17)).toBe(true);
   });
 });
 

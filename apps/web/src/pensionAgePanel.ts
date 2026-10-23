@@ -65,6 +65,9 @@ import {
   matrixToCsv,
   matrixToXlsxRows,
   monthlySalaryForTarget,
+  optimalRows,
+  optimalToCsv,
+  optimalToXlsxRows,
   referenceAge,
   seriesToCsv,
   seriesToXlsxRows,
@@ -72,6 +75,7 @@ import {
 import type { BreakEven, LifespanRow, SeriesMeasure, Study, StudyInput, StudyOption } from "./pensionAge.js";
 import { createAgreementCompare } from "./pensionAgeCompare.js";
 import { niceTicks, renderLineChart } from "./pensionAgeChart.js";
+import { renderOptimalChart } from "./pensionAgeOptimalChart.js";
 import {
   capital,
   chip,
@@ -973,6 +977,95 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     return section;
   }
 
+  function optimalPanel(study: Study, l: Lang): HTMLElement {
+    const actions = [
+      csvExportButton(l, say(l, "optimal-pensionsalder.csv", "optimal-retirement-age.csv"), () => optimalToCsv(study, l)),
+      xlsxExportButton(l, say(l, "optimal-pensionsalder.xlsx", "optimal-retirement-age.xlsx"), () => optimalToXlsxRows(study, l)),
+    ];
+    const { section, body } = panel(
+      say(l, "Optimal pensionsålder i förhållande till livslängd", "Optimal retirement age in relation to lifespan"),
+      actions,
+    );
+    section.dataset.role = "pa-optimal-panel";
+    const points = optimalRows(study);
+    const text = {
+      age: say(l, "Pensionsålder", "Retirement age"),
+      lifespan: say(l, "Livslängd", "Lifespan"),
+      monthly: say(l, "Månadsbelopp kr", "Monthly amount SEK"),
+      total: say(l, "Livsutbetalning mkr", "Lifetime payout MSEK"),
+    };
+    body.append(
+      h(
+        "p",
+        "pa-lead",
+        say(
+          l,
+          "För varje livslängd: den pensionsålder som ger mest pension sammanlagt, vad den ger i genomsnitt per månad och vad den ger totalt, i miljoner kronor.",
+          "For each lifespan: the retirement age that pays the most in all, what it pays a month on average and what it pays in total, in millions of kronor.",
+        ),
+      ),
+    );
+
+    const head = [headCell(text.lifespan), ...points.map((p) => headCell(String(p.lifespan)))];
+    const ageRow = row(
+      [
+        cell(text.age, "pa-opt-label"),
+        ...points.map((p, i) => {
+          const td = cell("", "num");
+          td.dataset.lifespan = String(p.lifespan);
+          td.append(chip(study.options[study.rows[i]!.best]!));
+          return td;
+        }),
+      ],
+      { row: "age" },
+    );
+    const figureRow = (key: "monthly" | "total", show: (p: (typeof points)[number]) => string): HTMLTableRowElement =>
+      row(
+        [
+          cell(text[key], "pa-opt-label"),
+          ...points.map((p) => {
+            const td = cell(show(p), "num");
+            td.dataset.lifespan = String(p.lifespan);
+            return td;
+          }),
+        ],
+        { row: key },
+      );
+    body.append(
+      tableOf("pa-optimal", "pa-optimal", head, [
+        ageRow,
+        figureRow("monthly", (p) => (p.monthly === undefined ? "–" : kronor(p.monthly, l))),
+        figureRow("total", (p) => decimals(p.total / 1e6, 1, l)),
+      ]),
+    );
+
+    body.append(
+      renderOptimalChart({
+        role: "pa-fig-optimal",
+        lang: l,
+        title: say(l, "Pension per månad och totalt vid bästa pensionsålder", "Pension per month and in total at the best retirement age"),
+        subtitle: say(
+          l,
+          `Bästa pensionsålder för varje livslängd. Stapel: vad den ger i genomsnitt per månad (kr, vänster axel). Linje: vad den ger sammanlagt (miljoner kronor, höger axel). ${capital(measureText(study, l))}, ${priceText(study, l)}, utan diskontering.`,
+          `The best retirement age for each lifespan. Bar: what it pays a month on average (SEK, left axis). Line: what it pays in all (millions of kronor, right axis). ${capital(measureText(study, l))}, ${priceText(study, l)}, not discounted.`,
+        ),
+        points,
+        text: {
+          ...text,
+          leftUnit: say(l, "Kr/mån", "SEK/month"),
+          rightUnit: "Mkr",
+          heading: (lifespan) => say(l, `Lever du till ${lifespan} år`, `If you live to ${lifespan}`),
+        },
+        format: {
+          kronor: (v) => kronor(v, l),
+          monthly: (v) => `${kronor(v, l)} ${say(l, "kr/mån", "SEK/month")}`,
+          millions: (v) => decimals(v, 1, l),
+        },
+      }),
+    );
+    return section;
+  }
+
   function breakEvenPanel(study: Study, l: Lang): HTMLElement {
     const { section, body } = panel(say(l, "Brytpunkter", "Break-even points"));
     section.dataset.role = "pa-breakeven-panel";
@@ -1082,7 +1175,14 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   function buildResults(study: Study, l: Lang): HTMLElement[] {
     const out: HTMLElement[] = [];
     if (study.warnings.length > 0) out.push(warningsBox(study.warnings));
-    out.push(answerPanel(study, l), monthlyFigure(study, l), timePanel(study, l), totalFigure(study, l), matrixPanel(study, l));
+    out.push(
+      answerPanel(study, l),
+      monthlyFigure(study, l),
+      timePanel(study, l),
+      totalFigure(study, l),
+      matrixPanel(study, l),
+      optimalPanel(study, l),
+    );
     const delta = deltaFigure(study, l);
     if (delta) out.push(delta);
     out.push(breakEvenPanel(study, l), notesPanel(study, l));

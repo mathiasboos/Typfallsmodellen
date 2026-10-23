@@ -1227,7 +1227,16 @@ block resets the six steps so a dark-theme page still prints on a white ground.
 
 Identity does not rest on hue alone: every chart has a legend and a hover readout that names every
 value, the short answer and the matrix carry the winner's number in each box, and the two tables
-beside the charts hold every number plotted (the per-age CSV holds the rest). Each box of the short answer (one per lifespan) shows the lifespan, the best start age, what that start
+beside the charts hold every number plotted (the per-age CSV holds the rest). **Optimal pensionsålder i förhållande till livslängd** is a section straight after "Total pension per livslängd"
+(`optimalPanel`): a table with a column per lifespan (the best start age, what it pays a month on average --
+`averageMonthly` again -- and what it pays in all, in Mkr; `optimalRows`) and a chart of the same
+(`pensionAgeOptimalChart.ts`: bars for the monthly amount, a line for the total). It is the one chart here with
+two value axes, since the measures differ by a factor of about a hundred; the right axis has exactly as many
+steps as the left (`alignedTicks`), so every gridline is a tick on both, both start at zero, the legend says
+which mark is which, and the hover and the table give every number. The colours are the page's own green and
+blue (`--fig-premium`, `--fig-salary`). The downloads (`optimal-pensionsalder.*`) are laid out as the table is.
+
+Each box of the short answer (one per lifespan) shows the lifespan, the best start age, what that start
 pays a month **on average** (`averageMonthly`: the total paid out before the lifespan over the months from
 the start age to it -- not the first year's amount, which is in the per-age table), the lifetime total in
 Mkr (`totals[best]`) and the lead over the runner-up. The per-age table has a

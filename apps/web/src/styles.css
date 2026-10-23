@@ -1271,6 +1271,22 @@ body {
 .pa-best-p2 { --pa-best: var(--fig-pa-p2); }
 .pa-best-p3 { --pa-best: var(--fig-pa-p3); }
 .pa-table td.txt { min-width: 240px; text-align: left; white-space: normal; }
+/* "Optimal pensionsålder i förhållande till livslängd": the table's rows are measures, its columns lifespans,
+   so the sixteen columns scroll sideways on a phone with the row names kept in view. */
+.pa-optimal td.pa-opt-label, .pa-optimal thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.85rem;
+  background: var(--surface-raised);
+}
+.pa-optimal th, .pa-optimal td { padding: 5px 6px; }
+.pa-optimal td.num { text-align: center; }
+.pa-optimal .pa-chip { padding: 2px 0; min-width: 2.4em; }
+.pa-opt-age { font-weight: 700; }
 .pa-breakeven thead th:last-child { text-align: left; }
 .pa-narrow { max-width: 480px; }
 .pa-notes { padding: 0 2px; }

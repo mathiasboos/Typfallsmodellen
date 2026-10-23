@@ -1030,6 +1030,66 @@ export function seriesToXlsxRows(study: Study, lang: Lang, measure: SeriesMeasur
   return rows;
 }
 
+// --------------------------------------------------- optimal age by lifespan ---
+
+/** What the best start age is, and pays, for one lifespan: a column of "Optimal pensionsålder i förhållande till livslängd". */
+export interface OptimalRow {
+  readonly lifespan: number;
+  /** The best retirement age for this lifespan. */
+  readonly par: number;
+  /** What it pays a month on average (`averageMonthly`); undefined when nothing is paid by then. */
+  readonly monthly: number | undefined;
+  /** What it pays in total before the lifespan, kronor. */
+  readonly total: number;
+}
+
+export function optimalRows(study: Study): OptimalRow[] {
+  return study.rows.map((r) => {
+    const best = study.options[r.best]!;
+    return { lifespan: r.lifespan, par: best.par, monthly: averageMonthly(best, r.lifespan), total: r.totals[r.best] ?? 0 };
+  });
+}
+
+/** The labels of the table's rows, in its own order. */
+function optimalLabels(lang: Lang): { lifespan: string; age: string; monthly: string; total: string } {
+  return {
+    lifespan: say(lang, "Livslängd", "Lifespan"),
+    age: say(lang, "Pensionsålder", "Retirement age"),
+    monthly: say(lang, "Månadsbelopp kr", "Monthly amount SEK"),
+    total: say(lang, "Livsutbetalning mkr", "Lifetime payout MSEK"),
+  };
+}
+
+/** Millions of kronor with two decimals, the decimal sign of the delimiter's own language. */
+function millions(value: number, lang: Lang): string {
+  const text = (Math.round(value / 1e4) / 100).toFixed(2);
+  return lang === "sv" ? text.replace(".", ",") : text;
+}
+
+/** The table as it is shown: one row per measure, one column per lifespan. */
+export function optimalToCsv(study: Study, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const rows = optimalRows(study);
+  const label = optimalLabels(lang);
+  return [
+    csvLine([label.lifespan, ...rows.map((r) => String(r.lifespan))], delimiter),
+    csvLine([label.age, ...rows.map((r) => String(r.par))], delimiter),
+    csvLine([label.monthly, ...rows.map((r) => (r.monthly === undefined ? "" : whole(r.monthly)))], delimiter),
+    csvLine([label.total, ...rows.map((r) => millions(r.total, lang))], delimiter),
+  ].join("\r\n");
+}
+
+export function optimalToXlsxRows(study: Study, lang: Lang): SheetData {
+  const rows = optimalRows(study);
+  const label = optimalLabels(lang);
+  return [
+    [label.lifespan, ...rows.map((r) => r.lifespan)],
+    [label.age, ...rows.map((r) => r.par)],
+    [label.monthly, ...rows.map((r) => (r.monthly === undefined ? "" : kronorCell(r.monthly)))],
+    [label.total, ...rows.map((r) => ({ value: r.total / 1e6, type: Number, format: "0.0" }))],
+  ];
+}
+
 /** The comparison's two numbers per agreement and lifespan: its best age, and what it pays in total at that age. */
 function comparisonHeader(comparison: Comparison, lang: Lang): string[] {
   const tax = comparison.input.afterTax ? say(lang, "efter skatt", "after tax") : say(lang, "före skatt", "before tax");

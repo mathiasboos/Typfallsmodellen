@@ -2718,6 +2718,82 @@ if (paSeriesLines.length !== 32 || !paSeriesLines[1]?.startsWith("65;16498;")) {
   problems.push(`the per-age CSV has ${paSeriesLines.length} lines starting "${paSeriesLines[1]}", expected 32 lines from age 65 at 16498`);
 }
 
+// "Optimal pensionsålder i förhållande till livslängd": a table and a chart of the best age per lifespan,
+// straight after "Total pension per livslängd".
+const paOptimal = pa.locator('[data-role="pa-optimal-panel"]');
+const paOptimalAfter = await pa.locator(".pa-results").evaluate((box) => {
+  const roles = [...box.children].map((node) => node.dataset.role);
+  return roles[roles.indexOf("pa-matrix-panel") + 1];
+});
+const paOptimalCells = async (key) =>
+  (await paOptimal.locator(`tr[data-row="${key}"] td.num`).allTextContents()).map((text) => text.replace(/\s/g, ""));
+const paOptimalAges = await paOptimalCells("age");
+const paOptimalMonthly = await paOptimalCells("monthly");
+const paOptimalTotal = await paOptimalCells("total");
+console.log(`pension age     : optimal ${paOptimalAfter}, ages ${paOptimalAges.join(",")}, 80 -> ${paOptimalMonthly[0]} kr, ${paOptimalTotal[0]} Mkr`);
+if (paOptimalAfter !== "pa-optimal-panel") problems.push(`"Optimal pensionsålder" is not straight after the matrix (it is followed by ${paOptimalAfter})`);
+if (!sameList(paOptimalAges.map(Number), PA_BEST_DEFAULT)) {
+  problems.push(`the optimal-age table lists ${paOptimalAges.join(",")}, expected ${PA_BEST_DEFAULT.join(",")}`);
+}
+if (paOptimalMonthly.length !== 16 || paOptimalMonthly[0] !== "16516" || paOptimalTotal[0] !== "3,0" || paOptimalTotal[15] !== "6,5") {
+  problems.push(`the optimal-age table's monthly row starts ${paOptimalMonthly[0]} and its total row ${paOptimalTotal[0]}...${paOptimalTotal[15]}, expected 16516 and 3,0...6,5`);
+}
+const paOptimalChart = paOptimal.locator('[data-role="pa-fig-optimal"]');
+const paOptimalMarks = await paOptimalChart.evaluate((figure) => ({
+  bars: figure.querySelectorAll("path.pa-opt-bar").length,
+  linePoints: (figure.querySelector("polyline.pa-opt-line")?.getAttribute("points") ?? "").split(" ").length,
+  grid: figure.querySelectorAll("svg line.grid, svg line.axis").length,
+  left: figure.querySelectorAll("svg text.tick-y").length,
+  right: [...figure.querySelectorAll("svg text")].filter((t) => t.getAttribute("x") === String(760 - 58 + 8)).length,
+  legend: [...figure.querySelectorAll(".legend li")].map((li) => li.textContent),
+}));
+console.log(`pension age     : optimal chart ${paOptimalMarks.bars} bars, ${paOptimalMarks.linePoints} line points, ticks ${paOptimalMarks.left}/${paOptimalMarks.right}`);
+if (paOptimalMarks.bars !== 16 || paOptimalMarks.linePoints !== 16) {
+  problems.push(`the optimal-age chart has ${paOptimalMarks.bars} bars and ${paOptimalMarks.linePoints} line points, expected 16 and 16`);
+}
+// Two axes, but the same number of ticks on both, so every gridline is a tick on each.
+if (paOptimalMarks.left < 3 || paOptimalMarks.left !== paOptimalMarks.right || paOptimalMarks.grid < paOptimalMarks.left) {
+  problems.push(`the optimal-age chart's axes have ${paOptimalMarks.left} left and ${paOptimalMarks.right} right ticks over ${paOptimalMarks.grid} gridlines`);
+}
+if (!sameList(paOptimalMarks.legend, ["Månadsbelopp kr", "Livsutbetalning mkr"])) {
+  problems.push(`the optimal-age chart's legend reads ${paOptimalMarks.legend.join(" / ")}`);
+}
+// The hover names the column under the pointer: a real mouse over the 88 bar.
+await paOptimalChart.scrollIntoViewIfNeeded();
+const paOptimalBar = await paOptimalChart.locator('path.pa-opt-bar[data-lifespan="88"]').boundingBox();
+await tab.mouse.move(paOptimalBar.x + paOptimalBar.width / 2, paOptimalBar.y + paOptimalBar.height / 2);
+await tab.waitForTimeout(100);
+const paOptimalTip = ((await paOptimalChart.locator(".tooltip").textContent()) ?? "").replace(/\s+/g, " ");
+if (!/Lever du till 88 år/.test(paOptimalTip) || !/Pensionsålder71/.test(paOptimalTip.replace(/ /g, "")) || !/23\s?106/.test(paOptimalTip) || !/4,7\s?Mkr/.test(paOptimalTip)) {
+  problems.push(`the optimal-age chart's hover reads "${paOptimalTip}"`);
+}
+await tab.mouse.move(5, 5);
+const paOptimalCsv = await download(paOptimal.locator(".panel-actions").getByRole("button", { name: "Ladda ner CSV" }));
+const paOptimalCsvLines = paOptimalCsv.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+if (
+  paOptimalCsv.filename !== "optimal-pensionsalder.csv" ||
+  paOptimalCsvLines.length !== 4 ||
+  paOptimalCsvLines[0] !== "Livslängd;80;81;82;83;84;85;86;87;88;89;90;91;92;93;94;95" ||
+  !paOptimalCsvLines[2]?.startsWith("Månadsbelopp kr;16516;")
+) {
+  problems.push(`the optimal-age CSV is "${paOptimalCsv.filename}" with ${paOptimalCsvLines.length} lines, header "${paOptimalCsvLines[0]}"`);
+}
+const paOptimalXlsx = await download(paOptimal.locator(".panel-actions").getByRole("button", { name: "Ladda ner Excel" }));
+if (paOptimalXlsx.filename !== "optimal-pensionsalder.xlsx" || !looksLikeXlsx(paOptimalXlsx.buffer)) {
+  problems.push(`the optimal-age Excel download ("${paOptimalXlsx.filename}") isn't a real .xlsx file`);
+}
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paOptimalEn = [
+  ((await paOptimal.locator("> h2 > span").textContent()) ?? "").trim(),
+  (await paOptimal.locator('tr[data-row="total"] td').first().textContent()) ?? "",
+];
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+if (paOptimalEn[0] !== "Optimal retirement age in relation to lifespan" || paOptimalEn[1] !== "Lifetime payout MSEK") {
+  problems.push(`the optimal-age section in English reads ${JSON.stringify(paOptimalEn)}`);
+}
+
 // The per-age table switches between the monthly pension and the total paid out, and its download follows.
 const paTimeSwitch = (measure) => pa.locator(`[data-role="pa-time"] button[data-measure="${measure}"]`);
 const paTimeHeading = async () => ((await pa.locator('[data-role="pa-time"] > h2 > span').textContent()) ?? "").trim();
