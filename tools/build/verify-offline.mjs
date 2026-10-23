@@ -2709,6 +2709,61 @@ if (paSeriesLines.length !== 32 || !paSeriesLines[1]?.startsWith("65;16498;")) {
   problems.push(`the per-age CSV has ${paSeriesLines.length} lines starting "${paSeriesLines[1]}", expected 32 lines from age 65 at 16498`);
 }
 
+// The per-age table switches between the monthly pension and the total paid out, and its download follows.
+const paTimeSwitch = (measure) => pa.locator(`[data-role="pa-time"] button[data-measure="${measure}"]`);
+const paTimeHeading = async () => ((await pa.locator('[data-role="pa-time"] > h2 > span').textContent()) ?? "").trim();
+if ((await paTimeSwitch("monthly").getAttribute("aria-pressed")) !== "true" || (await paTimeHeading()) !== "Pension per månad vid olika åldrar") {
+  problems.push(`the per-age table does not start on its monthly view ("${await paTimeHeading()}")`);
+}
+await paTimeSwitch("total").click();
+await tab.waitForTimeout(100);
+const paSwHeads = await paTimeHead();
+if (paSwHeads.includes("Förstaåret") || paSwHeads.includes("Slutlön") || paSwHeads[0] !== "Startvid" || paSwHeads[1] !== "70år") {
+  problems.push(`the total view's table heads read ${paSwHeads.join(" | ")}`);
+}
+if ((await paTimeHeading()) !== "Total utbetalning före olika åldrar") {
+  problems.push(`the total view's heading reads "${await paTimeHeading()}"`);
+}
+const paSwCsv = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const paSwLines = paSwCsv.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+const paSwAt70 = (paSwLines.find((line) => line.startsWith("70;")) ?? "").split(";");
+const paSwCell = (await paTimeRow(65))[1];
+console.log(`pension age     : total view "${paSwCsv.filename}", header "${paSwLines[0]}", 65 -> 70 = ${paSwAt70[1]} (table ${paSwCell})`);
+if (paSwCsv.filename !== "total-utbetalning.csv" || paSwLines.length !== 32 || paSwLines[0]?.startsWith("Före ålder;Total utbetalning 65;") !== true) {
+  problems.push(`the total view's CSV is "${paSwCsv.filename}", ${paSwLines.length} lines, header "${paSwLines[0]}"`);
+}
+if (paSwLines[0]?.includes("Pension per månad") || !paSwLines[1]?.startsWith("65;0;")) {
+  problems.push(`the total view's CSV mixes in the monthly pension or does not start at nothing paid ("${paSwLines[1]}")`);
+}
+if (paSwAt70[1] === undefined || paNorm(paSwCell) !== paSwAt70[1]) {
+  problems.push(`the total paid out before 70 reads ${paSwCell} in the table and ${paSwAt70[1]} in the CSV`);
+}
+const paSwXlsx = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner Excel" }));
+if (paSwXlsx.filename !== "total-utbetalning.xlsx" || !looksLikeXlsx(paSwXlsx.buffer)) {
+  problems.push(`the total view's Excel download ("${paSwXlsx.filename}") isn't the total .xlsx`);
+}
+// The choice survives a language change, and back to the month restores table, heading and downloads.
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paSwEn = [await paTimeHeading(), await paTimeSwitch("total").textContent(), await paTimeSwitch("total").getAttribute("aria-pressed")];
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+if (paSwEn[0] !== "Total payout before different ages" || paSwEn[1] !== "Total payout" || paSwEn[2] !== "true") {
+  problems.push(`the total view in English reads ${JSON.stringify(paSwEn)}`);
+}
+await paTimeSwitch("monthly").click();
+await tab.waitForTimeout(100);
+const paSwMonthly = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const paSwMonthlyLines = paSwMonthly.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+if (
+  paSwMonthly.filename !== "pension-per-ar.csv" ||
+  paSwMonthlyLines[0] !== "Ålder;Pension per månad 65;Pension per månad 66;Pension per månad 67;Pension per månad 68;Pension per månad 69;Pension per månad 70;Pension per månad 71" ||
+  (await paTimeHeading()) !== "Pension per månad vid olika åldrar" ||
+  !(await paTimeHead()).includes("Förstaåret")
+) {
+  problems.push(`back on the month, the CSV is "${paSwMonthly.filename}" with header "${paSwMonthlyLines[0]}"`);
+}
+
 // The theme tokens reach the boxes: the reference age is ink, black on light and white on dark.
 const paInk = async () => pa.locator(".pa-ribbon .pa-chip-z").first().evaluate((el) => getComputedStyle(el).backgroundColor);
 const paInkLight = await paInk();
@@ -2802,7 +2857,7 @@ const cmpTitle = (role) => pa.locator(`[data-role="${role}"] > h2 span, [data-ro
 
 // The switch: closed by default, the single view's boxes gone once it is open.
 const cmpHiddenAtFirst = await cmpControls.isHidden();
-const cmpViewButtons = await pa.locator(".pa-view .panel-btn").count();
+const cmpViewButtons = await pa.locator(".pa-view:not(.pa-time-view) .panel-btn").count();
 await pa.locator('.pa-view .panel-btn[data-view="compare"]').click();
 await tab.waitForTimeout(150);
 const cmpShown = await cmpControls.isVisible();

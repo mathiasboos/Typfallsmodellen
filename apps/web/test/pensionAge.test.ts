@@ -55,6 +55,7 @@ import {
   schemeName,
   schemeSector,
   seriesToCsv,
+  seriesToXlsxRows,
   slotOf,
   studyContext,
   studyTypfall,
@@ -631,15 +632,35 @@ describe("the exports", () => {
   });
 
   it("write one line per age, blank before an alternative starts", () => {
-    const lines = seriesToCsv(study, "sv").split("\r\n");
+    const lines = seriesToCsv(study, "sv", "monthly").split("\r\n");
     // 65..95 inclusive, plus the header.
     expect(lines).toHaveLength(1 + 31);
     const header = lines[0]!.split(";");
-    expect(header).toHaveLength(1 + 7 + 7);
+    expect(header).toHaveLength(1 + 7);
+    expect(header[0]).toBe("Ålder");
+    expect(header[1]).toBe("Pension per månad 65");
     const first = lines[1]!.split(";");
     expect(first[0]).toBe("65");
     expect(first[1]).toBe("16498");
     expect(first.slice(2, 8).every((cell) => cell === "")).toBe(true);
+  });
+
+  it("hold either the monthly pension or the total paid out, never both", () => {
+    const total = seriesToCsv(study, "sv", "total").split("\r\n");
+    expect(total).toHaveLength(1 + 31);
+    const header = total[0]!.split(";");
+    expect(header).toHaveLength(1 + 7);
+    expect(header[0]).toBe("Före ålder");
+    expect(header[1]).toBe("Total utbetalning 65");
+    // Nothing is paid out before the first age; one year later it is that year's pension.
+    const first = study.options[0]!;
+    expect(total[1]!.split(";")[1]).toBe("0");
+    expect(total[2]!.split(";")[1]).toBe(String(Math.round(first.cumulative[66] ?? 0)));
+    expect(Number(total[2]!.split(";")[1])).toBeGreaterThan(0);
+    const sheet = seriesToXlsxRows(study, "en", "total");
+    expect(sheet).toHaveLength(1 + 31);
+    expect(sheet[0]).toHaveLength(1 + 7);
+    expect(sheet[0]![0]).toBe("Before age");
   });
 
   it("keep the lifespan range inside what the study supports", () => {

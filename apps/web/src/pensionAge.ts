@@ -963,26 +963,42 @@ function seriesAges(study: Study): number[] {
   return ages;
 }
 
-/** Per age: the monthly pension and the running total for each alternative. */
-export function seriesToCsv(study: Study, lang: Lang): string {
-  const delimiter = delimiterFor(lang);
-  const lines = [
-    csvLine(
-      [
+/**
+ * What the per-age table, and so its download, shows: the monthly pension at each age, or the total paid out
+ * before each age. The table has a switch for it, and the download is of what the switch shows.
+ */
+export type SeriesMeasure = "monthly" | "total";
+
+function seriesHeader(study: Study, lang: Lang, measure: SeriesMeasure): string[] {
+  return measure === "monthly"
+    ? [
         say(lang, "Ålder", "Age"),
         ...study.options.map((o) => `${say(lang, "Pension per månad", "Pension per month")} ${o.par}`),
-        ...study.options.map((o) => `${say(lang, "Ackumulerat före årsdagen", "Cumulative before the birthday")} ${o.par}`),
-      ],
-      delimiter,
-    ),
-  ];
+      ]
+    : [
+        say(lang, "Före ålder", "Before age"),
+        ...study.options.map((o) => `${say(lang, "Total utbetalning", "Total payout")} ${o.par}`),
+      ];
+}
+
+/** Per age: the monthly pension, or the sum paid out before the age, for each alternative. Blank before it starts. */
+function seriesCell(o: StudyOption, age: number, measure: SeriesMeasure): number | undefined {
+  if (age < o.par) return undefined;
+  return measure === "monthly" ? (o.annual[age] ?? 0) / 12 : (o.cumulative[age] ?? 0);
+}
+
+export function seriesToCsv(study: Study, lang: Lang, measure: SeriesMeasure): string {
+  const delimiter = delimiterFor(lang);
+  const lines = [csvLine(seriesHeader(study, lang, measure), delimiter)];
   for (const age of seriesAges(study)) {
     lines.push(
       csvLine(
         [
           String(age),
-          ...study.options.map((o) => (age >= o.par ? whole((o.annual[age] ?? 0) / 12) : "")),
-          ...study.options.map((o) => (age >= o.par ? whole(o.cumulative[age] ?? 0) : "")),
+          ...study.options.map((o) => {
+            const value = seriesCell(o, age, measure);
+            return value === undefined ? "" : whole(value);
+          }),
         ],
         delimiter,
       ),
@@ -991,19 +1007,15 @@ export function seriesToCsv(study: Study, lang: Lang): string {
   return lines.join("\r\n");
 }
 
-export function seriesToXlsxRows(study: Study, lang: Lang): SheetData {
-  const rows: SheetData = [
-    [
-      say(lang, "Ålder", "Age"),
-      ...study.options.map((o) => `${say(lang, "Pension per månad", "Pension per month")} ${o.par}`),
-      ...study.options.map((o) => `${say(lang, "Ackumulerat före årsdagen", "Cumulative before the birthday")} ${o.par}`),
-    ],
-  ];
+export function seriesToXlsxRows(study: Study, lang: Lang, measure: SeriesMeasure): SheetData {
+  const rows: SheetData = [seriesHeader(study, lang, measure)];
   for (const age of seriesAges(study)) {
     rows.push([
       age,
-      ...study.options.map((o) => (age >= o.par ? kronorCell((o.annual[age] ?? 0) / 12) : "")),
-      ...study.options.map((o) => (age >= o.par ? kronorCell(o.cumulative[age] ?? 0) : "")),
+      ...study.options.map((o) => {
+        const value = seriesCell(o, age, measure);
+        return value === undefined ? "" : kronorCell(value);
+      }),
     ]);
   }
   return rows;
