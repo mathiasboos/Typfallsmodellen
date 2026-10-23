@@ -56,6 +56,7 @@ import {
   LAST_AGE,
   LIFESPAN_BOUNDS,
   NEAR_TIE,
+  averageMonthly,
   bestRuns,
   centreBounds,
   computeStudy,
@@ -504,6 +505,11 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     );
   }
 
+  const monthlyText = (option: StudyOption, lifespan: number, l: Lang): string => {
+    const monthly = averageMonthly(option, lifespan);
+    return monthly === undefined ? "–" : kronor(monthly, l);
+  };
+
   function answerPanel(study: Study, l: Lang): HTMLElement {
     const { section, body } = panel(say(l, "Svar i korthet", "Short answer"));
     section.dataset.role = "pa-answer";
@@ -517,8 +523,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
         "pa-lead",
         say(
           l,
-          "Vilken pensionsålder som ger mest pension beror på hur länge du lever. Varje ruta visar bästa pensionsålder för en livslängd; siffran under är försprånget mot näst bästa alternativ i tusen kronor (≈ = under 1 % av summan, praktiskt taget lika).",
-          "Which retirement age pays the most depends on how long you live. Each box shows the best retirement age for one lifespan; the figure beneath is the lead over the runner-up in thousands of kronor (≈ = under 1 % of the total, practically equal).",
+          "Vilken pensionsålder som ger mest pension beror på hur länge du lever. Varje ruta gäller en livslängd och visar bästa pensionsålder, vad den ger i genomsnitt per månad, vad den ger sammanlagt och försprånget mot näst bästa alternativ (≈ = under 1 % av summan, praktiskt taget lika).",
+          "Which retirement age pays the most depends on how long you live. Each box is for one lifespan and shows the best retirement age, what it pays a month on average, what it pays in total and the lead over the runner-up (≈ = under 1 % of the total, practically equal).",
         ),
       ),
     );
@@ -537,17 +543,34 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
       item.dataset.tie = tie ? "1" : "0";
       item.title = say(
         l,
-        `Lever du till ${r.lifespan}: bäst är start vid ${best.par} (${tkr(r.totals[r.best]!, l)} tkr), därefter ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} tkr).`,
-        `If you live to ${r.lifespan}: best is ${best.par} (${tkr(r.totals[r.best]!, l)} thousand kr), then ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} thousand kr).`,
+        `Lever du till ${r.lifespan}: bäst är start vid ${best.par} (${tkr(r.totals[r.best]!, l)} tkr, i snitt ${monthlyText(best, r.lifespan, l)} kr/mån), därefter ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} tkr).`,
+        `If you live to ${r.lifespan}: best is ${best.par} (${tkr(r.totals[r.best]!, l)} thousand kr, ${monthlyText(best, r.lifespan, l)} SEK/month on average), then ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} thousand kr).`,
       );
+      const monthlyCell = h("span", "pa-ribbon-v", monthlyText(best, r.lifespan, l));
+      monthlyCell.dataset.row = "monthly";
+      const totalCell = h("span", "pa-ribbon-v", decimals(r.totals[r.best]! / 1e6, 1, l));
+      totalCell.dataset.row = "total";
       item.append(
         h("span", "pa-ribbon-d", String(r.lifespan)),
         chip(best),
+        monthlyCell,
+        totalCell,
         h("span", "pa-ribbon-m", `${tie ? "≈ " : ""}+${tkr(r.margin, l)}`),
       );
       ribbon.append(item);
     }
-    ribbonBox.append(ribbon);
+    ribbonBox.append(
+      ribbon,
+      h(
+        "div",
+        "pa-ribbon-key",
+        say(
+          l,
+          "I varje ruta, uppifrån: livslängd · pensionsålder · månadsbelopp (kr, genomsnitt) · livsutbetalning (Mkr) · försprång (tkr)",
+          "In each box, from the top: lifespan · retirement age · monthly amount (SEK, average) · lifetime payout (MSEK) · lead (thousand SEK)",
+        ),
+      ),
+    );
     body.append(ribbonBox);
 
     // What the reference age pays at the start, in Table 1's own terms, and before tax what it is made of.

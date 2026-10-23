@@ -487,6 +487,15 @@ export function lifespanRow(options: readonly StudyOption[], lifespan: number): 
 }
 
 /**
+ * What one alternative pays a month on average if its person lives to `lifespan`: the total paid out before
+ * that age spread over the months from the retirement age to it. Undefined when nothing is paid out by then.
+ */
+export function averageMonthly(option: StudyOption, lifespan: number): number | undefined {
+  const months = (lifespan - option.par) * 12;
+  return months > 0 ? (option.cumulative[lifespan] ?? 0) / months : undefined;
+}
+
+/**
  * Runs the study: one `run()` per alternative -- two, with private savings -- then the sums and
  * break-evens. `known` holds the private savings' payouts already worked out for this person,
  * and is filled in with any that were not (`computeComparison` shares one between agreements).

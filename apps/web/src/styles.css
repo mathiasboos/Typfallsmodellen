@@ -1211,10 +1211,23 @@ body {
   list-style: none;
   display: grid;
   /* All sixteen in one row on a normal screen, wrapping onto more rows on a phone. */
-  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
   gap: 6px;
 }
 .pa-ribbon-item { display: flex; flex-direction: column; min-width: 0; text-align: center; }
+/* The two figures a box adds under its age: the average monthly amount and the lifetime total. Stacked in
+   their own tinted cells, so a row of boxes reads across like the rows of a table. */
+.pa-ribbon-v {
+  padding: 2px 0;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: var(--surface-subtle, rgba(127, 127, 127, 0.1));
+}
+.pa-ribbon-v[data-row="monthly"] { border-radius: 6px 6px 0 0; }
+.pa-ribbon-v[data-row="total"] { border-radius: 0 0 6px 6px; font-weight: 700; margin-bottom: 3px; }
+.pa-ribbon-key { font-size: 0.72rem; color: var(--text-muted); }
 .pa-ribbon-d { font-size: 0.75rem; color: var(--text-secondary); }
 .pa-ribbon-m { font-size: 0.72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pa-chip { display: inline-block; min-width: 2.2em; padding: 1px 8px; border-radius: 6px; font-weight: 700; text-align: center; }

@@ -1227,7 +1227,10 @@ block resets the six steps so a dark-theme page still prints on a white ground.
 
 Identity does not rest on hue alone: every chart has a legend and a hover readout that names every
 value, the short answer and the matrix carry the winner's number in each box, and the two tables
-beside the charts hold every number plotted (the per-age CSV holds the rest). The per-age table has a
+beside the charts hold every number plotted (the per-age CSV holds the rest). Each box of the short answer (one per lifespan) shows the lifespan, the best start age, what that start
+pays a month **on average** (`averageMonthly`: the total paid out before the lifespan over the months from
+the start age to it -- not the first year's amount, which is in the per-age table), the lifetime total in
+Mkr (`totals[best]`) and the lead over the runner-up. The per-age table has a
 switch, "Månad" / "Total utbetalning" (`SeriesMeasure`: the monthly pension at each age, or the sum paid out
 before it); the heading, the table and the two downloads follow it, so a download holds the one measure the
 table shows (`pension-per-ar.*` or `total-utbetalning.*`), never both. The choice is kept across

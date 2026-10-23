@@ -29,6 +29,7 @@ import {
   SCHEME_COHORTS,
   SCHEME_ORDER,
   alternativeAges,
+  averageMonthly,
   bestAgeSpread,
   bestRuns,
   breakEven,
@@ -199,6 +200,16 @@ describe("the default study reproduces the static report", () => {
     expect(study.rows[0]!.lifespan).toBe(80);
     expect(study.rows[15]!.lifespan).toBe(95);
     expect(study.warnings).toEqual([]);
+  });
+
+  it("averages what a start pays a month over the years it is paid", () => {
+    const sixtyFive = study.options[0]!;
+    // 15 years of 12 months to 80, and the total is the matrix's own 2 972 916.
+    expect(averageMonthly(sixtyFive, 80)).toBeCloseTo(2972916 / 180, 6);
+    expect(averageMonthly(sixtyFive, 80)! * 15 * 12).toBeCloseTo(sixtyFive.cumulative[80]!, 4);
+    // Nothing has been paid by the start age, so there is no monthly amount to speak of.
+    expect(averageMonthly(sixtyFive, 65)).toBeUndefined();
+    expect(averageMonthly(study.options[6]!, 70)).toBeUndefined();
   });
 
   it("adds up whole years: lifespan minus retirement age", () => {

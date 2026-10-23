@@ -2293,6 +2293,15 @@ console.log(`pension age     : best per lifespan ${paBestDefault.join(",")}`);
 if (!sameList(paBestDefault, PA_BEST_DEFAULT)) {
   problems.push(`the short answer picks ${paBestDefault.join(",")} for lifespans 80-95, expected ${PA_BEST_DEFAULT.join(",")}`);
 }
+// Each box also carries the average monthly amount and the lifetime total of its best start: 80 -> 65 is the
+// matrix's 2 972 916 over 180 months, and the lifetime total is the same sum in millions.
+const paBoxFigures = await pa
+  .locator('[data-role="pa-ribbon"] li[data-lifespan="80"] .pa-ribbon-v')
+  .evaluateAll((cells) => cells.map((cell) => (cell.textContent ?? "").replace(/\s/g, "")));
+console.log(`pension age     : box 80 -> monthly ${paBoxFigures[0]}, total ${paBoxFigures[1]} Mkr`);
+if (!sameList(paBoxFigures, ["16516", "3,0"])) {
+  problems.push(`the answer box for lifespan 80 shows ${paBoxFigures.join(" / ")}, expected 16516 kr/month and 3,0 Mkr`);
+}
 const paTiesDefault = (await paTies()).join("");
 if (paTiesDefault !== "0111111111000000") {
   problems.push(`the short answer flags near-ties as ${paTiesDefault}, expected 0111111111000000 (81-89)`);
