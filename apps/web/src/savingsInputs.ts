@@ -1,5 +1,5 @@
 /**
- * The savings inputs "Hur länge räcker pensionen?" and "Bästa pensionsålder"
+ * The savings inputs "Hur länge räcker pensionen?" and "Hur maxa pensionen?"
  * share: the individual occupational pension and the private pension, under the
  * agreement's drop-down, and the "Privat sparande" group.
  *

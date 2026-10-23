@@ -487,6 +487,15 @@ export function lifespanRow(options: readonly StudyOption[], lifespan: number): 
 }
 
 /**
+ * What one alternative pays a month on average if its person lives to `lifespan`: the total paid out before
+ * that age spread over the months from the retirement age to it. Undefined when nothing is paid out by then.
+ */
+export function averageMonthly(option: StudyOption, lifespan: number): number | undefined {
+  const months = (lifespan - option.par) * 12;
+  return months > 0 ? (option.cumulative[lifespan] ?? 0) / months : undefined;
+}
+
+/**
  * Runs the study: one `run()` per alternative -- two, with private savings -- then the sums and
  * break-evens. `known` holds the private savings' payouts already worked out for this person,
  * and is filled in with any that were not (`computeComparison` shares one between agreements).
@@ -963,26 +972,42 @@ function seriesAges(study: Study): number[] {
   return ages;
 }
 
-/** Per age: the monthly pension and the running total for each alternative. */
-export function seriesToCsv(study: Study, lang: Lang): string {
-  const delimiter = delimiterFor(lang);
-  const lines = [
-    csvLine(
-      [
+/**
+ * What the per-age table, and so its download, shows: the monthly pension at each age, or the total paid out
+ * before each age. The table has a switch for it, and the download is of what the switch shows.
+ */
+export type SeriesMeasure = "monthly" | "total";
+
+function seriesHeader(study: Study, lang: Lang, measure: SeriesMeasure): string[] {
+  return measure === "monthly"
+    ? [
         say(lang, "Ålder", "Age"),
         ...study.options.map((o) => `${say(lang, "Pension per månad", "Pension per month")} ${o.par}`),
-        ...study.options.map((o) => `${say(lang, "Ackumulerat före årsdagen", "Cumulative before the birthday")} ${o.par}`),
-      ],
-      delimiter,
-    ),
-  ];
+      ]
+    : [
+        say(lang, "Före ålder", "Before age"),
+        ...study.options.map((o) => `${say(lang, "Total utbetalning", "Total payout")} ${o.par}`),
+      ];
+}
+
+/** Per age: the monthly pension, or the sum paid out before the age, for each alternative. Blank before it starts. */
+function seriesCell(o: StudyOption, age: number, measure: SeriesMeasure): number | undefined {
+  if (age < o.par) return undefined;
+  return measure === "monthly" ? (o.annual[age] ?? 0) / 12 : (o.cumulative[age] ?? 0);
+}
+
+export function seriesToCsv(study: Study, lang: Lang, measure: SeriesMeasure): string {
+  const delimiter = delimiterFor(lang);
+  const lines = [csvLine(seriesHeader(study, lang, measure), delimiter)];
   for (const age of seriesAges(study)) {
     lines.push(
       csvLine(
         [
           String(age),
-          ...study.options.map((o) => (age >= o.par ? whole((o.annual[age] ?? 0) / 12) : "")),
-          ...study.options.map((o) => (age >= o.par ? whole(o.cumulative[age] ?? 0) : "")),
+          ...study.options.map((o) => {
+            const value = seriesCell(o, age, measure);
+            return value === undefined ? "" : whole(value);
+          }),
         ],
         delimiter,
       ),
@@ -991,22 +1016,78 @@ export function seriesToCsv(study: Study, lang: Lang): string {
   return lines.join("\r\n");
 }
 
-export function seriesToXlsxRows(study: Study, lang: Lang): SheetData {
-  const rows: SheetData = [
-    [
-      say(lang, "Ålder", "Age"),
-      ...study.options.map((o) => `${say(lang, "Pension per månad", "Pension per month")} ${o.par}`),
-      ...study.options.map((o) => `${say(lang, "Ackumulerat före årsdagen", "Cumulative before the birthday")} ${o.par}`),
-    ],
-  ];
+export function seriesToXlsxRows(study: Study, lang: Lang, measure: SeriesMeasure): SheetData {
+  const rows: SheetData = [seriesHeader(study, lang, measure)];
   for (const age of seriesAges(study)) {
     rows.push([
       age,
-      ...study.options.map((o) => (age >= o.par ? kronorCell((o.annual[age] ?? 0) / 12) : "")),
-      ...study.options.map((o) => (age >= o.par ? kronorCell(o.cumulative[age] ?? 0) : "")),
+      ...study.options.map((o) => {
+        const value = seriesCell(o, age, measure);
+        return value === undefined ? "" : kronorCell(value);
+      }),
     ]);
   }
   return rows;
+}
+
+// --------------------------------------------------- optimal age by lifespan ---
+
+/** What the best start age is, and pays, for one lifespan: a column of "Optimal pensionsålder i förhållande till livslängd". */
+export interface OptimalRow {
+  readonly lifespan: number;
+  /** The best retirement age for this lifespan. */
+  readonly par: number;
+  /** What it pays a month on average (`averageMonthly`); undefined when nothing is paid by then. */
+  readonly monthly: number | undefined;
+  /** What it pays in total before the lifespan, kronor. */
+  readonly total: number;
+}
+
+export function optimalRows(study: Study): OptimalRow[] {
+  return study.rows.map((r) => {
+    const best = study.options[r.best]!;
+    return { lifespan: r.lifespan, par: best.par, monthly: averageMonthly(best, r.lifespan), total: r.totals[r.best] ?? 0 };
+  });
+}
+
+/** The labels of the table's rows, in its own order. */
+function optimalLabels(lang: Lang): { lifespan: string; age: string; monthly: string; total: string } {
+  return {
+    lifespan: say(lang, "Livslängd", "Lifespan"),
+    age: say(lang, "Pensionsålder", "Retirement age"),
+    monthly: say(lang, "Månadsbelopp kr", "Monthly amount SEK"),
+    total: say(lang, "Livsutbetalning mkr", "Lifetime payout MSEK"),
+  };
+}
+
+/** Millions of kronor with two decimals, the decimal sign of the delimiter's own language. */
+function millions(value: number, lang: Lang): string {
+  const text = (Math.round(value / 1e4) / 100).toFixed(2);
+  return lang === "sv" ? text.replace(".", ",") : text;
+}
+
+/** The table as it is shown: one row per measure, one column per lifespan. */
+export function optimalToCsv(study: Study, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const rows = optimalRows(study);
+  const label = optimalLabels(lang);
+  return [
+    csvLine([label.lifespan, ...rows.map((r) => String(r.lifespan))], delimiter),
+    csvLine([label.age, ...rows.map((r) => String(r.par))], delimiter),
+    csvLine([label.monthly, ...rows.map((r) => (r.monthly === undefined ? "" : whole(r.monthly)))], delimiter),
+    csvLine([label.total, ...rows.map((r) => millions(r.total, lang))], delimiter),
+  ].join("\r\n");
+}
+
+export function optimalToXlsxRows(study: Study, lang: Lang): SheetData {
+  const rows = optimalRows(study);
+  const label = optimalLabels(lang);
+  return [
+    [label.lifespan, ...rows.map((r) => r.lifespan)],
+    [label.age, ...rows.map((r) => r.par)],
+    [label.monthly, ...rows.map((r) => (r.monthly === undefined ? "" : kronorCell(r.monthly)))],
+    [label.total, ...rows.map((r) => ({ value: r.total / 1e6, type: Number, format: "0.0" }))],
+  ];
 }
 
 /** The comparison's two numbers per agreement and lifespan: its best age, and what it pays in total at that age. */

@@ -1485,7 +1485,7 @@ await tab.waitForTimeout(50);
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
 if (screenButtons !== 7) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 7 (Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
+    `screen toggle has ${screenButtons} buttons, expected 7 (Prognos / Jämför scenarier / Mikrosim / Hur maxa pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
   );
 }
 
@@ -2227,7 +2227,7 @@ if (mikrosimDisposableLinesOver10 !== 1) {
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 
-// ---- Bästa pensionsålder ---------------------------------------------------
+// ---- Hur maxa pensionen? ---------------------------------------------------
 //
 // A fourth top-level view: seven retirement ages around a reference age, run
 // as one typfall each, summed over a lifespan and compared. The point of each
@@ -2268,7 +2268,7 @@ const paCell = async (lifespan, par) =>
 const paLines = (figure) => pa.locator(`[data-role="${figure}"] svg polyline.pa-line`).evaluateAll((lines) => lines.map((l) => Number(l.dataset.par)));
 const sameList = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
-if ((await pa.count()) !== 1) problems.push("the Bästa pensionsålder tab did not open");
+if ((await pa.count()) !== 1) problems.push("the Hur maxa pensionen? tab did not open");
 
 // The inputs start as the report's typfall, centred on the cohort's riktålder.
 const paStart = {
@@ -2281,7 +2281,7 @@ const paStart = {
 };
 console.log(`pension age     : inputs ${JSON.stringify(paStart)}`);
 if (paStart.born !== "1980" || paStart.start !== "25" || paStart.salary !== "38500" || paStart.centre !== "68") {
-  problems.push(`the Bästa pensionsålder inputs start at ${JSON.stringify(paStart)}, expected 1980/25/38500 around 68`);
+  problems.push(`the Hur maxa pensionen? inputs start at ${JSON.stringify(paStart)}, expected 1980/25/38500 around 68`);
 }
 if (!paStart.centreDisabled || !paStart.riktalder) {
   problems.push("the reference age is not locked to the riktålder as loaded");
@@ -2292,6 +2292,15 @@ const paBestDefault = await paBest();
 console.log(`pension age     : best per lifespan ${paBestDefault.join(",")}`);
 if (!sameList(paBestDefault, PA_BEST_DEFAULT)) {
   problems.push(`the short answer picks ${paBestDefault.join(",")} for lifespans 80-95, expected ${PA_BEST_DEFAULT.join(",")}`);
+}
+// Each box also carries the average monthly amount and the lifetime total of its best start: 80 -> 65 is the
+// matrix's 2 972 916 over 180 months, and the lifetime total is the same sum in millions.
+const paBoxFigures = await pa
+  .locator('[data-role="pa-ribbon"] li[data-lifespan="80"] .pa-ribbon-v')
+  .evaluateAll((cells) => cells.map((cell) => (cell.textContent ?? "").replace(/\s/g, "")));
+console.log(`pension age     : box 80 -> monthly ${paBoxFigures[0]}, total ${paBoxFigures[1]} Mkr`);
+if (!sameList(paBoxFigures, ["16516", "3,0"])) {
+  problems.push(`the answer box for lifespan 80 shows ${paBoxFigures.join(" / ")}, expected 16516 kr/month and 3,0 Mkr`);
 }
 const paTiesDefault = (await paTies()).join("");
 if (paTiesDefault !== "0111111111000000") {
@@ -2524,7 +2533,7 @@ const paWantedSeq = [
 ];
 const paSeqAt = paSeq.indexOf("#Person");
 if (paSeqAt === -1 || !sameList(paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length), paWantedSeq)) {
-  problems.push(`the Bästa pensionsålder inputs run ${paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length).join(" > ")}, expected ${paWantedSeq.join(" > ")}`);
+  problems.push(`the Hur maxa pensionen? inputs run ${paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length).join(" > ")}, expected ${paWantedSeq.join(" > ")}`);
 }
 const paLabelsSv = [await paLabel("paCapital"), await paLabel("paSaving"), await paLabel("paPrivCapital"), await paLabel("paPrivSaving"), await paLabel("paSavingsCapital"), await paLabel("paSavingsMonthly")];
 console.log(`pension age     : saving labels ${paLabelsSv.join(" | ")}`);
@@ -2709,6 +2718,137 @@ if (paSeriesLines.length !== 32 || !paSeriesLines[1]?.startsWith("65;16498;")) {
   problems.push(`the per-age CSV has ${paSeriesLines.length} lines starting "${paSeriesLines[1]}", expected 32 lines from age 65 at 16498`);
 }
 
+// "Optimal pensionsålder i förhållande till livslängd": a table and a chart of the best age per lifespan,
+// straight after "Total pension per livslängd".
+const paOptimal = pa.locator('[data-role="pa-optimal-panel"]');
+const paOptimalAfter = await pa.locator(".pa-results").evaluate((box) => {
+  const roles = [...box.children].map((node) => node.dataset.role);
+  return roles[roles.indexOf("pa-matrix-panel") + 1];
+});
+const paOptimalCells = async (key) =>
+  (await paOptimal.locator(`tr[data-row="${key}"] td.num`).allTextContents()).map((text) => text.replace(/\s/g, ""));
+const paOptimalAges = await paOptimalCells("age");
+const paOptimalMonthly = await paOptimalCells("monthly");
+const paOptimalTotal = await paOptimalCells("total");
+console.log(`pension age     : optimal ${paOptimalAfter}, ages ${paOptimalAges.join(",")}, 80 -> ${paOptimalMonthly[0]} kr, ${paOptimalTotal[0]} Mkr`);
+if (paOptimalAfter !== "pa-optimal-panel") problems.push(`"Optimal pensionsålder" is not straight after the matrix (it is followed by ${paOptimalAfter})`);
+if (!sameList(paOptimalAges.map(Number), PA_BEST_DEFAULT)) {
+  problems.push(`the optimal-age table lists ${paOptimalAges.join(",")}, expected ${PA_BEST_DEFAULT.join(",")}`);
+}
+if (paOptimalMonthly.length !== 16 || paOptimalMonthly[0] !== "16516" || paOptimalTotal[0] !== "3,0" || paOptimalTotal[15] !== "6,5") {
+  problems.push(`the optimal-age table's monthly row starts ${paOptimalMonthly[0]} and its total row ${paOptimalTotal[0]}...${paOptimalTotal[15]}, expected 16516 and 3,0...6,5`);
+}
+const paOptimalChart = paOptimal.locator('[data-role="pa-fig-optimal"]');
+const paOptimalMarks = await paOptimalChart.evaluate((figure) => ({
+  bars: figure.querySelectorAll("path.pa-opt-bar").length,
+  linePoints: (figure.querySelector("polyline.pa-opt-line")?.getAttribute("points") ?? "").split(" ").length,
+  grid: figure.querySelectorAll("svg line.grid, svg line.axis").length,
+  left: figure.querySelectorAll("svg text.tick-y").length,
+  right: [...figure.querySelectorAll("svg text")].filter((t) => t.getAttribute("x") === String(760 - 58 + 8)).length,
+  legend: [...figure.querySelectorAll(".legend li")].map((li) => li.textContent),
+}));
+console.log(`pension age     : optimal chart ${paOptimalMarks.bars} bars, ${paOptimalMarks.linePoints} line points, ticks ${paOptimalMarks.left}/${paOptimalMarks.right}`);
+if (paOptimalMarks.bars !== 16 || paOptimalMarks.linePoints !== 16) {
+  problems.push(`the optimal-age chart has ${paOptimalMarks.bars} bars and ${paOptimalMarks.linePoints} line points, expected 16 and 16`);
+}
+// Two axes, but the same number of ticks on both, so every gridline is a tick on each.
+if (paOptimalMarks.left < 3 || paOptimalMarks.left !== paOptimalMarks.right || paOptimalMarks.grid < paOptimalMarks.left) {
+  problems.push(`the optimal-age chart's axes have ${paOptimalMarks.left} left and ${paOptimalMarks.right} right ticks over ${paOptimalMarks.grid} gridlines`);
+}
+if (!sameList(paOptimalMarks.legend, ["Månadsbelopp kr", "Livsutbetalning mkr"])) {
+  problems.push(`the optimal-age chart's legend reads ${paOptimalMarks.legend.join(" / ")}`);
+}
+// The hover names the column under the pointer: a real mouse over the 88 bar.
+await paOptimalChart.scrollIntoViewIfNeeded();
+const paOptimalBar = await paOptimalChart.locator('path.pa-opt-bar[data-lifespan="88"]').boundingBox();
+await tab.mouse.move(paOptimalBar.x + paOptimalBar.width / 2, paOptimalBar.y + paOptimalBar.height / 2);
+await tab.waitForTimeout(100);
+const paOptimalTip = ((await paOptimalChart.locator(".tooltip").textContent()) ?? "").replace(/\s+/g, " ");
+if (!/Lever du till 88 år/.test(paOptimalTip) || !/Pensionsålder71/.test(paOptimalTip.replace(/ /g, "")) || !/23\s?106/.test(paOptimalTip) || !/4,7\s?Mkr/.test(paOptimalTip)) {
+  problems.push(`the optimal-age chart's hover reads "${paOptimalTip}"`);
+}
+await tab.mouse.move(5, 5);
+const paOptimalCsv = await download(paOptimal.locator(".panel-actions").getByRole("button", { name: "Ladda ner CSV" }));
+const paOptimalCsvLines = paOptimalCsv.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+if (
+  paOptimalCsv.filename !== "optimal-pensionsalder.csv" ||
+  paOptimalCsvLines.length !== 4 ||
+  paOptimalCsvLines[0] !== "Livslängd;80;81;82;83;84;85;86;87;88;89;90;91;92;93;94;95" ||
+  !paOptimalCsvLines[2]?.startsWith("Månadsbelopp kr;16516;")
+) {
+  problems.push(`the optimal-age CSV is "${paOptimalCsv.filename}" with ${paOptimalCsvLines.length} lines, header "${paOptimalCsvLines[0]}"`);
+}
+const paOptimalXlsx = await download(paOptimal.locator(".panel-actions").getByRole("button", { name: "Ladda ner Excel" }));
+if (paOptimalXlsx.filename !== "optimal-pensionsalder.xlsx" || !looksLikeXlsx(paOptimalXlsx.buffer)) {
+  problems.push(`the optimal-age Excel download ("${paOptimalXlsx.filename}") isn't a real .xlsx file`);
+}
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paOptimalEn = [
+  ((await paOptimal.locator("> h2 > span").textContent()) ?? "").trim(),
+  (await paOptimal.locator('tr[data-row="total"] td').first().textContent()) ?? "",
+];
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+if (paOptimalEn[0] !== "Optimal retirement age in relation to lifespan" || paOptimalEn[1] !== "Lifetime payout MSEK") {
+  problems.push(`the optimal-age section in English reads ${JSON.stringify(paOptimalEn)}`);
+}
+
+// The per-age table switches between the monthly pension and the total paid out, and its download follows.
+const paTimeSwitch = (measure) => pa.locator(`[data-role="pa-time"] button[data-measure="${measure}"]`);
+const paTimeHeading = async () => ((await pa.locator('[data-role="pa-time"] > h2 > span').textContent()) ?? "").trim();
+if ((await paTimeSwitch("monthly").getAttribute("aria-pressed")) !== "true" || (await paTimeHeading()) !== "Pension per månad vid olika åldrar") {
+  problems.push(`the per-age table does not start on its monthly view ("${await paTimeHeading()}")`);
+}
+await paTimeSwitch("total").click();
+await tab.waitForTimeout(100);
+const paSwHeads = await paTimeHead();
+if (paSwHeads.includes("Förstaåret") || paSwHeads.includes("Slutlön") || paSwHeads[0] !== "Startvid" || paSwHeads[1] !== "70år") {
+  problems.push(`the total view's table heads read ${paSwHeads.join(" | ")}`);
+}
+if ((await paTimeHeading()) !== "Total utbetalning före olika åldrar") {
+  problems.push(`the total view's heading reads "${await paTimeHeading()}"`);
+}
+const paSwCsv = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const paSwLines = paSwCsv.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+const paSwAt70 = (paSwLines.find((line) => line.startsWith("70;")) ?? "").split(";");
+const paSwCell = (await paTimeRow(65))[1];
+console.log(`pension age     : total view "${paSwCsv.filename}", header "${paSwLines[0]}", 65 -> 70 = ${paSwAt70[1]} (table ${paSwCell})`);
+if (paSwCsv.filename !== "total-utbetalning.csv" || paSwLines.length !== 32 || paSwLines[0]?.startsWith("Före ålder;Total utbetalning 65;") !== true) {
+  problems.push(`the total view's CSV is "${paSwCsv.filename}", ${paSwLines.length} lines, header "${paSwLines[0]}"`);
+}
+if (paSwLines[0]?.includes("Pension per månad") || !paSwLines[1]?.startsWith("65;0;")) {
+  problems.push(`the total view's CSV mixes in the monthly pension or does not start at nothing paid ("${paSwLines[1]}")`);
+}
+if (paSwAt70[1] === undefined || paNorm(paSwCell) !== paSwAt70[1]) {
+  problems.push(`the total paid out before 70 reads ${paSwCell} in the table and ${paSwAt70[1]} in the CSV`);
+}
+const paSwXlsx = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner Excel" }));
+if (paSwXlsx.filename !== "total-utbetalning.xlsx" || !looksLikeXlsx(paSwXlsx.buffer)) {
+  problems.push(`the total view's Excel download ("${paSwXlsx.filename}") isn't the total .xlsx`);
+}
+// The choice survives a language change, and back to the month restores table, heading and downloads.
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paSwEn = [await paTimeHeading(), await paTimeSwitch("total").textContent(), await paTimeSwitch("total").getAttribute("aria-pressed")];
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+if (paSwEn[0] !== "Total payout before different ages" || paSwEn[1] !== "Total payout" || paSwEn[2] !== "true") {
+  problems.push(`the total view in English reads ${JSON.stringify(paSwEn)}`);
+}
+await paTimeSwitch("monthly").click();
+await tab.waitForTimeout(100);
+const paSwMonthly = await download(pa.locator('[data-role="pa-time"] .panel-actions').getByRole("button", { name: "Ladda ner CSV" }));
+const paSwMonthlyLines = paSwMonthly.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+if (
+  paSwMonthly.filename !== "pension-per-ar.csv" ||
+  paSwMonthlyLines[0] !== "Ålder;Pension per månad 65;Pension per månad 66;Pension per månad 67;Pension per månad 68;Pension per månad 69;Pension per månad 70;Pension per månad 71" ||
+  (await paTimeHeading()) !== "Pension per månad vid olika åldrar" ||
+  !(await paTimeHead()).includes("Förstaåret")
+) {
+  problems.push(`back on the month, the CSV is "${paSwMonthly.filename}" with header "${paSwMonthlyLines[0]}"`);
+}
+
 // The theme tokens reach the boxes: the reference age is ink, black on light and white on dark.
 const paInk = async () => pa.locator(".pa-ribbon .pa-chip-z").first().evaluate((el) => getComputedStyle(el).backgroundColor);
 const paInkLight = await paInk();
@@ -2728,7 +2868,7 @@ const paHeadEn = (await pa.locator("section.panel > h2 span").first().textConten
 const paLabelEn = (await pa.locator(".pa-ribbon-label").textContent()) ?? "";
 const paButtonEn = (await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').textContent()) ?? "";
 console.log(`pension age     : "${paHeadSv}" / "${paHeadEn}", "${paLabelEn}", button "${paButtonEn}"`);
-if (paHeadSv !== "Bästa pensionsålder?" || paHeadEn !== "Best retirement age?" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "Best retirement age?") {
+if (paHeadSv !== "Hur maxa pensionen?" || paHeadEn !== "How to maximise the pension?" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "How to maximise the pension?") {
   problems.push(`the tab's language switch reads "${paHeadSv}"/"${paHeadEn}"/"${paLabelEn}"/"${paButtonEn}"`);
 }
 if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("switching language changed the short answer");
@@ -2741,7 +2881,7 @@ await tab.waitForTimeout(100);
 const paOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const paRibbonRows = await pa.locator(".pa-ribbon li").evaluateAll((items) => new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size);
 console.log(`pension age @375px: page overflow ${paOverflow}px, ribbon in ${paRibbonRows} rows`);
-if (paOverflow > 1) problems.push(`the Bästa pensionsålder tab widens the page by ${paOverflow}px at 375px`);
+if (paOverflow > 1) problems.push(`the Hur maxa pensionen? tab widens the page by ${paOverflow}px at 375px`);
 if (paRibbonRows < 2) problems.push("the sixteen answer boxes did not wrap onto several rows at 375px");
 await tab.setViewportSize({ width: 1280, height: 1000 });
 await tab.waitForTimeout(100);
@@ -2802,7 +2942,7 @@ const cmpTitle = (role) => pa.locator(`[data-role="${role}"] > h2 span, [data-ro
 
 // The switch: closed by default, the single view's boxes gone once it is open.
 const cmpHiddenAtFirst = await cmpControls.isHidden();
-const cmpViewButtons = await pa.locator(".pa-view .panel-btn").count();
+const cmpViewButtons = await pa.locator(".pa-view:not(.pa-time-view) .panel-btn").count();
 await pa.locator('.pa-view .panel-btn[data-view="compare"]').click();
 await tab.waitForTimeout(150);
 const cmpShown = await cmpControls.isVisible();
@@ -3703,8 +3843,8 @@ const tabNameEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="ab
 await tab.locator(".langs button", { hasText: "SV" }).click();
 await tab.waitForTimeout(100);
 console.log(`about           : menu ${tabNamesSv.join(" / ")}; "${aboutSv.head}" / "${aboutEn.head}", ${aboutSv.headings.join("/")}, link ${aboutSv.link}`);
-if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Bästa pensionsålder?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
-  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / Bästa pensionsålder? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
+if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Hur maxa pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
+  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / Hur maxa pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
 }
 if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
   problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);
@@ -3794,7 +3934,7 @@ const fpLeave = () => fp.locator("h1").click();
 await fpTyped(fpSalary, "512345");
 await fpPress(fp, fpScreen("retirement"));
 await fp.waitForTimeout(150);
-fpExpect("Prognos: the 'Bästa pensionsålder' tab", await fpActive(fpScreen("retirement")));
+fpExpect("Prognos: the 'Hur maxa pensionen?' tab", await fpActive(fpScreen("retirement")));
 await fpPress(fp, fpScreen("single"));
 await fp.waitForTimeout(150);
 
@@ -3852,7 +3992,7 @@ await fpPress(fp, fp.locator("[data-preset]").first());
 await fp.waitForTimeout(250);
 fpExpect("Lasts: a button among the inputs keeps what was typed", (await fpPlCapital.inputValue()) === "123456");
 
-// Bästa pensionsålder, one agreement and all of them.
+// Hur maxa pensionen?, one agreement and all of them.
 await fpPress(fp, fpScreen("retirement"));
 await fp.waitForSelector('[data-setting="paCapital"]');
 await fp.waitForTimeout(250);
@@ -3908,7 +4048,7 @@ fpExpect("a tap on Table 1's CSV, once", fingerCsv.count === 1 && fingerCsv.buff
 await fingerTyped("498765");
 await fpPress(finger, finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]'), "touch");
 await finger.waitForTimeout(250);
-fpExpect("a tap on the 'Bästa pensionsålder' tab", await fpActive(finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]')));
+fpExpect("a tap on the 'Hur maxa pensionen?' tab", await fpActive(finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]')));
 await touchContext.close();
 
 const fpFailed = fpPresses.filter((press) => !press.ok);

@@ -1,5 +1,5 @@
 /**
- * "Bästa pensionsålder"'s arithmetic, checked without a browser.
+ * "Hur maxa pensionen?"'s arithmetic, checked without a browser.
  *
  * `apps/web`'s test environment has no DOM, so the panel and its charts are
  * checked against the real built page by `tools/build/verify-offline.mjs`
@@ -29,6 +29,7 @@ import {
   SCHEME_COHORTS,
   SCHEME_ORDER,
   alternativeAges,
+  averageMonthly,
   bestAgeSpread,
   bestRuns,
   breakEven,
@@ -48,6 +49,9 @@ import {
   matrixToCsv,
   monthlySalaryForFinalSalary,
   monthlySalaryForTarget,
+  optimalRows,
+  optimalToCsv,
+  optimalToXlsxRows,
   pensionContext,
   referenceAge,
   savingsContext,
@@ -55,6 +59,7 @@ import {
   schemeName,
   schemeSector,
   seriesToCsv,
+  seriesToXlsxRows,
   slotOf,
   studyContext,
   studyTypfall,
@@ -198,6 +203,16 @@ describe("the default study reproduces the static report", () => {
     expect(study.rows[0]!.lifespan).toBe(80);
     expect(study.rows[15]!.lifespan).toBe(95);
     expect(study.warnings).toEqual([]);
+  });
+
+  it("averages what a start pays a month over the years it is paid", () => {
+    const sixtyFive = study.options[0]!;
+    // 15 years of 12 months to 80, and the total is the matrix's own 2 972 916.
+    expect(averageMonthly(sixtyFive, 80)).toBeCloseTo(2972916 / 180, 6);
+    expect(averageMonthly(sixtyFive, 80)! * 15 * 12).toBeCloseTo(sixtyFive.cumulative[80]!, 4);
+    // Nothing has been paid by the start age, so there is no monthly amount to speak of.
+    expect(averageMonthly(sixtyFive, 65)).toBeUndefined();
+    expect(averageMonthly(study.options[6]!, 70)).toBeUndefined();
   });
 
   it("adds up whole years: lifespan minus retirement age", () => {
@@ -619,6 +634,36 @@ describe("final salary as the input", () => {
   });
 });
 
+describe("the best age by lifespan", () => {
+  it("has one column per lifespan: the winning age, what it pays a month on average and in all", () => {
+    const rows = optimalRows(study);
+    expect(rows).toHaveLength(16);
+    expect(rows.map((r) => r.lifespan)).toEqual(study.rows.map((r) => r.lifespan));
+    study.rows.forEach((r, i) => {
+      const best = study.options[r.best]!;
+      expect(rows[i]!.par).toBe(best.par);
+      expect(rows[i]!.total).toBe(r.totals[r.best]);
+      expect(rows[i]!.monthly! * (r.lifespan - best.par) * 12).toBeCloseTo(r.totals[r.best]!, 4);
+    });
+    expect(rows[0]).toMatchObject({ lifespan: 80, par: 65, total: 2972916 });
+    expect(rows[0]!.monthly).toBeCloseTo(2972916 / 180, 6);
+  });
+
+  it("downloads as the table is laid out: a row per measure, whole kronor, millions with two decimals", () => {
+    const sv = optimalToCsv(study, "sv").split("\r\n");
+    expect(sv).toHaveLength(4);
+    expect(sv[0]).toBe("Livslängd;80;81;82;83;84;85;86;87;88;89;90;91;92;93;94;95");
+    expect(sv[1]!.startsWith("Pensionsålder;65;65;65;")).toBe(true);
+    expect(sv[2]!.startsWith("Månadsbelopp kr;16516;")).toBe(true);
+    expect(sv[3]!.startsWith("Livsutbetalning mkr;2,97;")).toBe(true);
+    const en = optimalToCsv(study, "en").split("\r\n");
+    expect(en[3]!.startsWith("Lifetime payout MSEK,2.97,")).toBe(true);
+    const sheet = optimalToXlsxRows(study, "sv");
+    expect(sheet).toHaveLength(4);
+    expect(sheet.every((line) => line.length === 17)).toBe(true);
+  });
+});
+
 describe("the exports", () => {
   it("write the lifespan matrix with whole kronor, a delimiter per language and the winner", () => {
     const sv = matrixToCsv(study, "sv").split("\r\n");
@@ -631,15 +676,35 @@ describe("the exports", () => {
   });
 
   it("write one line per age, blank before an alternative starts", () => {
-    const lines = seriesToCsv(study, "sv").split("\r\n");
+    const lines = seriesToCsv(study, "sv", "monthly").split("\r\n");
     // 65..95 inclusive, plus the header.
     expect(lines).toHaveLength(1 + 31);
     const header = lines[0]!.split(";");
-    expect(header).toHaveLength(1 + 7 + 7);
+    expect(header).toHaveLength(1 + 7);
+    expect(header[0]).toBe("Ålder");
+    expect(header[1]).toBe("Pension per månad 65");
     const first = lines[1]!.split(";");
     expect(first[0]).toBe("65");
     expect(first[1]).toBe("16498");
     expect(first.slice(2, 8).every((cell) => cell === "")).toBe(true);
+  });
+
+  it("hold either the monthly pension or the total paid out, never both", () => {
+    const total = seriesToCsv(study, "sv", "total").split("\r\n");
+    expect(total).toHaveLength(1 + 31);
+    const header = total[0]!.split(";");
+    expect(header).toHaveLength(1 + 7);
+    expect(header[0]).toBe("Före ålder");
+    expect(header[1]).toBe("Total utbetalning 65");
+    // Nothing is paid out before the first age; one year later it is that year's pension.
+    const first = study.options[0]!;
+    expect(total[1]!.split(";")[1]).toBe("0");
+    expect(total[2]!.split(";")[1]).toBe(String(Math.round(first.cumulative[66] ?? 0)));
+    expect(Number(total[2]!.split(";")[1])).toBeGreaterThan(0);
+    const sheet = seriesToXlsxRows(study, "en", "total");
+    expect(sheet).toHaveLength(1 + 31);
+    expect(sheet[0]).toHaveLength(1 + 7);
+    expect(sheet[0]![0]).toBe("Before age");
   });
 
   it("keep the lifespan range inside what the study supports", () => {

@@ -119,7 +119,7 @@
   --fig-retirement-line: #dfdfdf;
 
   /*
-   * pensionAgeChart.ts's seven lines -- "Bästa pensionsålder" compares one
+   * pensionAgeChart.ts's seven lines -- "Hur maxa pensionen?" compares one
    * retirement age against the others, so the colour says how much earlier
    * (warm) or later (cool) than the reference age a line is, and the reference
    * itself is plain ink. A diverging scale, not seven categorical hues: the
@@ -189,7 +189,7 @@
    * is a ramp, not four hues: SEB's gold stepped in OKLCH lightness at fixed spacing
    * (0.40, 0.48, 0.55, 0.63 in light; 0.86, 0.78, 0.70, 0.62 in dark), the shortest
    * payout the strongest against its surface, and lifelong -- the one that does not
-   * run out -- plain ink, as the reference age is in "Bästa pensionsålder". Validated
+   * run out -- plain ink, as the reference age is in "Hur maxa pensionen?". Validated
    * with the `dataviz` skill's `validate_palette.js` as an ordinal ramp against this
    * app's own chart surfaces (`#ffffff` light, `#003824` dark): monotone lightness,
    * every adjacent step >= 0.06 apart, lightest step >= 3:1 against the surface
@@ -1141,7 +1141,7 @@ body {
 .footnote { color: var(--text-muted); font-size: 0.8rem; margin: 0; }
 
 /*
- * "Bästa pensionsålder" (pensionAgePanel.ts / pensionAgeChart.ts): its own
+ * "Hur maxa pensionen?" (pensionAgePanel.ts / pensionAgeChart.ts): its own
  * inputs, a short answer built around a row of coloured boxes, three line
  * charts and a handful of tables. Everything else it needs is already here --
  * `.panel`, `.field`, `.figure`, `.table`, `.legend`, `.tooltip`.
@@ -1211,10 +1211,23 @@ body {
   list-style: none;
   display: grid;
   /* All sixteen in one row on a normal screen, wrapping onto more rows on a phone. */
-  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
   gap: 6px;
 }
 .pa-ribbon-item { display: flex; flex-direction: column; min-width: 0; text-align: center; }
+/* The two figures a box adds under its age: the average monthly amount and the lifetime total. Stacked in
+   their own tinted cells, so a row of boxes reads across like the rows of a table. */
+.pa-ribbon-v {
+  padding: 2px 0;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: var(--surface-subtle, rgba(127, 127, 127, 0.1));
+}
+.pa-ribbon-v[data-row="monthly"] { border-radius: 6px 6px 0 0; }
+.pa-ribbon-v[data-row="total"] { border-radius: 0 0 6px 6px; font-weight: 700; margin-bottom: 3px; }
+.pa-ribbon-key { font-size: 0.72rem; color: var(--text-muted); }
 .pa-ribbon-d { font-size: 0.75rem; color: var(--text-secondary); }
 .pa-ribbon-m { font-size: 0.72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pa-chip { display: inline-block; min-width: 2.2em; padding: 1px 8px; border-radius: 6px; font-weight: 700; text-align: center; }
@@ -1258,6 +1271,22 @@ body {
 .pa-best-p2 { --pa-best: var(--fig-pa-p2); }
 .pa-best-p3 { --pa-best: var(--fig-pa-p3); }
 .pa-table td.txt { min-width: 240px; text-align: left; white-space: normal; }
+/* "Optimal pensionsålder i förhållande till livslängd": the table's rows are measures, its columns lifespans,
+   so the sixteen columns scroll sideways on a phone with the row names kept in view. */
+.pa-optimal td.pa-opt-label, .pa-optimal thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.85rem;
+  background: var(--surface-raised);
+}
+.pa-optimal th, .pa-optimal td { padding: 5px 6px; }
+.pa-optimal td.num { text-align: center; }
+.pa-optimal .pa-chip { padding: 2px 0; min-width: 2.4em; }
+.pa-opt-age { font-weight: 700; }
 .pa-breakeven thead th:last-child { text-align: left; }
 .pa-narrow { max-width: 480px; }
 .pa-notes { padding: 0 2px; }
@@ -1358,7 +1387,7 @@ button.pa-agr[aria-pressed="true"]::before { content: "✓"; }
 
 /*
  * "Hur länge räcker pensionen?" (pensionLastsPanel.ts): the same panel, charts and
- * tables as "Bästa pensionsålder" (it reuses their classes), with its own payout
+ * tables as "Hur maxa pensionen?" (it reuses their classes), with its own payout
  * period colours, a short answer built around a row of boxes -- one per way of taking
  * the pension out, with how long the budget lasts underneath -- and tables whose cells
  * say how a budget stands. Status is never colour alone: the text says it, and a

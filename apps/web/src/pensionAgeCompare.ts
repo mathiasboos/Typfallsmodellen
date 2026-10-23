@@ -1,5 +1,5 @@
 /**
- * "Jämför avtalsområden": the second view of the "Bästa pensionsålder" tab.
+ * "Jämför avtalsområden": the second view of the "Hur maxa pensionen?" tab.
  *
  * The tab's first view answers *which retirement age pays the most* for one
  * collective agreement. This one asks the same of all of them at once, side by

@@ -1,5 +1,5 @@
 /**
- * "Bästa pensionsålder": the tab that answers *which retirement age pays out the
+ * "Hur maxa pensionen?": the tab that answers *which retirement age pays out the
  * most over a lifetime* -- for a typfall of your own, a collective agreement of
  * your own, and a lifespan you can only guess at.
  *
@@ -56,6 +56,7 @@ import {
   LAST_AGE,
   LIFESPAN_BOUNDS,
   NEAR_TIE,
+  averageMonthly,
   bestRuns,
   centreBounds,
   computeStudy,
@@ -64,13 +65,17 @@ import {
   matrixToCsv,
   matrixToXlsxRows,
   monthlySalaryForTarget,
+  optimalRows,
+  optimalToCsv,
+  optimalToXlsxRows,
   referenceAge,
   seriesToCsv,
   seriesToXlsxRows,
 } from "./pensionAge.js";
-import type { BreakEven, LifespanRow, Study, StudyInput, StudyOption } from "./pensionAge.js";
+import type { BreakEven, LifespanRow, SeriesMeasure, Study, StudyInput, StudyOption } from "./pensionAge.js";
 import { createAgreementCompare } from "./pensionAgeCompare.js";
 import { niceTicks, renderLineChart } from "./pensionAgeChart.js";
+import { renderOptimalChart } from "./pensionAgeOptimalChart.js";
 import {
   capital,
   chip,
@@ -129,6 +134,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   let finalTarget = 0;
   let riktalderLocked = true;
   let view: "single" | "compare" = "single";
+  /** What the per-age table shows -- and so what its download holds. Kept across recalculations. */
+  let timeMeasure: SeriesMeasure = "monthly";
   let context: ModelContext | undefined;
   let deaths: DeathProbabilities | undefined;
   /** What the last run worked out, for the two field hints that quote it. */
@@ -502,6 +509,11 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     );
   }
 
+  const monthlyText = (option: StudyOption, lifespan: number, l: Lang): string => {
+    const monthly = averageMonthly(option, lifespan);
+    return monthly === undefined ? "–" : kronor(monthly, l);
+  };
+
   function answerPanel(study: Study, l: Lang): HTMLElement {
     const { section, body } = panel(say(l, "Svar i korthet", "Short answer"));
     section.dataset.role = "pa-answer";
@@ -515,8 +527,8 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
         "pa-lead",
         say(
           l,
-          "Vilken pensionsålder som ger mest pension beror på hur länge du lever. Varje ruta visar bästa pensionsålder för en livslängd; siffran under är försprånget mot näst bästa alternativ i tusen kronor (≈ = under 1 % av summan, praktiskt taget lika).",
-          "Which retirement age pays the most depends on how long you live. Each box shows the best retirement age for one lifespan; the figure beneath is the lead over the runner-up in thousands of kronor (≈ = under 1 % of the total, practically equal).",
+          "Vilken pensionsålder som ger mest pension beror på hur länge du lever. Varje ruta gäller en livslängd och visar bästa pensionsålder, vad den ger i genomsnitt per månad, vad den ger sammanlagt och försprånget mot näst bästa alternativ (≈ = under 1 % av summan, praktiskt taget lika).",
+          "Which retirement age pays the most depends on how long you live. Each box is for one lifespan and shows the best retirement age, what it pays a month on average, what it pays in total and the lead over the runner-up (≈ = under 1 % of the total, practically equal).",
         ),
       ),
     );
@@ -535,17 +547,34 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
       item.dataset.tie = tie ? "1" : "0";
       item.title = say(
         l,
-        `Lever du till ${r.lifespan}: bäst är start vid ${best.par} (${tkr(r.totals[r.best]!, l)} tkr), därefter ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} tkr).`,
-        `If you live to ${r.lifespan}: best is ${best.par} (${tkr(r.totals[r.best]!, l)} thousand kr), then ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} thousand kr).`,
+        `Lever du till ${r.lifespan}: bäst är start vid ${best.par} (${tkr(r.totals[r.best]!, l)} tkr, i snitt ${monthlyText(best, r.lifespan, l)} kr/mån), därefter ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} tkr).`,
+        `If you live to ${r.lifespan}: best is ${best.par} (${tkr(r.totals[r.best]!, l)} thousand kr, ${monthlyText(best, r.lifespan, l)} SEK/month on average), then ${second.par} (${tkr(r.totals[r.runnerUp]!, l)} thousand kr).`,
       );
+      const monthlyCell = h("span", "pa-ribbon-v", monthlyText(best, r.lifespan, l));
+      monthlyCell.dataset.row = "monthly";
+      const totalCell = h("span", "pa-ribbon-v", decimals(r.totals[r.best]! / 1e6, 1, l));
+      totalCell.dataset.row = "total";
       item.append(
         h("span", "pa-ribbon-d", String(r.lifespan)),
         chip(best),
+        monthlyCell,
+        totalCell,
         h("span", "pa-ribbon-m", `${tie ? "≈ " : ""}+${tkr(r.margin, l)}`),
       );
       ribbon.append(item);
     }
-    ribbonBox.append(ribbon);
+    ribbonBox.append(
+      ribbon,
+      h(
+        "div",
+        "pa-ribbon-key",
+        say(
+          l,
+          "I varje ruta, uppifrån: livslängd · pensionsålder · månadsbelopp (kr, genomsnitt) · livsutbetalning (Mkr) · försprång (tkr)",
+          "In each box, from the top: lifespan · retirement age · monthly amount (SEK, average) · lifetime payout (MSEK) · lead (thousand SEK)",
+        ),
+      ),
+    );
     body.append(ribbonBox);
 
     // What the reference age pays at the start, in Table 1's own terms, and before tax what it is made of.
@@ -771,55 +800,125 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
     const ages: number[] = [];
     for (let age = Math.ceil((firstPar + 1) / 5) * 5; age <= last; age += 5) ages.push(age);
 
-    const actions = [
-      csvExportButton(l, say(l, "pension-per-ar.csv", "pension-per-year.csv"), () => seriesToCsv(study, l)),
-      xlsxExportButton(l, say(l, "pension-per-ar.xlsx", "pension-per-year.xlsx"), () => seriesToXlsxRows(study, l)),
-    ];
-    const { section, body } = panel(say(l, "Pension per månad vid olika åldrar", "Pension per month at different ages"), actions);
+    const title = (measure: SeriesMeasure): string =>
+      measure === "monthly"
+        ? say(l, "Pension per månad vid olika åldrar", "Pension per month at different ages")
+        : say(l, "Total utbetalning före olika åldrar", "Total payout before different ages");
+    // The downloads are of what the table shows, so they are made again when the switch is pressed.
+    const downloads = (measure: SeriesMeasure): HTMLElement[] => {
+      const file = measure === "monthly" ? say(l, "pension-per-ar", "pension-per-year") : say(l, "total-utbetalning", "total-payout");
+      return [
+        csvExportButton(l, `${file}.csv`, () => seriesToCsv(study, l, measure)),
+        xlsxExportButton(l, `${file}.xlsx`, () => seriesToXlsxRows(study, l, measure)),
+      ];
+    };
+    const { section, body } = panel(title(timeMeasure), downloads(timeMeasure));
     section.dataset.role = "pa-time";
 
-    const head = [
-      headCell(say(l, "Start vid", "Start at")),
-      headCell(say(l, "Första året", "First year")),
-      ...(split ? [headCell(say(l, "varav allmän", "of which public"))] : []),
-      ...(split && kinds.occupational ? [headCell(say(l, "varav tjänstepension", "of which occupational"))] : []),
-      ...(split && kinds.individual ? [headCell(say(l, "varav individuell och privat", "of which individual and private"))] : []),
-      ...(split && kinds.savings ? [headCell(say(l, "varav privat sparande", "of which private savings"))] : []),
-      ...ages.map((age) => headCell(`${age} ${say(l, "år", "yrs")}`)),
-      headCell(say(l, "Slutlön", "Final salary")),
-    ];
-    const rows = study.options.map((o) => {
-      const cells: HTMLTableCellElement[] = [
-        optionCell(o, optionName(study, o, l)),
-        cell(kronor(o.firstYearMonthly, l), "num"),
+    const monthlyTable = (): HTMLElement[] => {
+      const head = [
+        headCell(say(l, "Start vid", "Start at")),
+        headCell(say(l, "Första året", "First year")),
+        ...(split ? [headCell(say(l, "varav allmän", "of which public"))] : []),
+        ...(split && kinds.occupational ? [headCell(say(l, "varav tjänstepension", "of which occupational"))] : []),
+        ...(split && kinds.individual ? [headCell(say(l, "varav individuell och privat", "of which individual and private"))] : []),
+        ...(split && kinds.savings ? [headCell(say(l, "varav privat sparande", "of which private savings"))] : []),
+        ...ages.map((age) => headCell(`${age} ${say(l, "år", "yrs")}`)),
+        headCell(say(l, "Slutlön", "Final salary")),
       ];
-      if (split) {
-        const occ = (o.occupational[o.par] ?? 0) / 12;
-        const ind = (o.individual[o.par] ?? 0) / 12;
-        const sav = (o.savings[o.par] ?? 0) / 12;
-        cells.push(cell(kronor(o.firstYearMonthly - occ - ind - sav, l), "num"));
-        if (kinds.occupational) cells.push(cell(kronor(occ, l), "num"));
-        if (kinds.individual) cells.push(cell(kronor(ind, l), "num"));
-        if (kinds.savings) cells.push(cell(kronor(sav, l), "num"));
-      }
-      for (const age of ages) cells.push(cell(age >= o.par ? kronor((o.annual[age] ?? 0) / 12, l) : "–", "num"));
-      cells.push(cell(kronor(o.finalSalaryMonthly, l), "num"));
-      return row(cells, { par: String(o.par) });
-    });
-    body.append(tableOf("pa-time-table", "pa-time", head, rows));
-
-    const reference = study.options[study.reference]!;
-    body.append(
-      h(
-        "p",
-        "figure-note",
-        say(
-          l,
-          `Appens Tabell 1 visar något högre belopp vid pensionering (t.ex. ${kronor(reference.table1Monthly, l)} kr/mån vid ${reference.par} mot ${kronor(reference.firstYearMonthly, l)} kr/mån här): den räknar in sista årets pensionsrätt direkt, medan den i år-för-år-flödet, som diagrammen och summorna bygger på, kommer med från andra året.`,
-          `The app's Table 1 shows a slightly higher amount at retirement (e.g. ${kronor(reference.table1Monthly, l)} SEK/month at ${reference.par} against ${kronor(reference.firstYearMonthly, l)} SEK/month here): it counts the last year's pension right at once, while the year-by-year flow the charts and totals are built on picks it up from the second year.`,
+      const rows = study.options.map((o) => {
+        const cells: HTMLTableCellElement[] = [
+          optionCell(o, optionName(study, o, l)),
+          cell(kronor(o.firstYearMonthly, l), "num"),
+        ];
+        if (split) {
+          const occ = (o.occupational[o.par] ?? 0) / 12;
+          const ind = (o.individual[o.par] ?? 0) / 12;
+          const sav = (o.savings[o.par] ?? 0) / 12;
+          cells.push(cell(kronor(o.firstYearMonthly - occ - ind - sav, l), "num"));
+          if (kinds.occupational) cells.push(cell(kronor(occ, l), "num"));
+          if (kinds.individual) cells.push(cell(kronor(ind, l), "num"));
+          if (kinds.savings) cells.push(cell(kronor(sav, l), "num"));
+        }
+        for (const age of ages) cells.push(cell(age >= o.par ? kronor((o.annual[age] ?? 0) / 12, l) : "–", "num"));
+        cells.push(cell(kronor(o.finalSalaryMonthly, l), "num"));
+        return row(cells, { par: String(o.par) });
+      });
+      const reference = study.options[study.reference]!;
+      return [
+        tableOf("pa-time-table", "pa-time", head, rows),
+        h(
+          "p",
+          "figure-note",
+          say(
+            l,
+            `Appens Tabell 1 visar något högre belopp vid pensionering (t.ex. ${kronor(reference.table1Monthly, l)} kr/mån vid ${reference.par} mot ${kronor(reference.firstYearMonthly, l)} kr/mån här): den räknar in sista årets pensionsrätt direkt, medan den i år-för-år-flödet, som diagrammen och summorna bygger på, kommer med från andra året.`,
+            `The app's Table 1 shows a slightly higher amount at retirement (e.g. ${kronor(reference.table1Monthly, l)} SEK/month at ${reference.par} against ${kronor(reference.firstYearMonthly, l)} SEK/month here): it counts the last year's pension right at once, while the year-by-year flow the charts and totals are built on picks it up from the second year.`,
+          ),
         ),
-      ),
-    );
+      ];
+    };
+
+    const totalTable = (): HTMLElement[] => {
+      const head = [headCell(say(l, "Start vid", "Start at")), ...ages.map((age) => headCell(`${age} ${say(l, "år", "yrs")}`))];
+      const rows = study.options.map((o) =>
+        row(
+          [
+            optionCell(o, optionName(study, o, l)),
+            ...ages.map((age) => cell(age >= o.par ? kronor(o.cumulative[age] ?? 0, l) : "–", "num")),
+          ],
+          { par: String(o.par) },
+        ),
+      );
+      return [
+        tableOf("pa-time-table", "pa-time", head, rows),
+        h(
+          "p",
+          "figure-note",
+          say(
+            l,
+            `Summan som betalats ut före respektive ålder, ${measureText(study, l)}, kronor, ${priceText(study, l)}, utan diskontering.`,
+            `The sum paid out before each age, ${measureText(study, l)}, kronor, ${priceText(study, l)}, not discounted.`,
+          ),
+        ),
+      ];
+    };
+
+    // The switch sits above the table; pressing it changes the table, the heading and the downloads in place.
+    const content = h("div");
+    const bar = h("div", "pa-view pa-time-view");
+    const box = h("div", "panel-toggle pa-toggle");
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", say(l, "Vad tabellen visar", "What the table shows"));
+    bar.append(h("span", "pa-pick-label", say(l, "Visa", "Show")), box);
+    const choices = (
+      [
+        { measure: "monthly", text: say(l, "Månad", "Month") },
+        { measure: "total", text: say(l, "Total utbetalning", "Total payout") },
+      ] as const
+    ).map((choice) => {
+      const button = h("button", "panel-btn", choice.text);
+      button.type = "button";
+      button.dataset.measure = choice.measure;
+      button.addEventListener("click", () => {
+        timeMeasure = choice.measure;
+        paint();
+      });
+      box.append(button);
+      return { choice, button };
+    });
+    function paint(): void {
+      section.dataset.measure = timeMeasure;
+      section.querySelector("h2 > span")!.textContent = title(timeMeasure);
+      section.querySelector(".panel-actions")!.replaceChildren(...downloads(timeMeasure));
+      for (const { choice, button } of choices) {
+        button.classList.toggle("active", choice.measure === timeMeasure);
+        button.setAttribute("aria-pressed", String(choice.measure === timeMeasure));
+      }
+      content.replaceChildren(...(timeMeasure === "monthly" ? monthlyTable() : totalTable()));
+    }
+    paint();
+    body.append(bar, content);
     return section;
   }
 
@@ -875,6 +974,95 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
       return row(cells, { lifespan: String(r.lifespan), best: String(best.par) });
     });
     body.append(tableOf("pa-matrix", "pa-matrix", head, rows));
+    return section;
+  }
+
+  function optimalPanel(study: Study, l: Lang): HTMLElement {
+    const actions = [
+      csvExportButton(l, say(l, "optimal-pensionsalder.csv", "optimal-retirement-age.csv"), () => optimalToCsv(study, l)),
+      xlsxExportButton(l, say(l, "optimal-pensionsalder.xlsx", "optimal-retirement-age.xlsx"), () => optimalToXlsxRows(study, l)),
+    ];
+    const { section, body } = panel(
+      say(l, "Optimal pensionsålder i förhållande till livslängd", "Optimal retirement age in relation to lifespan"),
+      actions,
+    );
+    section.dataset.role = "pa-optimal-panel";
+    const points = optimalRows(study);
+    const text = {
+      age: say(l, "Pensionsålder", "Retirement age"),
+      lifespan: say(l, "Livslängd", "Lifespan"),
+      monthly: say(l, "Månadsbelopp kr", "Monthly amount SEK"),
+      total: say(l, "Livsutbetalning mkr", "Lifetime payout MSEK"),
+    };
+    body.append(
+      h(
+        "p",
+        "pa-lead",
+        say(
+          l,
+          "För varje livslängd: den pensionsålder som ger mest pension sammanlagt, vad den ger i genomsnitt per månad och vad den ger totalt, i miljoner kronor.",
+          "For each lifespan: the retirement age that pays the most in all, what it pays a month on average and what it pays in total, in millions of kronor.",
+        ),
+      ),
+    );
+
+    const head = [headCell(text.lifespan), ...points.map((p) => headCell(String(p.lifespan)))];
+    const ageRow = row(
+      [
+        cell(text.age, "pa-opt-label"),
+        ...points.map((p, i) => {
+          const td = cell("", "num");
+          td.dataset.lifespan = String(p.lifespan);
+          td.append(chip(study.options[study.rows[i]!.best]!));
+          return td;
+        }),
+      ],
+      { row: "age" },
+    );
+    const figureRow = (key: "monthly" | "total", show: (p: (typeof points)[number]) => string): HTMLTableRowElement =>
+      row(
+        [
+          cell(text[key], "pa-opt-label"),
+          ...points.map((p) => {
+            const td = cell(show(p), "num");
+            td.dataset.lifespan = String(p.lifespan);
+            return td;
+          }),
+        ],
+        { row: key },
+      );
+    body.append(
+      tableOf("pa-optimal", "pa-optimal", head, [
+        ageRow,
+        figureRow("monthly", (p) => (p.monthly === undefined ? "–" : kronor(p.monthly, l))),
+        figureRow("total", (p) => decimals(p.total / 1e6, 1, l)),
+      ]),
+    );
+
+    body.append(
+      renderOptimalChart({
+        role: "pa-fig-optimal",
+        lang: l,
+        title: say(l, "Pension per månad och totalt vid bästa pensionsålder", "Pension per month and in total at the best retirement age"),
+        subtitle: say(
+          l,
+          `Bästa pensionsålder för varje livslängd. Stapel: vad den ger i genomsnitt per månad (kr, vänster axel). Linje: vad den ger sammanlagt (miljoner kronor, höger axel). ${capital(measureText(study, l))}, ${priceText(study, l)}, utan diskontering.`,
+          `The best retirement age for each lifespan. Bar: what it pays a month on average (SEK, left axis). Line: what it pays in all (millions of kronor, right axis). ${capital(measureText(study, l))}, ${priceText(study, l)}, not discounted.`,
+        ),
+        points,
+        text: {
+          ...text,
+          leftUnit: say(l, "Kr/mån", "SEK/month"),
+          rightUnit: "Mkr",
+          heading: (lifespan) => say(l, `Lever du till ${lifespan} år`, `If you live to ${lifespan}`),
+        },
+        format: {
+          kronor: (v) => kronor(v, l),
+          monthly: (v) => `${kronor(v, l)} ${say(l, "kr/mån", "SEK/month")}`,
+          millions: (v) => decimals(v, 1, l),
+        },
+      }),
+    );
     return section;
   }
 
@@ -987,7 +1175,14 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   function buildResults(study: Study, l: Lang): HTMLElement[] {
     const out: HTMLElement[] = [];
     if (study.warnings.length > 0) out.push(warningsBox(study.warnings));
-    out.push(answerPanel(study, l), monthlyFigure(study, l), timePanel(study, l), totalFigure(study, l), matrixPanel(study, l));
+    out.push(
+      answerPanel(study, l),
+      monthlyFigure(study, l),
+      timePanel(study, l),
+      totalFigure(study, l),
+      matrixPanel(study, l),
+      optimalPanel(study, l),
+    );
     const delta = deltaFigure(study, l);
     if (delta) out.push(delta);
     out.push(breakEvenPanel(study, l), notesPanel(study, l));
@@ -1021,7 +1216,7 @@ export function createPensionAgePanel(lang: Lang, getForecastInput: () => Typfal
   // ---- language ---------------------------------------------------------------
 
   const applyText = (l: Lang): void => {
-    inputsTitle.textContent = say(l, "Bästa pensionsålder?", "Best retirement age?");
+    inputsTitle.textContent = say(l, "Hur maxa pensionen?", "How to maximise the pension?");
     intro.textContent = say(
       l,
       "Jämför sju pensionsåldrar kring en referensålder och se vilken som ger mest pension totalt, beroende på hur länge du lever. Ändra personen, avtalsområdet, sparandet eller antagandena så räknas allt om direkt. Fliken har egna indata och påverkas bara av inställningarna under Avancerat.",
