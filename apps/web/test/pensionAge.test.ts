@@ -194,7 +194,7 @@ describe("the typfall and context an alternative is run with", () => {
   });
 });
 
-describe("the default study reproduces the static report", () => {
+describe("the default study (the static report's typfall, the first year as Table 1 has it)", () => {
   it("runs seven alternatives around the riktålder", () => {
     expect(parsOf(study)).toEqual([65, 66, 67, 68, 69, 70, 71]);
     expect(study.riktalder).toBe(68);
@@ -207,8 +207,8 @@ describe("the default study reproduces the static report", () => {
 
   it("averages what a start pays a month over the years it is paid", () => {
     const sixtyFive = study.options[0]!;
-    // 15 years of 12 months to 80, and the total is the matrix's own 2 972 916.
-    expect(averageMonthly(sixtyFive, 80)).toBeCloseTo(2972916 / 180, 6);
+    // 15 years of 12 months to 80, and the total is the matrix's own 2 977 236.
+    expect(averageMonthly(sixtyFive, 80)).toBeCloseTo(2977236 / 180, 6);
     expect(averageMonthly(sixtyFive, 80)! * 15 * 12).toBeCloseTo(sixtyFive.cumulative[80]!, 4);
     // Nothing has been paid by the start age, so there is no monthly amount to speak of.
     expect(averageMonthly(sixtyFive, 65)).toBeUndefined();
@@ -232,10 +232,10 @@ describe("the default study reproduces the static report", () => {
   });
 
   it("matches the report's totals to the krona", () => {
-    expect(study.rows[0]!.totals).toEqual([2_972_916, 2_942_724, 2_901_684, 2_851_104, 2_760_972, 2_668_008, 2_568_324]);
-    expect(study.rows[0]!.margin).toBe(30_192);
-    expect(study.rows[3]!.totals).toEqual([3_550_056, 3_552_168, 3_547_176, 3_536_796, 3_485_232, 3_435_720, 3_385_344]);
-    expect(study.rows[3]!.margin).toBe(2_112);
+    expect(study.rows[0]!.totals).toEqual([2_977_236, 2_947_200, 2_906_316, 2_853_552, 2_765_892, 2_673_120, 2_573_640]);
+    expect(study.rows[0]!.margin).toBe(30_036);
+    expect(study.rows[3]!.totals).toEqual([3_554_376, 3_556_644, 3_551_808, 3_539_244, 3_490_152, 3_440_832, 3_390_660]);
+    expect(study.rows[3]!.margin).toBe(2_268);
   });
 
   it("picks 65, then 66, then the riktålder, then 71 as the lifespan grows", () => {
@@ -254,26 +254,54 @@ describe("the default study reproduces the static report", () => {
       const found = [...study.versusReference, ...study.chain].find((b) => b.earlier.par === earlier && b.later.par === later);
       return found?.at;
     };
-    expect(at(65, 68)).toBeCloseTo(83.375, 2);
-    expect(at(66, 68)).toBeCloseTo(83.619, 2);
-    expect(at(67, 68)).toBeCloseTo(83.794, 2);
-    expect(at(68, 69)).toBeCloseTo(87.184, 2);
-    expect(at(68, 70)).toBeCloseTo(86.851, 2);
-    expect(at(68, 71)).toBeCloseTo(86.6, 2);
+    expect(at(65, 68)).toBeCloseTo(83.428, 2);
+    expect(at(66, 68)).toBeCloseTo(83.701, 2);
+    expect(at(67, 68)).toBeCloseTo(83.961, 2);
+    expect(at(68, 69)).toBeCloseTo(86.978, 2);
+    expect(at(68, 70)).toBeCloseTo(86.747, 2);
+    expect(at(68, 71)).toBeCloseTo(86.531, 2);
     // The step from the riktålder to one year later is the slowest, not the fastest.
     expect(at(68, 69)!).toBeGreaterThan(at(69, 70)!);
     expect(study.versusReference).toHaveLength(6);
     expect(study.chain).toHaveLength(6);
   });
 
-  it("reads the first year off the age matrix and keeps Table 1's own figure beside it", () => {
+  it("starts every alternative at Table 1's own figure, as Prognos shows it", () => {
     const reference = study.options[study.reference]!;
-    expect(reference.firstYearMonthly).toBe(20_194);
-    // Table 1 counts the last year's pension right at once; the yearly flow picks it up in year two.
+    // Table 1 counts the last year's pension right at once; the yearly flow picks it up in year two, so its own
+    // first row says 20 194. The first year is Table 1's -- what Prognos shows -- and the flow goes on from there.
+    expect(reference.firstYearMonthly).toBe(20_398);
     expect(reference.table1Monthly).toBe(20_398);
-    expect(reference.table1Monthly).toBeGreaterThan(reference.firstYearMonthly);
+    expect(reference.annual[reference.par + 1]! / 12).toBeLessThan(reference.firstYearMonthly);
     expect(reference.finalSalaryMonthly).toBeCloseTo(39_872.3, 1);
     expect(reference.table1Share).toBeCloseTo(0.5116, 3);
+  });
+});
+
+describe("the first year", () => {
+  const savings = { ...base, individualCapital: 300_000, individualMonthly: 2_000, savingsKind: "isk" as const, savingsCapital: 400_000, savingsMonthly: 1_000 };
+  const cases: [string, typeof base][] = [
+    ["before tax", base],
+    ["after tax", { ...base, afterTax: true }],
+    ["with an agreement", { ...base, scheme: Scheme.Itp1 }],
+    ["with every kind of saving", { ...savings, scheme: Scheme.Itp1 }],
+    ["after tax with savings", { ...savings, afterTax: true }],
+  ];
+
+  it.each(cases)("is Table 1's own figure for every alternative, %s -- the one Prognos shows", (_name, input) => {
+    const result = computeStudy(input, context, deaths);
+    for (const option of result.options) {
+      expect(option.firstYearMonthly).toBeCloseTo(option.table1Monthly, 6);
+      // The parts add up to it: the occupational and private pensions and the savings are Table 1's lines too.
+      expect(option.occupational[option.par]).toBeCloseTo(option.table1OccupationalMonthly * 12, 6);
+      expect(option.savings[option.par]).toBeCloseTo(option.table1SavingsMonthly * 12, 6);
+      // Before tax the yearly flow goes on from there without a jump: the next year is within a few per cent.
+      // (After tax it is not: the model's own tax rules change in the year after, which is not this tab's to smooth.)
+      if (!input.afterTax) {
+        const next = option.annual[option.par + 1]! / 12;
+        expect(Math.abs(next / option.firstYearMonthly - 1)).toBeLessThan(0.05);
+      }
+    }
   });
 });
 
@@ -282,7 +310,7 @@ describe("the economic assumptions", () => {
     const growth = computeStudy({ ...base, yearlyInflation: 0.02, realGrowth: 0.018 }, context, deaths);
     expect(runsOf(growth)).toEqual(["80-80:67", "81-81:68", "82-82:70", "83-95:71"]);
     const first = growth.versusReference.find((b) => b.earlier.par === 65)!.at!;
-    expect(first).toBeCloseTo(79.465, 2);
+    expect(first).toBeCloseTo(79.451, 2);
     expect(first).toBeLessThan(study.versusReference.find((b) => b.earlier.par === 65)!.at! - 3);
   });
 
@@ -307,11 +335,11 @@ describe("the collective agreements", () => {
       expect(occupational).toBeGreaterThan(0);
       expect(withIt.cumulative[80]).toBe(without.cumulative[80]! + occupational);
     }
-    expect(itp.rows[0]!.totals[0]).toBe(4_238_496);
+    expect(itp.rows[0]!.totals[0]).toBe(4_242_816);
   });
 
   it("can move the winning ages", () => {
-    expect(runsOf(itp)).toEqual(["80-82:65", "83-84:66", "85-87:68", "88-95:71"]);
+    expect(runsOf(itp)).toEqual(["80-82:65", "83-84:66", "85-85:67", "86-87:68", "88-95:71"]);
   });
 
   it("are left out when occupational pension is switched off", () => {
@@ -645,8 +673,8 @@ describe("the best age by lifespan", () => {
       expect(rows[i]!.total).toBe(r.totals[r.best]);
       expect(rows[i]!.monthly! * (r.lifespan - best.par) * 12).toBeCloseTo(r.totals[r.best]!, 4);
     });
-    expect(rows[0]).toMatchObject({ lifespan: 80, par: 65, total: 2972916 });
-    expect(rows[0]!.monthly).toBeCloseTo(2972916 / 180, 6);
+    expect(rows[0]).toMatchObject({ lifespan: 80, par: 65, total: 2977236 });
+    expect(rows[0]!.monthly).toBeCloseTo(2977236 / 180, 6);
   });
 
   it("downloads as the table is laid out: a row per measure, whole kronor, millions with two decimals", () => {
@@ -654,10 +682,10 @@ describe("the best age by lifespan", () => {
     expect(sv).toHaveLength(4);
     expect(sv[0]).toBe("Livslängd;80;81;82;83;84;85;86;87;88;89;90;91;92;93;94;95");
     expect(sv[1]!.startsWith("Pensionsålder;65;65;65;")).toBe(true);
-    expect(sv[2]!.startsWith("Månadsbelopp kr;16516;")).toBe(true);
-    expect(sv[3]!.startsWith("Livsutbetalning mkr;2,97;")).toBe(true);
+    expect(sv[2]!.startsWith("Månadsbelopp kr;16540;")).toBe(true);
+    expect(sv[3]!.startsWith("Livsutbetalning mkr;2,98;")).toBe(true);
     const en = optimalToCsv(study, "en").split("\r\n");
-    expect(en[3]!.startsWith("Lifetime payout MSEK,2.97,")).toBe(true);
+    expect(en[3]!.startsWith("Lifetime payout MSEK,2.98,")).toBe(true);
     const sheet = optimalToXlsxRows(study, "sv");
     expect(sheet).toHaveLength(4);
     expect(sheet.every((line) => line.length === 17)).toBe(true);
@@ -669,7 +697,7 @@ describe("the exports", () => {
     const sv = matrixToCsv(study, "sv").split("\r\n");
     expect(sv).toHaveLength(17);
     expect(sv[0]).toBe("Lever till (år);65;66;67;68;69;70;71;Bäst;Försprång mot näst bäst (kr)");
-    expect(sv[1]).toBe("80;2972916;2942724;2901684;2851104;2760972;2668008;2568324;65;30192");
+    expect(sv[1]).toBe("80;2977236;2947200;2906316;2853552;2765892;2673120;2573640;65;30036");
     const en = matrixToCsv(study, "en").split("\r\n");
     expect(en[0]).toBe("Lifespan (years),65,66,67,68,69,70,71,Best,Lead over runner-up (SEK)");
     expect(en[16]!.split(",")[8]).toBe("71");
@@ -685,7 +713,7 @@ describe("the exports", () => {
     expect(header[1]).toBe("Pension per månad 65");
     const first = lines[1]!.split(";");
     expect(first[0]).toBe("65");
-    expect(first[1]).toBe("16498");
+    expect(first[1]).toBe("16858");
     expect(first.slice(2, 8).every((cell) => cell === "")).toBe(true);
   });
 
@@ -845,10 +873,10 @@ describe("a comparison of agreements", () => {
   });
 
   it("finds each agreement's best age per lifespan", () => {
-    expect(best(entryFor(Scheme.Itp1))).toBe("80-82:65 83-84:66 85-87:68 88-95:71");
-    expect(best(entryFor(Scheme.Itp2))).toBe("80-81:65 82:67 83-85:68 86-88:70 89-95:71");
+    expect(best(entryFor(Scheme.Itp1))).toBe("80-82:65 83-84:66 85:67 86-87:68 88-95:71");
+    expect(best(entryFor(Scheme.Itp2))).toBe("80-81:65 82:67 83-84:68 85:69 86-88:70 89-95:71");
     expect(best(entryFor(Scheme.SafLo))).toBe("80-83:65 84:66 85-87:68 88-95:71");
-    expect(best(entryFor(Scheme.KapKl))).toBe("80-82:65 83:66 84:67 85-87:68 88-95:71");
+    expect(best(entryFor(Scheme.KapKl))).toBe("80-82:65 83:66 84-85:67 86-87:68 88-95:71");
     expect(best(entryFor(Scheme.AkapKr))).toBe("80-82:65 83:66 84-85:68 86-95:71");
     expect(best(entryFor(Scheme.Pa16Avd2))).toBe("80-82:65 83:66 84-85:68 86-87:69 88-95:71");
     expect(best(entryFor(Scheme.Pa16Avd1))).toBe("80-82:65 83:66 84-85:67 86-87:68 88-95:71");
@@ -856,14 +884,14 @@ describe("a comparison of agreements", () => {
 
   it("totals what each agreement pays by 80 if retiring at 65, to the krona", () => {
     const at80 = (scheme: (typeof SCHEME_ORDER)[number]) => Math.round(totalFor(entryFor(scheme), 80, 65));
-    expect(at80(Scheme.None)).toBe(2_972_916);
-    expect(at80(Scheme.Itp1)).toBe(4_238_496);
-    expect(at80(Scheme.Itp2)).toBe(4_181_256);
-    expect(at80(Scheme.SafLo)).toBe(4_207_176);
-    expect(at80(Scheme.KapKl)).toBe(4_222_116);
-    expect(at80(Scheme.AkapKr)).toBe(4_352_796);
-    expect(at80(Scheme.Pa16Avd2)).toBe(4_305_816);
-    expect(at80(Scheme.Pa16Avd1)).toBe(4_675_356);
+    expect(at80(Scheme.None)).toBe(2_977_236);
+    expect(at80(Scheme.Itp1)).toBe(4_242_816);
+    expect(at80(Scheme.Itp2)).toBe(4_185_576);
+    expect(at80(Scheme.SafLo)).toBe(4_211_496);
+    expect(at80(Scheme.KapKl)).toBe(4_226_436);
+    expect(at80(Scheme.AkapKr)).toBe(4_357_116);
+    expect(at80(Scheme.Pa16Avd2)).toBe(4_310_136);
+    expect(at80(Scheme.Pa16Avd1)).toBe(4_679_676);
   });
 
   it("is a lifespan row of the study that was computed", () => {
@@ -914,17 +942,19 @@ describe("reading a comparison", () => {
     const rows = comparisonRows(everyAgreement, 85, "best");
     const row = (scheme: (typeof SCHEME_ORDER)[number]) => rows.find((r) => r.entry.scheme === scheme)!;
     expect(rows.map((r) => r.entry.scheme)).toEqual([...SCHEME_ORDER]);
-    expect(Math.round(row(Scheme.None).total)).toBe(3_988_140);
+    expect(Math.round(row(Scheme.None).total)).toBe(3_990_588);
     expect(row(Scheme.None).extra).toBe(0);
     expect(row(Scheme.None).extraShare).toBe(0);
-    expect(Math.round(row(Scheme.Itp1).total)).toBe(5_662_368);
-    expect(Math.round(row(Scheme.Itp1).extra)).toBe(1_674_228);
-    expect(row(Scheme.Itp1).extraShare).toBeCloseTo(0.4198, 4);
-    expect(Math.round(row(Scheme.Itp1).occupationalMonthly)).toBe(8207);
-    expect(Math.round(row(Scheme.Itp1).monthly)).toBe(28_401);
+    expect(Math.round(row(Scheme.Itp1).total)).toBe(5_665_188);
+    expect(Math.round(row(Scheme.Itp1).extra)).toBe(1_674_600);
+    expect(row(Scheme.Itp1).extraShare).toBeCloseTo(0.4196, 4);
+    // ITP-1's best age at 85 is 67, one year before the riktålder, so its figures are the 67's.
+    expect(row(Scheme.Itp1).option.par).toBe(67);
+    expect(Math.round(row(Scheme.Itp1).occupationalMonthly)).toBe(7815);
+    expect(Math.round(row(Scheme.Itp1).monthly)).toBe(26_911);
     // PA16 avd 1 is the best of them, and at 67 rather than 68.
     expect(row(Scheme.Pa16Avd1).option.par).toBe(67);
-    expect(Math.round(row(Scheme.Pa16Avd1).total)).toBe(6_272_268);
+    expect(Math.round(row(Scheme.Pa16Avd1).total)).toBe(6_276_900);
     const totals = rows.map((r) => r.total);
     expect(rows[totals.indexOf(Math.max(...totals))]!.entry.scheme).toBe(Scheme.Pa16Avd1);
     expect(rows[totals.indexOf(Math.min(...totals))]!.entry.scheme).toBe(Scheme.None);
@@ -935,12 +965,12 @@ describe("reading a comparison", () => {
   it("reads every agreement at one retirement age when asked to", () => {
     const rows = comparisonRows(everyAgreement, 85, 65);
     expect(rows.every((r) => r.option.par === 65)).toBe(true);
-    expect(Math.round(rows[0]!.total)).toBe(3_931_176);
-    expect(Math.round(rows[1]!.total)).toBe(5_618_616);
+    expect(Math.round(rows[0]!.total)).toBe(3_935_496);
+    expect(Math.round(rows[1]!.total)).toBe(5_622_936);
     expect(Math.round(rows[1]!.extra)).toBe(1_687_440);
     // The best age is still what it was, whichever age the figures are read at.
-    expect(rows.map((r) => r.best.par)).toEqual([68, 68, 68, 68, 68, 68, 68, 67]);
-    expect(Math.round(rows[1]!.monthly)).toBe(23_529);
+    expect(rows.map((r) => r.best.par)).toEqual([68, 67, 69, 68, 67, 68, 68, 67]);
+    expect(Math.round(rows[1]!.monthly)).toBe(23_889);
     expect(Math.round(rows[1]!.occupationalMonthly)).toBe(7031);
   });
 
@@ -955,7 +985,7 @@ describe("reading a comparison", () => {
     expect(totals.map((s) => s.entry.scheme)).toEqual([...SCHEME_ORDER]);
     expect(totals.every((s) => s.points.length === 16)).toBe(true);
     expect(totals[1]!.points[0]).toEqual([80, totalFor(entryFor(Scheme.Itp1), 80, "best")]);
-    expect(Math.round(totals[1]!.points[0]![1])).toBe(4_238_496);
+    expect(Math.round(totals[1]!.points[0]![1])).toBe(4_242_816);
     // Paid-out totals never fall as the lifespan grows.
     for (const series of totals) {
       series.points.forEach((point, i) => {
@@ -968,7 +998,7 @@ describe("reading a comparison", () => {
     const extra = totalSeries(everyAgreement, "best", "extra");
     expect(extra.map((s) => s.entry.scheme)).toEqual([...AGREEMENTS]);
     const itp1 = extra[0]!.points.find(([lifespan]) => lifespan === 85)!;
-    expect(Math.round(itp1[1])).toBe(1_674_228);
+    expect(Math.round(itp1[1])).toBe(1_674_600);
     // The same number the table reads for it.
     expect(itp1[1]).toBe(comparisonRows(everyAgreement, 85, "best")[1]!.extra);
     // And at a fixed age it is the difference at that age.
@@ -982,7 +1012,7 @@ describe("reading a comparison", () => {
     const at = (lifespan: number) => spread.find((s) => s.lifespan === lifespan)!;
     expect([at(80).min, at(80).max]).toEqual([65, 65]);
     expect([at(83).min, at(83).max]).toEqual([65, 68]);
-    expect([at(85).min, at(85).max]).toEqual([67, 68]);
+    expect([at(85).min, at(85).max]).toEqual([67, 69]);
     expect([at(86).min, at(86).max]).toEqual([68, 71]);
     expect([at(95).min, at(95).max]).toEqual([71, 71]);
     expect(spread.filter((s) => s.min === s.max).map((s) => s.lifespan)).toEqual([80, 81, 89, 90, 91, 92, 93, 94, 95]);
@@ -1012,7 +1042,7 @@ describe("the comparison's exports", () => {
       "ITP-1: bästa ålder",
       "ITP-1: total före skatt (kr)",
     ]);
-    expect(lines[1]).toBe("80;65;2972916;65;4238496;65;4181256;65;4207176;65;4222116;65;4352796;65;4305816;65;4675356");
+    expect(lines[1]).toBe("80;65;2977236;65;4242816;65;4185576;65;4211496;65;4226436;65;4357116;65;4310136;65;4679676");
     expect(lines[16]!.split(";").filter((_, i) => i > 0 && i % 2 === 1).every((age) => age === "71")).toBe(true);
   });
 
@@ -1023,13 +1053,13 @@ describe("the comparison's exports", () => {
       "No occupational pension: best age",
       "No occupational pension: total after tax (SEK)",
     ]);
-    expect(en[1]!.startsWith("80,65,2972916,")).toBe(true);
+    expect(en[1]!.startsWith("80,65,2977236,")).toBe(true);
   });
 
   it("write the same figures as spreadsheet rows", () => {
     const rows = comparisonToXlsxRows(everyAgreement, "sv");
     expect(rows).toHaveLength(17);
     expect(rows[0]).toHaveLength(17);
-    expect(rows[1]!.slice(0, 5)).toEqual([80, 65, kronorCell(2_972_916), 65, kronorCell(4_238_496)]);
+    expect(rows[1]!.slice(0, 5)).toEqual([80, 65, kronorCell(2_977_236), 65, kronorCell(4_242_816)]);
   });
 });

@@ -338,13 +338,30 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
     const publicPension = annual(rows, par, (r) => r.ip + r.tp + r.pp + r.garp + r.ptillagg);
     const occupational = annual(rows, par, (r) => r.tjp);
     const individual = annual(rows, par, (r) => r.ips);
+    const net = annual(rows, par, (r) => r.netto);
     remember(probe.result.warnings);
 
+    // The first year is Table 1's -- what Prognos shows. The model draws Table 1 in a second pass at the retirement
+    // age, once the last working year's pension right is in, and the yearly flow has it from the next year, so its
+    // first row is a little lower. Later years stay the flow's; what is left after tax follows the extra gross.
+    const monthly = (key: Table1Key): number => (probe.result.table1.find((r) => r.key === key)?.monthly ?? 0) * 12;
+    if (par <= LAST_AGE) {
+      const before = publicPension[par]! + occupational[par]! + individual[par]!;
+      publicPension[par] = monthly(Table1Key.TotalPublicPension);
+      occupational[par] = monthly(Table1Key.OccupationalPension);
+      individual[par] = monthly(Table1Key.PrivateSaving);
+      const after = publicPension[par]! + occupational[par]! + individual[par]!;
+      net[par] = net[par]! + probe.netAt(par, after) - probe.netAt(par, before);
+    }
+
     // The private savings are a second run: the model carries one kind of private saving at a time.
-    let savings: readonly number[] = new Array<number>(LAST_AGE + 1).fill(0);
+    let savings: number[] = new Array<number>(LAST_AGE + 1).fill(0);
     if (taxFree !== null) {
       const own = run(typfall, lastsContext(shared, input, payout, "savings"), { deaths });
-      savings = annual(own.rows, retirementAge(typfall, own), (r) => r.pps);
+      const ownPar = retirementAge(typfall, own);
+      savings = annual(own.rows, ownPar, (r) => r.pps);
+      const line = own.table1.find((r) => r.key === Table1Key.PrivateSavingAfterTax);
+      if (line !== undefined && ownPar <= LAST_AGE) savings[ownPar] = line.monthly * 12;
       remember(own.warnings);
     }
 
@@ -355,7 +372,7 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
       individual,
       gross: publicPension.map((p, age) => p + occupational[age]! + individual[age]!),
       savings,
-      net: annual(rows, par, (r) => r.netto).map((n, age) => n + savings[age]!),
+      net: net.map((n, age) => n + savings[age]!),
     });
     // The tax section and the salary are the same whatever the payout, so the last run's are kept.
     netAt = probe.netAt;

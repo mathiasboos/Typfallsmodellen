@@ -953,3 +953,19 @@ describe('"Hur mycket får jag?" -- what each payout pays a month', () => {
     expect(split(amountsToCsv(lasts, "sv"))[0]).not.toContain("varav individuell och privat pension");
   });
 });
+
+describe("the first year", () => {
+  it("is Table 1's own figure for every payout period -- the one Prognos shows", () => {
+    const R = base.retirementAge;
+    const input = normaliseLasts(base);
+    const typfall = lastsTypfall(input);
+    const runs = runPayouts(input, context, deaths);
+    for (const payout of runs.runs) {
+      const table1 = run(typfall, lastsContext(context, input, payout.payout), { deaths }).table1;
+      const monthly = (key: string): number => table1.find((r) => r.key === key)?.monthly ?? 0;
+      expect(payout.publicPension[R]! / 12).toBeCloseTo(monthly("totAllmanPension"), 6);
+      expect(payout.occupational[R]! / 12).toBeCloseTo(monthly("tjp"), 6);
+      expect(payout.gross[R]! / 12).toBeCloseTo(monthly("totBrutto"), 6);
+    }
+  });
+});
