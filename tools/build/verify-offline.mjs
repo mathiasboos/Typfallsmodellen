@@ -2805,6 +2805,53 @@ if (paOptimalEn[0] !== "Optimal retirement age in relation to lifespan" || paOpt
   problems.push(`the optimal-age section in English reads ${JSON.stringify(paOptimalEn)}`);
 }
 
+// The line charts let a line be switched off and on from the legend: "Pension per månad", seven alternatives.
+const paMonthlyFig = pa.locator('[data-role="pa-fig-monthly"]');
+const paFigLines = async () => (await paMonthlyFig.locator("svg polyline.pa-line").evaluateAll((lines) => lines.map((l) => Number(l.dataset.par)))).sort((a, b) => a - b);
+const paFigPressed = async () => paMonthlyFig.locator(".legend-toggle").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-pressed")));
+const paFigTop = async () => paNorm((await paMonthlyFig.locator("svg text.tick-y").last().textContent()) ?? "");
+const paFigAll = await paFigLines();
+const paFigTopAll = Number(await paFigTop());
+await paMonthlyFig.locator('.legend-toggle[data-series="par-71"]').click();
+await paMonthlyFig.locator('.legend-toggle[data-series="par-70"]').click();
+const paFigLeft = await paFigLines();
+const paFigState = await paFigPressed();
+if (paFigAll.length !== 7 || paFigLeft.join(",") !== "65,66,67,68,69") problems.push(`switching 71 and 70 off leaves the lines ${paFigLeft.join(",")} of ${paFigAll.join(",")}, expected 65,66,67,68,69`);
+if (paFigState.join(",") !== "true,true,true,true,true,false,false") problems.push(`the legend reads ${paFigState.join(",")} after switching 71 and 70 off`);
+// The readout names only what is drawn: the arrow keys on the focused chart step to the age after the last line starts.
+await paMonthlyFig.locator("svg").focus();
+for (let i = 0; i < 8; i += 1) await tab.keyboard.press("ArrowRight");
+const paFigTip = ((await paMonthlyFig.locator(".tooltip").textContent()) ?? "").replace(/\s+/g, " ");
+if (/70 år|71 år/.test(paFigTip) || !/69 år/.test(paFigTip)) problems.push(`the chart's readout still names a line that is switched off: "${paFigTip}"`);
+await tab.keyboard.press("Escape");
+// What is switched off survives a recalculation and a language change.
+await paType("paSalary", 39000);
+const paFigAfterEdit = await paFigLines();
+await paType("paSalary", 38500);
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(100);
+const paFigEnglish = [(await paFigLines()).join(","), await paMonthlyFig.locator(".legend-toggle").first().getAttribute("title")];
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(100);
+if (paFigAfterEdit.join(",") !== "65,66,67,68,69" || paFigEnglish[0] !== "65,66,67,68,69" || paFigEnglish[1] !== "Hide the line") {
+  problems.push(`the switched-off lines did not survive an edit (${paFigAfterEdit.join(",")}) or the English view (${paFigEnglish.join(" | ")})`);
+}
+// The axis fits the lines left: with only the two earliest starts showing it ends lower than with all seven.
+for (const par of [67, 68, 69]) await paMonthlyFig.locator(`.legend-toggle[data-series="par-${par}"]`).click();
+const paFigTopLeft = Number(await paFigTop());
+console.log(`pension age     : chart lines ${paFigAll.join(",")} -> ${(await paFigLines()).join(",")}, top ${paFigTopAll} -> ${paFigTopLeft}`);
+if (!(paFigTopLeft < paFigTopAll)) problems.push(`the axis did not refit to the lines left: its top is ${paFigTopLeft} against ${paFigTopAll}`);
+await paMonthlyFig.locator('.legend-toggle[data-series="par-67"]').click();
+await paMonthlyFig.locator('.legend-toggle[data-series="par-68"]').click();
+// One line always stays: the last one cannot be switched off. (65 to 68 are showing here.)
+for (const par of [65, 66, 67]) await paMonthlyFig.locator(`.legend-toggle[data-series="par-${par}"]`).click();
+const paFigLast = await paFigLines();
+await paMonthlyFig.locator('.legend-toggle[data-series="par-68"]').click();
+const paFigStill = await paFigLines();
+if (paFigLast.join(",") !== "68" || paFigStill.join(",") !== "68") problems.push(`the last line could be switched off: ${paFigLast.join(",")} then ${paFigStill.join(",")}`);
+for (const par of [65, 66, 67, 69, 70, 71]) await paMonthlyFig.locator(`.legend-toggle[data-series="par-${par}"]`).click();
+if ((await paFigLines()).join(",") !== paFigAll.join(",")) problems.push("switching every line back on did not bring back all seven");
+
 // The per-age table switches between the monthly pension and the total paid out, and its download follows.
 const paTimeSwitch = (measure) => pa.locator(`[data-role="pa-time"] button[data-measure="${measure}"]`);
 const paTimeHeading = async () => ((await pa.locator('[data-role="pa-time"] > h2 > span').textContent()) ?? "").trim();
@@ -3340,6 +3387,15 @@ const plLegend = await pl.locator('[data-role="pl-fig-income"] .legend li').coun
 console.log(`pension lasts   : income lines ${plIncomeLines.join(",")}, heavy ${plHeavy.join(",")}, dashed ${plDashed.join(",")}, labels ${plEndLabels}, legend ${plLegend}`);
 if (!sameList([...plIncomeLines].sort((a, b) => a - b), [-1, 0, 5, 10, 15, 20])) problems.push(`the income chart draws lines for ${plIncomeLines.join(",")}, expected the budget (-1) and 0,5,10,15,20`);
 if (!sameList(plHeavy, [0]) || !sameList(plDashed, [-1])) problems.push(`the income chart's heavy line is ${plHeavy.join(",")} and its dashed one ${plDashed.join(",")}, expected 0 and the budget (-1)`);
+// The budget line and any payout line can be switched off, and back on.
+const plIncomeFig = pl.locator('[data-role="pl-fig-income"]');
+await plIncomeFig.locator('.legend-toggle[data-series="payout--1"]').click();
+const plWithoutBudget = await plLines("pl-fig-income");
+await plIncomeFig.locator('.legend-toggle[data-series="payout--1"]').click();
+const plWithBudget = await plLines("pl-fig-income");
+if (plWithoutBudget.includes(-1) || plWithoutBudget.length !== 5 || !plWithBudget.includes(-1) || plWithBudget.length !== 6) {
+  problems.push(`the budget line did not switch off and on: ${plWithoutBudget.join(",")} then ${plWithBudget.join(",")}`);
+}
 for (const wanted of ["5 år", "10 år", "15 år", "20 år", "Livsvarigt", "Budget"]) {
   if (!plEndLabels.split(",").includes(wanted)) problems.push(`the income chart has no label "${wanted}" (labels: ${plEndLabels})`);
 }
@@ -3447,7 +3503,8 @@ if (!sameList(plGrossRibbon.map((item) => item.text), PL_RIBBON_DEFAULT)) proble
 if (!plGrossHead.includes("varavallmän") || plGrossFive[1] !== "51968") problems.push(`before tax the options table has columns ${plGrossHead.join("|")} and 51968 for 5 years? ${plGrossFive[1]}`);
 if (plGrossBudget[1] !== "25946" || plGrossBudget[2] !== "22204") problems.push(`the budget before tax reads ${plGrossBudget.slice(1, 3).join(",")} at 68 and 70, expected 25946 (the first year is taxed harder) and 22204`);
 if (!/ungefär22204kr\/månföreskatt/.test(plGrossAnswer)) problems.push("the short answer does not say that 18 400 after tax is about 22 204 before tax");
-if ((await pl.locator('[data-role="pl-fig-income"] .figure-note').count()) !== 1) problems.push("the income chart has no note on the budget before tax");
+// A note on the budget before tax, beside the hint about the legend.
+if ((await pl.locator('[data-role="pl-fig-income"] .figure-note').count()) !== 2) problems.push("the income chart has no note on the budget before tax");
 await pl.locator('button[data-basis="net"]').click();
 await tab.waitForTimeout(100);
 
@@ -3797,6 +3854,20 @@ const amAfter = amTable.slice(1, 5).map((r) => Number(r[2].replace(/\s/g, "")));
 if (!amAfter.every((v, i) => i === 0 || v < amAfter[i - 1] + 1) || amTable[5][2] !== "–") {
   problems.push(`what is left after the temporary payouts reads ${amAfter.join(",")} and for life "${amTable[5][2]}"`);
 }
+
+// Its line chart switches lines off and on too, and fits the axis to what is left.
+const amFig = am.locator('[data-role="pm-fig-income"]');
+const amFigLines = () => amFig.locator("svg polyline.pa-line").evaluateAll((lines) => lines.map((l) => Number(l.dataset.payout)));
+const amFigTop = async () => Number(((await amFig.locator("svg text.tick-y").last().textContent()) ?? "").replace(/\s/g, ""));
+const amFigBefore = [(await amFigLines()).join(","), await amFigTop()];
+await amFig.locator('.legend-toggle[data-series="payout-5"]').click();
+const amFigAfter = [(await amFigLines()).join(","), await amFigTop()];
+await amFig.locator('.legend-toggle[data-series="payout-5"]').click();
+console.log(`how much        : chart lines ${amFigBefore[0]} (top ${amFigBefore[1]}) -> ${amFigAfter[0]} (top ${amFigAfter[1]})`);
+if (amFigAfter[0].split(",").includes("5") || amFigAfter[0].split(",").length !== amFigBefore[0].split(",").length - 1 || !(amFigAfter[1] < amFigBefore[1])) {
+  problems.push(`switching the 5-year line off gives ${amFigAfter.join(" / ")} from ${amFigBefore.join(" / ")}, expected one line fewer and a lower axis`);
+}
+if ((await amFigLines()).join(",") !== amFigBefore[0]) problems.push("switching the 5-year line back on did not restore the chart");
 
 // Capital of one's own raises every payout, the 5-year one most.
 await am.locator('[data-setting="plCapital"]').fill("300000");

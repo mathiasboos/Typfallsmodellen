@@ -1086,6 +1086,25 @@ body {
    all of them -- "Garantipension Pensionstillägg (IPT) (40/40)" wraps. */
 .legend li { display: flex; align-items: flex-start; gap: 6px; }
 .swatch { width: 11px; height: 11px; border-radius: 2px; flex: none; margin-top: 4px; }
+/* A legend entry that switches a line off and on (pensionAgeChart.ts): the entry looks as it did, and a line that is
+   off is dimmed and struck through, so the row of entries reads as what is showing. */
+.legend-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.legend-toggle:hover { background: var(--surface-muted, rgba(127, 127, 127, 0.14)); }
+.legend-toggle[aria-pressed="false"] { opacity: 0.55; }
+.legend-toggle[aria-pressed="false"] .legend-name { text-decoration: line-through; }
 .swatch-line {
   width: 18px;
   height: 0;
