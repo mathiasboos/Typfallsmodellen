@@ -1236,6 +1236,15 @@ steps as the left (`alignedTicks`), so every gridline is a tick on both, both st
 which mark is which, and the hover and the table give every number. The colours are the page's own green and
 blue (`--fig-premium`, `--fig-salary`). The downloads (`optimal-pensionsalder.*`) are laid out as the table is.
 
+**Lines can be switched off and on.** In the three tabs with a question mark every line chart's legend is made of
+buttons (`aria-pressed`; `pensionAgeChart.ts`): a click hides a line -- not drawn, not labelled, not in the hover
+readout -- and another brings it back. Where the caller gives `autoTicks` (the wanted number of y intervals, the same
+it asked `niceTicks` for), the y axis is fitted again to the lines that are left, so two lines can be read against each
+other without the others flattening them. What is switched off is kept per chart role while the page is open
+(`hiddenKeys`, keyed by the line's age, agreement or payout), so a recalculation or a change of language redraws the
+chart as it was left; one line always stays, and a chart with one line has nothing to switch. The bars-and-line chart
+of the best age by lifespan has its own two-entry legend, which is not a switch.
+
 Each box of the short answer (one per lifespan) shows the lifespan, the best start age, what that start
 pays a month **on average** (`averageMonthly`: the total paid out before the lifespan over the months from
 the start age to it -- not the first year's amount, which is in the per-age table), the lifetime total in

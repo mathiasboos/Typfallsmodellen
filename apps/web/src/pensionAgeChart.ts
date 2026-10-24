@@ -40,14 +40,20 @@
  * giving `colour`/`emphasis`/`essential` itself; a series that gives none of
  * them behaves exactly as before.
  *
+ * Every line chart here lets the reader switch lines off and on: the legend entries are buttons
+ * (`aria-pressed`), a switched-off line is not drawn, labelled or read out, and -- where the caller says how to
+ * pick ticks (`autoTicks`) -- the axis refits to the lines that are left, so two lines of one agreement can be
+ * read against each other without the others squeezing them flat. What is switched off is kept per chart
+ * (`hiddenKeys`) while the page lives, so a recalculation draws the chart as it was left; at least one line
+ * always stays, and a chart of one line has nothing to switch.
+ *
  * "Hur länge räcker pensionen?" draws it a third way: one line per payout period
  * (an ordinal ramp, `--fig-pu-*`) and a dashed line for the budget. A line that
  * ends its payout part-way -- and then falls onto the public pension alone,
  * where all of them meet -- is marked and labelled where the payout ends
  * (`endAt`), not at the right edge where the labels would pile on one another.
  */
-import { HEIGHT, PLOT, WIDTH, el, frame, label, legend, newSvg } from "./chart.js";
-import type { SeriesMeta } from "./chart.js";
+import { HEIGHT, PLOT, WIDTH, el, frame, label, newSvg } from "./chart.js";
 import type { Lang } from "./i18n.js";
 import type { Slot } from "./pensionAge.js";
 
@@ -121,6 +127,12 @@ export interface LineChartSpec {
   readonly startDots?: boolean;
   /** Pixels (of the 760-wide drawing) kept free on the right for the end labels; a name needs more than an age. */
   readonly endRoom?: number;
+  /**
+   * Wanted number of intervals on the y axis (as `niceTicks`'s own `target`). Given, the axis is fitted again to the
+   * lines left when some are switched off -- from zero (or below it, if a line goes there) to the highest of them;
+   * left out, the axis stays as `yTicks` has it whatever is switched off.
+   */
+  readonly autoTicks?: number;
   /** Short notes inside the plot, at its top-left and bottom-left. */
   readonly annotations?: { readonly top?: string; readonly bottom?: string };
 }
@@ -193,21 +205,86 @@ const isHeavy = (series: ChartSeries): boolean => series.emphasis ?? series.slot
 const isEssential = (series: ChartSeries): boolean =>
   series.essential ?? (series.slot === "m3" || series.slot === "z" || series.slot === "p3");
 
+// ------------------------------------------------------------ switching ---
+
+/** The lines each chart has switched off, by chart role: kept for as long as the page is open. */
+const hiddenKeys = new Map<string, Set<string>>();
+
+/** A line's own handle across redraws: the age, agreement or payout it is, else its place. */
+function seriesKey(series: ChartSeries, index: number): string {
+  if (series.par !== undefined) return `par-${series.par}`;
+  if (series.agreement !== undefined) return `agreement-${series.agreement}`;
+  if (series.payout !== undefined) return `payout-${series.payout}`;
+  return `series-${index}`;
+}
+
+/** What a chart has switched off, less what it no longer draws, and never every line. */
+function hiddenFor(role: string, keys: readonly string[]): Set<string> {
+  const kept = new Set([...(hiddenKeys.get(role) ?? [])].filter((key) => keys.includes(key)));
+  if (kept.size >= keys.length) kept.clear();
+  hiddenKeys.set(role, kept);
+  return kept;
+}
+
+/** Round ticks for the lines that are showing. */
+function fittedTicks(shown: readonly ChartSeries[], target: number): readonly number[] {
+  const values = shown.flatMap((s) => s.points.map((p) => p[1]));
+  const lo = Math.min(0, ...values);
+  const hi = Math.max(lo < 0 ? 0 : 1, ...values);
+  return niceTicks(lo, hi, target).ticks;
+}
+
+/** The legend, its entries buttons that switch a line off and on; plain entries where there is nothing to switch. */
+function switchLegend(spec: LineChartSpec, keys: readonly string[], off: ReadonlySet<string>, toggle: (key: string) => void): HTMLElement {
+  const box = document.createElement("ul");
+  box.className = "legend";
+  const sv = spec.lang === "sv";
+  spec.series.forEach((series, i) => {
+    const key = keys[i]!;
+    const item = document.createElement("li");
+    const swatch = document.createElement("span");
+    swatch.className = series.dashed ? "swatch swatch-line" : "swatch swatch-line-solid";
+    swatch.style.borderTopColor = `var(${colourOf(series)})`;
+    const text = document.createElement("span");
+    text.className = "legend-name";
+    text.textContent = series.name;
+    if (spec.series.length < 2) {
+      item.append(swatch, text);
+    } else {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "legend-toggle";
+      button.dataset.series = key;
+      button.setAttribute("aria-pressed", String(!off.has(key)));
+      button.title = off.has(key) ? (sv ? "Visa linjen" : "Show the line") : sv ? "Dölj linjen" : "Hide the line";
+      button.append(swatch, text);
+      button.addEventListener("click", () => toggle(key));
+      item.append(button);
+    }
+    box.append(item);
+  });
+  return box;
+}
+
 // ----------------------------------------------------------------- chart ---
 
 export function renderLineChart(spec: LineChartSpec): HTMLElement {
   const { lang } = spec;
   const FRAME = frameOf(spec);
+  const keys = spec.series.map(seriesKey);
+  const off = hiddenFor(spec.role, keys);
+  const shown = spec.series.filter((_, i) => !off.has(keys[i]!));
+  const yTicks = off.size > 0 && spec.autoTicks !== undefined ? fittedTicks(shown, spec.autoTicks) : spec.yTicks;
   const svg = newSvg(spec.title);
   svg.setAttribute("tabindex", "0");
 
-  const yLo = spec.yTicks[0] ?? 0;
-  const yHi = spec.yTicks[spec.yTicks.length - 1] ?? 1;
+  const yLo = yTicks[0] ?? 0;
+  const yHi = yTicks[yTicks.length - 1] ?? 1;
   const x = (age: number) => FRAME.left + ((age - spec.xMin) / Math.max(spec.xMax - spec.xMin, 1)) * (FRAME.right - FRAME.left);
   const y = (value: number) => FRAME.bottom - ((value - yLo) / Math.max(yHi - yLo, 1e-9)) * (FRAME.bottom - FRAME.top);
 
   // Horizontal grid and the y labels; a zero line gets the axis weight.
-  for (const tick of spec.yTicks) {
+  for (const tick of yTicks) {
     const py = y(tick);
     svg.append(el("line", { x1: FRAME.left, x2: FRAME.right, y1: py, y2: py, class: tick === 0 ? "axis" : "grid" }));
     svg.append(label(spec.yTick(tick), FRAME.left - 8, py + 4, "tick tick-y"));
@@ -234,7 +311,7 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
   if (spec.annotations?.bottom) svg.append(label(spec.annotations.bottom, FRAME.left + 8, FRAME.bottom - 8, "tick pa-note"));
 
   // The lines, the heavy one last so it lies on top of its neighbours.
-  const drawn = [...spec.series].sort((a, b) => Number(isHeavy(a)) - Number(isHeavy(b)));
+  const drawn = [...shown].sort((a, b) => Number(isHeavy(a)) - Number(isHeavy(b)));
   const ends: { series: ChartSeries; y: number }[] = [];
   const own: { series: ChartSeries; x: number; y: number }[] = [];
   for (const series of drawn) {
@@ -262,7 +339,10 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
   }
 
   // End labels: all of them if they fit with a small nudge, else the essential ones.
-  const sets = [ends, ends.filter((e) => isEssential(e.series))];
+  const essentialEnds = ends.filter((e) => isEssential(e.series));
+  // With the essential lines switched off, the first and last that are left stand in for them.
+  const edgeEnds = ends.filter((_, i) => i === 0 || i === ends.length - 1);
+  const sets = [ends, essentialEnds.length > 0 ? essentialEnds : edgeEnds];
   for (const [attempt, set] of sets.entries()) {
     const { positions, shift } = spread(set.map((e) => e.y), 13);
     if (shift > (attempt === 0 ? 5 : 9)) continue;
@@ -272,17 +352,24 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
   // A label beside the end of a payout sits at its own point, where nothing else is.
   for (const e of own) svg.append(label(e.series.end, e.x + 9, e.y - 6, "tick pa-end"));
 
-  const key: SeriesMeta[] = spec.series.map((s, i) => ({
-    key: s.slot ?? `line-${s.agreement ?? s.payout ?? i}`,
-    name: () => s.name,
-    colour: colourOf(s),
-    mark: "line",
-    dashed: s.dashed === true,
-  }));
-  const figure = frame(spec.title, spec.subtitle, svg, legend(key, lang), spec.note ? [spec.note] : []);
+  const toggle = (key: string): void => {
+    const hidden = hiddenKeys.get(spec.role) ?? new Set<string>();
+    if (hidden.has(key)) hidden.delete(key);
+    else if (keys.length - hidden.size > 1) hidden.add(key);
+    else return;
+    hiddenKeys.set(spec.role, hidden);
+    const next = renderLineChart(spec);
+    figure.replaceWith(next);
+    next.querySelector<HTMLElement>(`[data-series="${key}"]`)?.focus();
+  };
+  const hint =
+    spec.series.length < 2
+      ? []
+      : [lang === "sv" ? "Klicka på en post i teckenförklaringen för att dölja eller visa en linje." : "Click an entry in the legend to hide or show a line."];
+  const figure = frame(spec.title, spec.subtitle, svg, switchLegend(spec, keys, off, toggle), [...(spec.note ? [spec.note] : []), ...hint]);
   figure.dataset.role = spec.role;
 
-  attachHover(svg, figure, spec, FRAME, x, y);
+  attachHover(svg, figure, { ...spec, series: shown }, FRAME, x, y);
   return figure;
 }
 

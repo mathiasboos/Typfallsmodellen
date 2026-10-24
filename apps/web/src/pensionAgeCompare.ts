@@ -440,6 +440,7 @@ function totalFigure(comparison: Comparison, view: View): HTMLElement | undefine
     xMax: Math.max(last, first + 1),
     xTitle: say(l, "Lever till (år)", "Lifespan (years)"),
     yTicks: ticks.ticks,
+      autoTicks: 6,
     yTick: total
       ? (v) => (v === 0 ? "0" : `${mkrTick.format(v / 1e6)} Mkr`)
       : (v) => (v === 0 ? "0" : `+${kronor(v / 1000, l)}`),
