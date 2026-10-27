@@ -1,5 +1,5 @@
 /**
- * "Hur maxa pensionen?"'s arithmetic, checked without a browser.
+ * "När ta ut pensionen?"'s arithmetic, checked without a browser.
  *
  * `apps/web`'s test environment has no DOM, so the panel and its charts are
  * checked against the real built page by `tools/build/verify-offline.mjs`

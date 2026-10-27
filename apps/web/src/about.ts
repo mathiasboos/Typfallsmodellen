@@ -123,8 +123,8 @@ export function createAboutPanel(lang: Lang): AboutHandle {
       sourceLink,
       say(
         l,
-        ". Pensionsmyndigheten tillåter att verktyget sprids och bearbetas om myndigheten anges som källa. Det här är en bearbetad version: modellen är omskriven för webben och har fått egna tillägg. Flikarna Jämför scenarier, Mikrosim, Hur maxa pensionen?, Hur länge räcker pensionen? och Hur mycket får jag?, liksom det privata sparandet, är inte en del av Pensionsmyndighetens modell.",
-        ". Pensionsmyndigheten allows the tool to be spread and modified as long as the agency is named as the source. This is an adapted version: the model has been rewritten for the web and given additions of its own. The tabs Compare scenarios, Mikrosim, How to maximise the pension?, How long does the pension last? and How much do I get?, and the private savings, are not part of Pensionsmyndigheten's model.",
+        ". Pensionsmyndigheten tillåter att verktyget sprids och bearbetas om myndigheten anges som källa. Det här är en bearbetad version: modellen är omskriven för webben och har fått egna tillägg. Flikarna Jämför scenarier, Mikrosim, När ta ut pensionen?, Hur länge räcker pensionen? och Hur mycket får jag?, liksom det privata sparandet, är inte en del av Pensionsmyndighetens modell.",
+        ". Pensionsmyndigheten allows the tool to be spread and modified as long as the agency is named as the source. This is an adapted version: the model has been rewritten for the web and given additions of its own. The tabs Compare scenarios, Mikrosim, When to take out the pension?, How long does the pension last? and How much do I get?, and the private savings, are not part of Pensionsmyndigheten's model.",
       ),
     );
     body.append(source, h("h3", undefined, say(l, "Friskrivning", "Disclaimer")));

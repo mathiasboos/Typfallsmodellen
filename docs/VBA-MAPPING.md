@@ -133,7 +133,7 @@ port computes them with `calculateDeltal`, which reproduces that table exactly. 
 means only the cohort being modelled is computed rather than all 121 — which matters in a browser.
 The figures are also kept per death-risk table, not per run (`sharedFigures`, a `WeakMap`): a CPU
 profile put `calculateDeltal` at about two thirds of a model run, and a caller that runs the model many
-times for one person (the web app's "Hur maxa pensionen?" runs it seven times per agreement) would
+times for one person (the web app's "När ta ut pensionen?" runs it seven times per agreement) would
 otherwise repeat it each time. A run on a warm cohort went from about 9 ms to about 2.4 ms with
 identical output (the golden file still matches 299/299); `test/deltalShared.test.ts` pins one
 computation per table and cohort and no leakage between tables.

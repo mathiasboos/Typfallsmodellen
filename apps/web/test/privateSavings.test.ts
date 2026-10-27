@@ -1,5 +1,5 @@
 /**
- * The savings both "Hur länge räcker pensionen?" and "Hur maxa pensionen?" ask for,
+ * The savings both "Hur länge räcker pensionen?" and "När ta ut pensionen?" ask for,
  * and how the model is asked to carry them -- the arithmetic that is the same in
  * both, checked without a browser or an engine run. What each tab then does with
  * the runs is checked in its own test file.

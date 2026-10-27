@@ -1,5 +1,5 @@
 /**
- * "Hur maxa pensionen?"'s line charts (three for one agreement, one more for the
+ * "När ta ut pensionen?"'s line charts (three for one agreement, one more for the
  * comparison of agreements), in the frame every other figure here uses
  * (`chart.ts`'s `frame`/`legend`/`newSvg`, the same `.figure`, `.grid`, `.tick`,
  * `.line`, `.tooltip` and `.crosshair` rules in styles.css).
