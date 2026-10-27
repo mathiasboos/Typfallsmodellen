@@ -11,7 +11,7 @@
  * `pensionAgeChart.ts`'s `renderLineChart`, which this tab only asks for two
  * more things (a dashed line, a label where a payout ends).
  *
- * Like "Hur maxa pensionen?", this tab's inputs are its own: it is not a diff
+ * Like "När ta ut pensionen?", this tab's inputs are its own: it is not a diff
  * against the Prognos form and does not follow it. "Hämta från Prognos" copies the
  * form's person, agreement and assumptions across once, at the moment of the click.
  * What it does read live is the shared `ModelContext` (Avancerat: tax, wage
@@ -28,7 +28,7 @@
  * Typing an amount that is one of the examples selects it, as Pensionsöversikten's
  * does; choosing "Egen budget" keeps the amount and lets it be changed.
  *
- * **Salary as monthly salary or as final salary** works as in "Hur maxa pensionen?":
+ * **Salary as monthly salary or as final salary** works as in "När ta ut pensionen?":
  * a typed final salary is turned into the monthly salary behind it by running the
  * model (`monthlySalaryForTarget`), and both numbers are shown beside the field.
  *
@@ -103,7 +103,7 @@ const OWN_BUDGET = BUDGETS.length;
 /** The budget line's handle in the charts, in the place a payout period's goes. */
 export const BUDGET_SERIES = -1;
 
-/** The two sets of economic assumptions the tab offers a button for -- the same two as "Hur maxa pensionen?". */
+/** The two sets of economic assumptions the tab offers a button for -- the same two as "När ta ut pensionen?". */
 const PRESETS = [
   { id: "standard", sv: "Modellens standard", en: "Model default", inflation: 0, growth: 0, ret: 0.017 },
   { id: "growth", sv: "Med löneökning", en: "With wage growth", inflation: 0.02, growth: 0.018, ret: 0.017 },
@@ -396,7 +396,7 @@ export function createPensionLastsPanel(
   field(schemeSelect.element, (l) => ({ label: t("occupational", l) }), "field field-wide");
 
   // The individual occupational pension, the private pension and the private savings: built by
-  // `savingsInputs.ts`, which "Hur maxa pensionen?" is built with too, so the two tabs ask the same way.
+  // `savingsInputs.ts`, which "När ta ut pensionen?" is built with too, so the two tabs ask the same way.
   savingsUi.appendPension();
   savingsUi.appendPrivateSavings();
 

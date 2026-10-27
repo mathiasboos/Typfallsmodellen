@@ -1103,7 +1103,7 @@ subscribe to either view's state the rest of the time. Importing from Jämför s
 rows as fit under `MAX_ROWS` rather than refusing the whole import over the cap, matching CSV import's
 own best-effort stance on a partial problem.
 
-### Hur maxa pensionen?
+### När ta ut pensionen?
 
 A fourth top-level view, on request, that answers the one question a single forecast cannot: *which
 retirement age pays out the most over a lifetime?* Every year of delay raises the monthly pension
@@ -1385,7 +1385,7 @@ against minPension and the pension provider; nothing leaves the browser) and the
 website, `pensionslyft.se`, as a link. No e-mail address is shown because none was given. It has no state and
 runs no model, so `render()` only appends its element. The header's short "Inofficiell version" notice stays;
 this page is where the longer text lives. The fourth view's name, in the menu and as its heading, ends in a
-question mark ("Hur maxa pensionen?", "How to maximise the pension?"), as the fifth's does.
+question mark ("När ta ut pensionen?", "When to take out the pension?"), as the fifth's does.
 
 ### Hur mycket får jag?
 
@@ -1413,7 +1413,7 @@ of taking it out, against one. There is no such sheet in the workbook; it is bui
 workbook does have, `rng_Temp_Tjp_Uttag` and `rng_Temp_IPS_Uttag` ("temporary withdrawal, in years; 0 is
 lifelong"), run once per payout period.
 
-Five modules and two test files, split the way "Hur maxa pensionen?" is:
+Five modules and two test files, split the way "När ta ut pensionen?" is:
 
 - `pensionLasts.ts` -- everything that is arithmetic, with no DOM: the payout periods, the budgets, the
   seventeen runs, the assessment of a pension against a budget, the budgets matrix, the final-salary
@@ -1422,12 +1422,12 @@ Five modules and two test files, split the way "Hur maxa pensionen?" is:
 - `privateSavings.ts` -- the person's own saving, with no DOM: the two kinds of private savings, what a
   tab asks for (`SavingsInput`), how that is turned into the model's settings for the pension run and the
   savings run (`savingSettings`), the year it counts from (`savingYear`) and the two paragraphs of notes
-  about it (`savingsNotes`). "Hur maxa pensionen?" uses it too.
+  about it (`savingsNotes`). "När ta ut pensionen?" uses it too.
 - `savingsInputs.ts` -- the Pension and Privat sparande sections' inputs, built once for both tabs: the
   fields and their captions, the capital/saving pairs, the drop-down, the small print. A panel gives it
   its grid, a way to read the savings and a way to change them; the rest -- the look, the wording, the
   prompt for a depot -- is the same in both by construction.
-- `pensionAgeChart.ts` -- the same line chart "Hur maxa pensionen?" draws, asked for two more things (a
+- `pensionAgeChart.ts` -- the same line chart "När ta ut pensionen?" draws, asked for two more things (a
   dashed line, and a label where a payout ends instead of at the right edge).
 - `apps/web/test/pensionLasts.test.ts` -- 81 tests, and `apps/web/test/privateSavings.test.ts` -- 13 for
   the shared model (the kinds, the sums, the year it counts from, the settings of each run); the engine
@@ -1443,7 +1443,7 @@ matrix (`result.rows`): public pension, occupational pension and the individual 
 (`ip + tp + pp + garp + ptillagg`, `tjp`, `ips`), the model's net income (`netto`) beside them, all in
 fixed prices. Private savings add a second run per payout period and a fourth part (`pps`, below).
 
-**Three kinds of saving, two pots** (`privateSavings.ts`, which "Hur maxa pensionen?" uses as well). The *individual occupational pension* and the *private pension* --
+**Three kinds of saving, two pots** (`privateSavings.ts`, which "När ta ut pensionen?" uses as well). The *individual occupational pension* and the *private pension* --
 a pension insurance or an IPS, both, as the page says under the fields -- are the model's private saving:
 IPS, taxed as income when paid out, like an occupational pension, each with a capital already saved and a
 monthly saving until retirement. The model treats them alike (the same return, the same payout period,
@@ -1543,13 +1543,13 @@ stacks its caption over its box, and the rows are shared (subgrid) so the boxes 
 lines a caption wraps to. A line of small print sits where it helps: under the private pension, that it
 is a pension insurance or an IPS; under the drop-down, how the chosen kind of saving is taxed -- and, for
 a depot, in ink, a request to enter the capital after capital gains tax. All of that is `savingsInputs.ts`,
-which "Hur maxa pensionen?" is built with too. The groups run Person, Lön,
+which "När ta ut pensionen?" is built with too. The groups run Person, Lön,
 Budget, Pension, Privat sparande, Antaganden, Visa. The tab opens on a lifespan of 95.
 
 **Colours: an ordinal ramp, and ink for lifelong.** The payout periods are ordered, so the colour is one
 hue stepped in OKLCH lightness (`--fig-pu-*`), not four hues: SEB's gold at 0.40 / 0.48 / 0.55 / 0.63 in
 light and 0.86 / 0.78 / 0.70 / 0.62 in dark, the shortest payout the strongest against its surface, and
-lifelong -- the one that does not run out -- plain ink, as the reference age is in "Hur maxa pensionen?".
+lifelong -- the one that does not run out -- plain ink, as the reference age is in "När ta ut pensionen?".
 Gold is a hue nothing else in the tab wears, and stays clear of ink under colour-blind simulation (ΔE
 39 to 62 against black). Validated with the `dataviz` skill's `validate_palette.js` as an ordinal ramp against
 this app's own chart surfaces (`#ffffff`, `#003824`): monotone lightness, every step at least 0.06

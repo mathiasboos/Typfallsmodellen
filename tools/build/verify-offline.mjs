@@ -1488,7 +1488,7 @@ await tab.waitForTimeout(50);
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
 if (screenButtons !== 7) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 7 (Prognos / Jämför scenarier / Mikrosim / Hur maxa pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
+    `screen toggle has ${screenButtons} buttons, expected 7 (Prognos / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
   );
 }
 
@@ -2230,7 +2230,7 @@ if (mikrosimDisposableLinesOver10 !== 1) {
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 
-// ---- Hur maxa pensionen? ---------------------------------------------------
+// ---- När ta ut pensionen? ---------------------------------------------------
 //
 // A fourth top-level view: seven retirement ages around a reference age, run
 // as one typfall each, summed over a lifespan and compared. The point of each
@@ -2271,7 +2271,7 @@ const paCell = async (lifespan, par) =>
 const paLines = (figure) => pa.locator(`[data-role="${figure}"] svg polyline.pa-line`).evaluateAll((lines) => lines.map((l) => Number(l.dataset.par)));
 const sameList = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
 
-if ((await pa.count()) !== 1) problems.push("the Hur maxa pensionen? tab did not open");
+if ((await pa.count()) !== 1) problems.push("the När ta ut pensionen? tab did not open");
 
 // The inputs start as the report's typfall, centred on the cohort's riktålder.
 const paStart = {
@@ -2284,7 +2284,7 @@ const paStart = {
 };
 console.log(`pension age     : inputs ${JSON.stringify(paStart)}`);
 if (paStart.born !== "1980" || paStart.start !== "25" || paStart.salary !== "38500" || paStart.centre !== "68") {
-  problems.push(`the Hur maxa pensionen? inputs start at ${JSON.stringify(paStart)}, expected 1980/25/38500 around 68`);
+  problems.push(`the När ta ut pensionen? inputs start at ${JSON.stringify(paStart)}, expected 1980/25/38500 around 68`);
 }
 if (!paStart.centreDisabled || !paStart.riktalder) {
   problems.push("the reference age is not locked to the riktålder as loaded");
@@ -2496,7 +2496,7 @@ const paFromPrognos = Number(
 );
 console.log(`pension age     : first year ${paFromPrognos} against Prognos ${prognosPension}`);
 if (paFromPrognos !== prognosPension) {
-  problems.push(`"Hur maxa pensionen?" starts at ${paFromPrognos} kr/month for the person taken from Prognos, which shows ${prognosPension}`);
+  problems.push(`"När ta ut pensionen?" starts at ${paFromPrognos} kr/month for the person taken from Prognos, which shows ${prognosPension}`);
 }
 await pa.locator('[data-action="pa-reset"]').click();
 await tab.waitForTimeout(80);
@@ -2544,7 +2544,7 @@ const paWantedSeq = [
 ];
 const paSeqAt = paSeq.indexOf("#Person");
 if (paSeqAt === -1 || !sameList(paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length), paWantedSeq)) {
-  problems.push(`the Hur maxa pensionen? inputs run ${paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length).join(" > ")}, expected ${paWantedSeq.join(" > ")}`);
+  problems.push(`the När ta ut pensionen? inputs run ${paSeq.slice(paSeqAt, paSeqAt + paWantedSeq.length).join(" > ")}, expected ${paWantedSeq.join(" > ")}`);
 }
 const paLabelsSv = [await paLabel("paCapital"), await paLabel("paSaving"), await paLabel("paPrivCapital"), await paLabel("paPrivSaving"), await paLabel("paSavingsCapital"), await paLabel("paSavingsMonthly")];
 console.log(`pension age     : saving labels ${paLabelsSv.join(" | ")}`);
@@ -2926,7 +2926,7 @@ const paHeadEn = (await pa.locator("section.panel > h2 span").first().textConten
 const paLabelEn = (await pa.locator(".pa-ribbon-label").textContent()) ?? "";
 const paButtonEn = (await tab.locator('.screen-toggle .panel-btn[data-screen="retirement"]').textContent()) ?? "";
 console.log(`pension age     : "${paHeadSv}" / "${paHeadEn}", "${paLabelEn}", button "${paButtonEn}"`);
-if (paHeadSv !== "Hur maxa pensionen?" || paHeadEn !== "How to maximise the pension?" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "How to maximise the pension?") {
+if (paHeadSv !== "När ta ut pensionen?" || paHeadEn !== "When to take out the pension?" || paLabelEn !== "Lifespan (years)" || paButtonEn !== "When to take out the pension?") {
   problems.push(`the tab's language switch reads "${paHeadSv}"/"${paHeadEn}"/"${paLabelEn}"/"${paButtonEn}"`);
 }
 if (!sameList(await paBest(), PA_BEST_DEFAULT)) problems.push("switching language changed the short answer");
@@ -2939,7 +2939,7 @@ await tab.waitForTimeout(100);
 const paOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const paRibbonRows = await pa.locator(".pa-ribbon li").evaluateAll((items) => new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size);
 console.log(`pension age @375px: page overflow ${paOverflow}px, ribbon in ${paRibbonRows} rows`);
-if (paOverflow > 1) problems.push(`the Hur maxa pensionen? tab widens the page by ${paOverflow}px at 375px`);
+if (paOverflow > 1) problems.push(`the När ta ut pensionen? tab widens the page by ${paOverflow}px at 375px`);
 if (paRibbonRows < 2) problems.push("the sixteen answer boxes did not wrap onto several rows at 375px");
 await tab.setViewportSize({ width: 1280, height: 1000 });
 await tab.waitForTimeout(100);
@@ -3925,8 +3925,8 @@ const tabNameEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="ab
 await tab.locator(".langs button", { hasText: "SV" }).click();
 await tab.waitForTimeout(100);
 console.log(`about           : menu ${tabNamesSv.join(" / ")}; "${aboutSv.head}" / "${aboutEn.head}", ${aboutSv.headings.join("/")}, link ${aboutSv.link}`);
-if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "Hur maxa pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
-  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / Hur maxa pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
+if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "När ta ut pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
+  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
 }
 if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
   problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);
@@ -4016,7 +4016,7 @@ const fpLeave = () => fp.locator("h1").click();
 await fpTyped(fpSalary, "512345");
 await fpPress(fp, fpScreen("retirement"));
 await fp.waitForTimeout(150);
-fpExpect("Prognos: the 'Hur maxa pensionen?' tab", await fpActive(fpScreen("retirement")));
+fpExpect("Prognos: the 'När ta ut pensionen?' tab", await fpActive(fpScreen("retirement")));
 await fpPress(fp, fpScreen("single"));
 await fp.waitForTimeout(150);
 
@@ -4074,7 +4074,7 @@ await fpPress(fp, fp.locator("[data-preset]").first());
 await fp.waitForTimeout(250);
 fpExpect("Lasts: a button among the inputs keeps what was typed", (await fpPlCapital.inputValue()) === "123456");
 
-// Hur maxa pensionen?, one agreement and all of them.
+// När ta ut pensionen?, one agreement and all of them.
 await fpPress(fp, fpScreen("retirement"));
 await fp.waitForSelector('[data-setting="paCapital"]');
 await fp.waitForTimeout(250);
@@ -4130,7 +4130,7 @@ fpExpect("a tap on Table 1's CSV, once", fingerCsv.count === 1 && fingerCsv.buff
 await fingerTyped("498765");
 await fpPress(finger, finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]'), "touch");
 await finger.waitForTimeout(250);
-fpExpect("a tap on the 'Hur maxa pensionen?' tab", await fpActive(finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]')));
+fpExpect("a tap on the 'När ta ut pensionen?' tab", await fpActive(finger.locator('.screen-toggle .panel-btn[data-screen="retirement"]')));
 await touchContext.close();
 
 const fpFailed = fpPresses.filter((press) => !press.ok);

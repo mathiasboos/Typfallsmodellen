@@ -255,7 +255,7 @@ function screenToggle(): HTMLElement {
     // A proper noun from the workbook's own sheet name -- the same word in
     // both languages, so no `say()`-style branching is needed here.
     { screen: "mikrosim", label: () => "Mikrosim" },
-    { screen: "retirement", label: (l) => (l === "sv" ? "Hur maxa pensionen?" : "How to maximise the pension?") },
+    { screen: "retirement", label: (l) => (l === "sv" ? "När ta ut pensionen?" : "When to take out the pension?") },
     { screen: "lasts", label: (l) => (l === "sv" ? "Hur länge räcker pensionen?" : "How long does the pension last?") },
     { screen: "amount", label: (l) => (l === "sv" ? "Hur mycket får jag?" : "How much do I get?") },
     { screen: "about", label: (l) => (l === "sv" ? "Om Pensionslyft" : "About Pensionslyft") },
@@ -368,12 +368,12 @@ function applyNoticeText(l: Lang): void {
     l === "sv"
       ? ". Det här är en bearbetad version som inte är utvecklad av, kopplad till eller godkänd av " +
           "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. Flikarna " +
-          "Jämför scenarier, Mikrosim, Hur maxa pensionen?, Hur länge räcker pensionen? och " +
+          "Jämför scenarier, Mikrosim, När ta ut pensionen?, Hur länge räcker pensionen? och " +
           "Hur mycket får jag? är egna tillägg. Resultatet är en prognos under de antaganden du " +
           "anger – inte ett besked om din pension."
       : ". This is an adapted version that is not built by, affiliated with or endorsed by " +
           "Pensionsmyndigheten, the Swedish Pensions Agency. The model, its data and its user manual " +
-          "are theirs. The tabs Compare scenarios, Mikrosim, How to maximise the pension?, How long does the " +
+          "are theirs. The tabs Compare scenarios, Mikrosim, When to take out the pension?, How long does the " +
           "pension last? and How much do I get? are additions of our own. What it shows is a forecast " +
           "under the assumptions you enter – not a statement about your pension.",
   );
