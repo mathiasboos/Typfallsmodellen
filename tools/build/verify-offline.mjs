@@ -1486,9 +1486,9 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 7) {
+if (screenButtons !== 8) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 7 (Prognos / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
+    `screen toggle has ${screenButtons} buttons, expected 8 (Prognos / Portföljvärde / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
   );
 }
 
@@ -3925,8 +3925,8 @@ const tabNameEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="ab
 await tab.locator(".langs button", { hasText: "SV" }).click();
 await tab.waitForTimeout(100);
 console.log(`about           : menu ${tabNamesSv.join(" / ")}; "${aboutSv.head}" / "${aboutEn.head}", ${aboutSv.headings.join("/")}, link ${aboutSv.link}`);
-if (!sameList(tabNamesSv, ["Prognos", "Jämför scenarier", "Mikrosim", "När ta ut pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
-  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
+if (!sameList(tabNamesSv, ["Prognos", "Portföljvärde", "Jämför scenarier", "Mikrosim", "När ta ut pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
+  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Portföljvärde / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
 }
 if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
   problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);
@@ -3942,6 +3942,133 @@ for (const [what, ok] of [
 ]) {
   if (!ok) problems.push(`the about page lacks ${what}`);
 }
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
+// ---- Portföljvärde ---------------------------------------------------------------
+//
+// The pension capital behind Prognos's own run, account by account, laid out as the
+// planner's "Portfolio Value" tab: an account picker, "Visa alla konton", Totalt /
+// Skattekorrigerat, a balance chart and a flow chart, then the year-by-year tables.
+// The default typfall (born 1959, retiring at 66, no occupational pension) has two
+// accounts: the income pension and the premium pension.
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="portfolio"]').click();
+await tab.waitForTimeout(150);
+const pv = tab.locator('[data-role="portfolio"]');
+const pvRoles = () => pv.locator("figure.figure").evaluateAll((nodes) => nodes.map((node) => node.dataset.role));
+/** One cell of a Portföljvärde table, by the card it is in, its row and the age column. */
+async function pvCell(card, rowKey, age) {
+  const table = pv.locator(`[data-role="${card}"] table`);
+  const ages = (await table.locator("thead tr").first().locator("th").allTextContents()).map((text) => text.trim());
+  const column = ages.indexOf(String(age));
+  if (column < 1) return Number.NaN;
+  const text = await table.locator(`tbody tr[data-row="${rowKey}"] > *`).nth(column).textContent();
+  return Number((text ?? "").replace(/\u2212/g, "-").replace(/[^\d-]/g, ""));
+}
+const pvHead = ((await pv.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
+const pvFigs = await pvRoles();
+const pvOptions = (await pv.locator('[data-role="pv-account"] option').allTextContents()).map((text) => text.trim());
+const pvLabels = (await pv.locator('[data-role="pv-summary"] tbody th').allTextContents()).map((text) => text.trim());
+const pvRetHead = ((await pv.locator('[data-role="pv-summary"] thead th.pv-ret-year').textContent()) ?? "").trim();
+const pvOpen66 = await pvCell("pv-summary", "open", 66);
+const pvClose66 = await pvCell("pv-summary", "close", 66);
+const pvOpen67 = await pvCell("pv-summary", "open", 67);
+const pvOut67 = await pvCell("pv-summary", "withdrawal-before", 67);
+let pvSum66 = 0;
+for (const key of ["open", "contribution-after", "contribution-before", "withdrawal-after", "withdrawal-before", "growth", "yieldTax", "fee"]) {
+  pvSum66 += await pvCell("pv-summary", key, 66);
+}
+const pvBars = async (series) => pv.locator(`[data-role="pv-fig-value"] .pv-bar[data-series="${series}"]`).count();
+const pvIpBars = await pvBars("ip");
+const pvPpBars = await pvBars("pp");
+console.log(`portfolio       : "${pvHead}", figures ${pvFigs.join("/")}, accounts ${pvOptions.join("/")}, at 66 ${pvOpen66} -> ${pvClose66}, out at 67 ${pvOut67}, bars ${pvIpBars}/${pvPpBars}`);
+if (pvHead !== "Portföljvärde") problems.push(`the Portföljvärde tab is headed "${pvHead}"`);
+if (!sameList(pvFigs, ["pv-fig-value", "pv-fig-flow"])) problems.push(`the Portföljvärde tab shows the figures ${pvFigs.join("/")}, expected the balance chart and the flow chart`);
+if (!sameList(pvOptions, ["Alla konton (summa)", "Inkomstpension", "Premiepension"])) problems.push(`the account picker offers ${pvOptions.join(" / ")}`);
+if (!sameList(pvLabels, ["Ingående saldo", "Insättning, konton efter skatt", "Insättning, konton före skatt", "Uttag, konton efter skatt", "Uttag, konton före skatt", "Avkastning", "Avkastningsskatt", "Förvaltningsavgift", "Utgående saldo"])) {
+  problems.push(`the all-accounts table's rows are ${pvLabels.join(" / ")}`);
+}
+if (!pvRetHead.includes("2025") || !pvRetHead.includes("★ Pension")) problems.push(`the retirement year's column reads "${pvRetHead}", expected 2025 marked ★ Pension`);
+// Pinned from the engine's ledger for the default typfall: the balance going into and out of
+// the retirement year, and the first full year's pension -- 195 984 income pension and 44 712
+// premium pension, the amounts Table 2 shows paid at 67.
+if (pvOpen66 !== 3938236 || pvClose66 !== 3988732 || pvOut67 !== -240696) {
+  problems.push(`the Portföljvärde table reads ${pvOpen66} -> ${pvClose66} at 66 and ${pvOut67} paid at 67, expected 3938236 -> 3988732 and -240696`);
+}
+if (Math.abs(pvSum66 - pvClose66) > 2 || pvOpen67 !== pvClose66) problems.push(`the year at 66 does not add up (${pvSum66} vs ${pvClose66}), or 67 opens on ${pvOpen67}`);
+if (pvIpBars < 60 || pvPpBars < 40) problems.push(`the balance chart has ${pvIpBars} income pension and ${pvPpBars} premium pension bars`);
+
+// The legend switches a series off and back on; the readout follows the pointer.
+await pv.locator('[data-role="pv-fig-value"] .legend-toggle[data-series="pp"]').click();
+await tab.waitForTimeout(80);
+const pvPpHidden = await pvBars("pp");
+const pvPpPressed = await pv.locator('[data-role="pv-fig-value"] .legend-toggle[data-series="pp"]').getAttribute("aria-pressed");
+await pv.locator('[data-role="pv-fig-value"] .legend-toggle[data-series="pp"]').click();
+await tab.waitForTimeout(80);
+if (pvPpHidden !== 0 || pvPpPressed !== "false" || (await pvBars("pp")) !== pvPpBars) problems.push(`switching the premium pension off left ${pvPpHidden} bars (pressed ${pvPpPressed})`);
+await pv.locator('[data-role="pv-fig-value"] svg').focus();
+await tab.waitForTimeout(50);
+const pvTip = ((await pv.locator('[data-role="pv-fig-value"] .tooltip').textContent()) ?? "").replace(/\s+/g, " ");
+if (!pvTip.includes("66 år · 2025") || !pvTip.includes("Summa") || !pvTip.includes("Inkomstpension")) problems.push(`the balance chart's readout reads "${pvTip}"`);
+
+// One account: an area chart and the account's own table.
+await pv.locator('[data-role="pv-account"]').selectOption("ip");
+await tab.waitForTimeout(100);
+const pvIpFigs = await pvRoles();
+const pvIpArea = await pv.locator('[data-role="pv-fig-value-ip"] .pv-area').count();
+const pvIpOut = await pvCell("pv-account-ip", "withdrawal", 67);
+const pvIpTitle = ((await pv.locator('[data-role="pv-account-ip"] .pv-card-title').textContent()) ?? "").trim();
+if (!sameList(pvIpFigs, ["pv-fig-value-ip", "pv-fig-flow-ip"]) || pvIpArea !== 1 || pvIpOut !== -195984 || !pvIpTitle.startsWith("Inkomstpension")) {
+  problems.push(`one account shows ${pvIpFigs.join("/")}, ${pvIpArea} area(s), ${pvIpOut} paid at 67, titled "${pvIpTitle}"`);
+}
+await pv.locator('[data-role="pv-account"]').selectOption("all");
+await tab.waitForTimeout(100);
+
+// Skattekorrigerat: both accounts are taxed when paid, so every amount is scaled by the
+// average tax on the pension the note names.
+await pv.locator('.pv-mode [data-mode="taxadj"]').click();
+await tab.waitForTimeout(100);
+const pvTaxNote = ((await pv.locator(".pv-notes li").first().textContent()) ?? "").trim();
+const pvTaxRate = Number((pvTaxNote.match(/(\d+,\d)\s*%/)?.[1] ?? "NaN").replace(",", ".")) / 100;
+const pvTaxOpen66 = await pvCell("pv-summary", "open", 66);
+console.log(`portfolio tax   : ${pvTaxRate}, at 66 ${pvTaxOpen66}`);
+if (!(pvTaxRate > 0.1 && pvTaxRate < 0.4) || Math.abs(pvTaxOpen66 - pvOpen66 * (1 - pvTaxRate)) > pvOpen66 * 0.0006) {
+  problems.push(`Skattekorrigerat shows ${pvTaxOpen66} at 66 with a rate of ${pvTaxRate} ("${pvTaxNote}")`);
+}
+await pv.locator('.pv-mode [data-mode="total"]').click();
+await tab.waitForTimeout(100);
+
+// Every account: a table each, no charts, and the downloads hold both.
+await pv.locator('[data-role="pv-each"]').check();
+await tab.waitForTimeout(100);
+const pvCards = await pv.locator(".pv-card").evaluateAll((nodes) => nodes.map((node) => node.dataset.role));
+const pvEachFigs = await pvRoles();
+const pvCsv = await download(pv.locator('.export-btn[data-file="portfoljvarde.csv"]'));
+const pvXlsx = await download(pv.locator('.export-btn[data-file="portfoljvarde.xlsx"]'));
+const pvCsvLines = pvCsv.buffer.toString("utf8").replace(/^\uFEFF/, "").split("\r\n");
+console.log(`portfolio each  : ${pvCards.join("/")}, ${pvCsv.filename} ${pvCsvLines.length} lines, ${pvXlsx.filename}`);
+if (!sameList(pvCards, ["pv-account-ip", "pv-account-pp"]) || pvEachFigs.length !== 0) problems.push(`"Visa alla konton" shows ${pvCards.join("/")} and ${pvEachFigs.length} figure(s)`);
+if (!pvCsvLines[0]?.startsWith("Inkomstpension") || pvCsvLines.filter((line) => line.startsWith("Ålder;")).length !== 2 || !looksLikeXlsx(pvXlsx.buffer)) {
+  problems.push(`the Portföljvärde downloads start "${pvCsvLines[0]}" with ${pvCsvLines.filter((line) => line.startsWith("Ålder;")).length} table(s), xlsx ${looksLikeXlsx(pvXlsx.buffer)}`);
+}
+await pv.locator('[data-role="pv-each"]').uncheck();
+await tab.waitForTimeout(100);
+
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(150);
+const pvHeadEn = ((await pv.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
+const pvButtonEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="portfolio"]').textContent()) ?? "").trim();
+const pvFirstEn = ((await pv.locator('[data-role="pv-summary"] tbody th').first().textContent()) ?? "").trim();
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(150);
+if (pvHeadEn !== "Portfolio value" || pvButtonEn !== "Portfolio value" || pvFirstEn !== "Opening balance") problems.push(`in English the tab reads "${pvHeadEn}" / "${pvButtonEn}" / "${pvFirstEn}"`);
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(150);
+const pvOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+if (pvOverflow > 1) problems.push(`the Portföljvärde tab widens the page by ${pvOverflow}px at 375px`);
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 

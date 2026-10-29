@@ -576,6 +576,17 @@ The loop body is split at the VBA's own section comments and called in the VBA's
 1 200-line function would be unreviewable, and splitting anywhere else would break the
 line-comparability the yearly update depends on.
 
+### The ledger: recorded on the way, changing nothing
+
+`TypfallResult.ledger` is not in the workbook. `closeBalances` (`drawdown.ts`) records each pot's year
+-- contribution, fee, yield tax, payout and any typed-in balance -- in locals beside the arithmetic it
+already does, and `recordLedger` writes them out after the balances are final; nothing it records feeds
+back. Two small rearrangements were needed and are behaviour-neutral: the premium pension's fee
+(`ppmavg`) is held in a variable before it is added, and the income pension's year is computed once with
+`ipYearOf` (the same call `callIp(..., 4)` made) so its credited right can be read as well
+(`IncomePensionYear.right`). `finishLedger` (`buildResult`, before `creditLastPensionRight`) fills in the
+income pension from the retirement year on. The golden comparison is unchanged, 299 of 299.
+
 ### Validation: correct and warn
 
 The workbook validates by dialog — a Yes/No box when the retirement age is below the riktålder,

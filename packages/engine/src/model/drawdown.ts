@@ -24,7 +24,9 @@ import { FTJP, tjpkassa } from "../tjanstepension/index.js";
 import type { SchemeContext, SchemeId } from "../tjanstepension/types.js";
 import { vbaInt, vbaRound, wsMax, wsMin } from "../vba/math.js";
 import type { Run } from "./mcalc.js";
+import { priceFactor } from "./taxAndBenefits.js";
 import { runVectors } from "./state.js";
+import type { PotId, PotYear } from "./state.js";
 
 /** The follow-up indexation the ATP is divided by, which differs in 2000. */
 function fnormDivisor(year: number): number {
@@ -56,11 +58,15 @@ function ipArgs(run: Run, age: number, par: number, ratt: number, opening: numbe
   };
 }
 
-function callIp(a: ReturnType<typeof ipArgs>, kind: number): number {
-  const result = incomePensionYear(
+function ipYearOf(a: ReturnType<typeof ipArgs>) {
+  return incomePensionYear(
     a.year, a.par, a.born, a.ratt, a.arv1, a.arv2, a.kost, a.opening, a.andelUttag,
     a.previousPension, a.dtal, a.index, a.defAr, a.marginal, a.bindex,
   );
+}
+
+function callIp(a: ReturnType<typeof ipArgs>, kind: number): number {
+  const result = ipYearOf(a);
   switch (kind) {
     case 4: return result.balance;
     default: return result.pension;
@@ -513,11 +519,39 @@ export function roundPensions(run: Run, age: number): void {
   // ptillagg is already rounded inside `tillagg`.
 }
 
+/** What `closeBalances` learns about one pot on the way, for the ledger. */
+interface PotFlows {
+  contribution: number;
+  /** What was due to be paid out of the pot this year. */
+  payout: number;
+  /** The balance before the payout came off it; with `half`, what the pot could pay. */
+  beforePayout: number;
+  fee: number;
+  yieldTax: number;
+}
+
+function noFlows(): PotFlows {
+  return { contribution: 0, payout: 0, beforePayout: 0, fee: 0, yieldTax: 0 };
+}
+
 /** The closing balance of each pot. */
 export function closeBalances(run: Run, age: number, utgyear: number): void {
   const { v, s, p, context } = run;
   const year = v.year.get(age);
   const marginal = context.marginal;
+
+  // The ledger's view of the year, filled in alongside the balances and changing none of them.
+  const flows = { ip: noFlows(), pp: noFlows(), tjp: noFlows(), ips: noFlows(), pps: noFlows() };
+  const opening = {
+    ip: s.ipPbh.getOrZero(age - 1),
+    pp: s.ppPbh.getOrZero(age - 1),
+    tjp: s.tjpPbh.getOrZero(age - 1),
+    ips: s.ipsPbh.getOrZero(age - 1),
+    pps: s.ppsPbh.getOrZero(age - 1),
+  };
+  // The half-year factor a payout or a deposit during the year earns, which only
+  // the occupational and private pots use.
+  let half = 1;
 
   if (age === v.startage) {
     for (const vector of [s.ipPbh, s.gpPbh, s.ppPbh, s.tjpPbh, s.ipsPbh, s.ppsPbh]) {
@@ -525,65 +559,82 @@ export function closeBalances(run: Run, age: number, utgyear: number): void {
     }
   } else if (year > 1960) {
     if (age < v.slutage) {
-      s.ipPbh.set(
-        age,
-        callIp(ipArgs(run, age, p.par, s.ipRatt.get(age), s.ipPbh.getOrZero(age - 1), s.uttagIp, s.ip.getOrZero(age - 1)), 4),
+      const ipYear = ipYearOf(
+        ipArgs(run, age, p.par, s.ipRatt.get(age), s.ipPbh.getOrZero(age - 1), s.uttagIp, s.ip.getOrZero(age - 1)),
       );
+      s.ipPbh.set(age, ipYear.balance);
+      flows.ip.contribution = ipYear.right;
+      flows.ip.fee = -ipYear.managementCost;
       s.gpPbh.set(
         age,
         callIp(ipArgs(run, age, wsMax(p.par, p.riktalder), s.gpRatt.get(age), s.gpPbh.getOrZero(age - 1), 1, s.ip.getOrZero(age - 1)), 4),
       );
     }
     // The premium pension's deposit lands at the end of the year.
-    const opening = s.ppPbh.getOrZero(age - 1);
+    const ppOpening = s.ppPbh.getOrZero(age - 1);
     const yieldFactor = v.yieldFactor.get(age);
     const inheritance =
       v.year.getOrZero(age - 1) < 2010
-        ? opening * (v.ppArv.get(age) - 1)
-        : (opening * (v.ppArv.get(age) - 1)) / yieldFactor ** (6 / 12);
-    s.ppPbh.set(
-      age,
-      opening * yieldFactor +
-        inheritance +
-        v.rgk.get(age) * s.ppRatt.get(age) +
-        ppmavg(utgyear, opening, v.ppAvg.get(age), yieldFactor, context),
-    );
+        ? ppOpening * (v.ppArv.get(age) - 1)
+        : (ppOpening * (v.ppArv.get(age) - 1)) / yieldFactor ** (6 / 12);
+    const ppFee = ppmavg(utgyear, ppOpening, v.ppAvg.get(age), yieldFactor, context);
+    s.ppPbh.set(age, ppOpening * yieldFactor + inheritance + v.rgk.get(age) * s.ppRatt.get(age) + ppFee);
+    flows.pp.contribution = s.ppRatt.get(age);
+    flows.pp.fee = -ppFee;
   }
 
   // The occupational and private pots, adjusted for what was drawn.
   if (age === v.startage) {
-    const half = v.yieldFactor.get(age) ** 0.5;
+    half = v.yieldFactor.get(age) ** 0.5;
     s.tjpPbh.set(age, s.tjpRatt.get(age) * half);
     s.ipsPbh.set(age, s.ipsRatt * half);
     s.ppsPbh.set(age, s.ipsRatt * half);
+    flows.tjp.contribution = s.tjpRatt.get(age);
+    flows.ips.contribution = s.ipsRatt;
+    flows.pps.contribution = s.ipsRatt;
   } else {
-    const half = v.yieldFactor.get(age) ** 0.5;
+    half = v.yieldFactor.get(age) ** 0.5;
     // Interest on the amount paid out during the year.
     s.ppPbh.set(age, s.ppPbh.get(age) - s.pp.get(age) * half);
+    flows.pp.payout = s.pp.get(age);
 
+    const yieldFactor = v.yieldFactor.get(age);
     s.tjpPbh.set(
       age,
       s.tjpRatt.get(age) * half +
-        s.tjpPbh.getOrZero(age - 1) * v.yieldFactor.get(age) * v.tpAvg.get(age) +
+        s.tjpPbh.getOrZero(age - 1) * yieldFactor * v.tpAvg.get(age) +
         s.tjpPbh.getOrZero(age - 1) * (v.ppArv.getOrZero(age - 1) - 1) * context.occupationalInheritanceGains,
     );
     let kskatt = s.tjpPbh.get(age) * avkskatt(year, context, 0);
+    flows.tjp.contribution = s.tjpRatt.get(age);
+    flows.tjp.fee = opening.tjp * yieldFactor * (1 - v.tpAvg.get(age));
+    flows.tjp.yieldTax = kskatt;
+    flows.tjp.beforePayout = s.tjpPbh.get(age) - kskatt;
+    flows.tjp.payout = s.tjp.get(age);
     s.tjpPbh.set(age, s.tjpPbh.get(age) - kskatt - s.tjp.get(age) * half);
 
     const spar = context.privateSavingKind;
     if (isUntaxedSaving(spar)) {
-      s.ppsPbh.set(
-        age,
-        PrivatSpar(s.ppsPbh.getOrZero(age - 1), s.ipsRatt, v.yieldFactor.get(age), year, spar) -
-          s.pps.get(age) * half,
-      );
+      const saved = PrivatSpar(s.ppsPbh.getOrZero(age - 1), s.ipsRatt, yieldFactor, year, spar);
+      // An ISK before 2012 is left as it was, the year's saving with it.
+      const untouched = spar === 2 && year < 2012;
+      flows.pps.contribution = untouched ? 0 : s.ipsRatt;
+      flows.pps.yieldTax = untouched ? 0 : opening.pps * yieldFactor + s.ipsRatt * half - saved;
+      flows.pps.beforePayout = saved;
+      flows.pps.payout = s.pps.get(age);
+      s.ppsPbh.set(age, saved - s.pps.get(age) * half);
     } else {
       kskatt = 0;
       s.ipsPbh.set(
         age,
-        s.ipsRatt * half + s.ipsPbh.getOrZero(age - 1) * v.yieldFactor.get(age) * v.tpAvg.get(age),
+        s.ipsRatt * half + s.ipsPbh.getOrZero(age - 1) * yieldFactor * v.tpAvg.get(age),
       );
       kskatt = s.ipsPbh.get(age) * avkskatt(year, context, 0);
+      flows.ips.contribution = s.ipsRatt;
+      flows.ips.fee = opening.ips * yieldFactor * (1 - v.tpAvg.get(age));
+      flows.ips.yieldTax = kskatt;
+      flows.ips.beforePayout = s.ipsPbh.get(age) - kskatt;
+      flows.ips.payout = s.ips.get(age);
       s.ipsPbh.set(age, s.ipsPbh.get(age) - kskatt - s.ips.get(age) * half);
     }
     // NOTE: rounded after its last use, so this changes nothing. Kept.
@@ -601,12 +652,19 @@ export function closeBalances(run: Run, age: number, utgyear: number): void {
   // depot -- and only that one: both pay out from retirement, so crediting both would
   // pay the same capital twice, once as taxed income and once as `pps`.
   if (context.ipsOpening > 0 && year === context.ipsStart - 1) {
-    const pot = isUntaxedSaving(context.privateSavingKind) ? s.ppsPbh : s.ipsPbh;
+    const untaxed = isUntaxedSaving(context.privateSavingKind);
+    const pot = untaxed ? s.ppsPbh : s.ipsPbh;
     pot.set(age, pot.get(age) + context.ipsOpening);
+    (untaxed ? flows.pps : flows.ips).contribution += context.ipsOpening;
   }
 
   // An opening balance typed in for one income year replaces what was built.
+  const replaced = { ip: 0, pp: 0, tjp: 0, ips: 0 };
   if (context.pbhYear > 0 && year === context.pbhYear) {
+    replaced.ip = context.pbhIp - s.ipPbh.get(age);
+    replaced.pp = context.pbhPp - s.ppPbh.get(age);
+    replaced.tjp = context.pbhTjp - s.tjpPbh.get(age);
+    replaced.ips = context.pbhIps - s.ipsPbh.get(age);
     // NOTE: a division, where the commented-out alternative is a multiplication
     // by 185/160. Almost certainly not intended, but it is what the workbook
     // computes, and it only fires when an opening balance is entered.
@@ -621,6 +679,114 @@ export function closeBalances(run: Run, age: number, utgyear: number): void {
     for (const vector of [s.ipPbh, s.gpPbh, s.ppPbh, s.tjpPbh, s.ipsPbh, s.ppsPbh]) {
       vector.set(age, vbaInt(vector.get(age)));
     }
+  }
+
+  recordLedger(run, age, opening, flows, replaced, half);
+}
+
+/**
+ * One line of each pot's account for the year, from what `closeBalances` did.
+ *
+ * Every pot but one is the model's own balance. The exception is the income pension
+ * from the retirement year on, which `finishLedger` fills in once the loop is done.
+ *
+ * A pot can be asked to pay more than it holds -- a pension for life outlives the
+ * capital it was worked out from, and a defined-benefit occupational pension is paid
+ * by the employer and not out of the pot at all, though the model takes it off the
+ * pot. The balance then stops at zero, and the withdrawal is what the pot could pay.
+ */
+function recordLedger(
+  run: Run,
+  age: number,
+  opening: Readonly<Record<PotId, number>>,
+  flows: Readonly<Record<PotId, PotFlows>>,
+  replaced: Readonly<Record<"ip" | "pp" | "tjp" | "ips", number>>,
+  half: number,
+): void {
+  const { v, s, p } = run;
+  const close = {
+    ip: s.ipPbh.get(age),
+    pp: s.ppPbh.get(age),
+    tjp: s.tjpPbh.get(age),
+    ips: s.ipsPbh.get(age),
+    pps: s.ppsPbh.get(age),
+  };
+
+  const line = (pot: PotId, withdrawal: number, adjustment: number): PotYear => {
+    const f = flows[pot];
+    return {
+      open: opening[pot],
+      contribution: f.contribution,
+      growth: close[pot] - opening[pot] - f.contribution + withdrawal + f.fee + f.yieldTax - adjustment,
+      withdrawal,
+      fee: f.fee,
+      yieldTax: f.yieldTax,
+      adjustment,
+      close: close[pot],
+    };
+  };
+  // What a pot that pays during the year could pay: all that was due, unless the balance ran out.
+  const paid = (pot: PotId): number => {
+    const f = flows[pot];
+    if (f.payout <= 0) return 0;
+    if (f.beforePayout - f.payout * half >= 0) return f.payout;
+    return Math.max(0, f.beforePayout) / half;
+  };
+
+  s.ledger.push({
+    year: v.year.get(age),
+    age,
+    priceFactor: priceFactor(run, age),
+    pots: {
+      // From the retirement year on only the right and the pension are known yet.
+      ip:
+        age < vbaInt(p.par)
+          ? line("ip", 0, replaced.ip)
+          : { ...line("ip", 0, 0), withdrawal: s.ip.get(age), growth: 0, fee: 0, close: 0 },
+      pp: line("pp", flows.pp.payout, replaced.pp),
+      tjp: line("tjp", paid("tjp"), replaced.tjp),
+      ips: line("ips", paid("ips"), replaced.ips),
+      pps: line("pps", paid("pps"), 0),
+    },
+  });
+}
+
+/**
+ * The income pension's balance from the retirement year on.
+ *
+ * At retirement the model turns the balance into a pension for life and keeps no
+ * balance after it. What the ledger shows instead is what the pension still to come
+ * is worth: next year's pension times the divisor at next year's age -- the balance
+ * that would pay exactly that pension, the same sum the pension was worked out from at
+ * retirement. It falls towards nothing at the highest ages, as the years left to pay
+ * do. The withdrawal is the pension paid; the growth is the rest of the change --
+ * indexation, inheritance gains and the administration cost, which the divisor folds
+ * together. Under partial withdrawal only the share drawn is converted, so the pension
+ * is grossed up by it.
+ *
+ * Runs on the loop's own figures, before `creditLastPensionRight` changes the
+ * retirement year's, so the withdrawals match `rows`.
+ */
+export function finishLedger(run: Run): void {
+  const { s, p, deltalTables } = run;
+  const par = vbaInt(p.par);
+  const born = vbaInt(p.born);
+  const ledger = s.ledger;
+  const share = (age: number) => (age >= p.defAr ? 1 : s.uttagIp > 0 ? s.uttagIp : 1);
+  for (let i = 0; i < ledger.length; i += 1) {
+    const row = ledger[i]!;
+    if (row.age < par) continue;
+    const ip = row.pots.ip;
+    const open = ledger[i - 1]?.pots.ip.close ?? 0;
+    const next = ledger[i + 1];
+    const close = next === undefined ? 0 : (next.pots.ip.withdrawal * deltalTables.ownIncomePension(born, next.age)) / share(next.age);
+    ledger[i] = {
+      ...row,
+      pots: {
+        ...row.pots,
+        ip: { ...ip, open, close, growth: close - open - ip.contribution + ip.withdrawal },
+      },
+    };
   }
 }
 
