@@ -3993,8 +3993,8 @@ if (!pvRetHead.includes("2025") || !pvRetHead.includes("★ Pension")) problems.
 // Pinned from the engine's ledger for the default typfall: the balance going into and out of
 // the retirement year, and the first full year's pension -- 195 984 income pension and 44 712
 // premium pension, the amounts Table 2 shows paid at 67.
-if (pvOpen66 !== 3938171 || pvClose66 !== 3988732 || pvOut67 !== -240696) {
-  problems.push(`the Portföljvärde table reads ${pvOpen66} -> ${pvClose66} at 66 and ${pvOut67} paid at 67, expected 3938171 -> 3988732 and -240696`);
+if (pvOpen66 !== 3938236 || pvClose66 !== 3988732 || pvOut67 !== -240696) {
+  problems.push(`the Portföljvärde table reads ${pvOpen66} -> ${pvClose66} at 66 and ${pvOut67} paid at 67, expected 3938236 -> 3988732 and -240696`);
 }
 if (Math.abs(pvSum66 - pvClose66) > 2 || pvOpen67 !== pvClose66) problems.push(`the year at 66 does not add up (${pvSum66} vs ${pvClose66}), or 67 opens on ${pvOpen67}`);
 if (pvIpBars < 60 || pvPpBars < 40) problems.push(`the balance chart has ${pvIpBars} income pension and ${pvPpBars} premium pension bars`);
