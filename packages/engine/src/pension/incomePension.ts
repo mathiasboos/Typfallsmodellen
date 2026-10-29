@@ -137,6 +137,8 @@ export function pUttag(
 export interface IncomePensionYear {
   /** Pension paid out this year. */
   readonly pension: number;
+  /** The pension right credited, after the balance-index trim from 2015. */
+  readonly right: number;
   /** Inheritance gains credited. */
   readonly inheritanceGains: number;
   /** Indexation credited. */
@@ -180,6 +182,7 @@ export function incomePensionYear(
 ): IncomePensionYear {
   const empty: IncomePensionYear = {
     pension: 0,
+    right: 0,
     inheritanceGains: 0,
     indexation: 0,
     managementCost: 0,
@@ -289,6 +292,7 @@ export function incomePensionYear(
 
   return {
     pension,
+    right,
     inheritanceGains: arv,
     indexation: inx,
     managementCost: kost,

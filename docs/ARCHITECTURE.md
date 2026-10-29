@@ -74,6 +74,7 @@ an invention:
 | `table2` | the cash-flow table, from `rng_tabell2_startAge` | Table 2 on the Start sheet |
 | `table1` | the summary at retirement, four columns per line | Table 1 on the Start sheet |
 | `lifeIncome` | three discounted sums over the retirement | `Life0`, `life1`, `life2` |
+| `ledger` | each pot of pension capital, year by year: opening and closing balance, contribution, withdrawal, return, fee, yield tax | not in the workbook -- the balances it keeps only to work out the pensions (`closeBalances`, `finishLedger`) |
 | `qualifyingYears` | years with a pension right, capped at 40 | `rng_wyears` |
 | `warnings` | the corrections the run made to its inputs | the workbook's dialogs |
 
@@ -1378,7 +1379,7 @@ chosen agreement marked, the cohort swapping the defaults, both downloads, both 
 
 ### Om Pensionslyft
 
-The seventh and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
+The eighth and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
 languages: the purpose of the site, a disclaimer (not financial, legal or tax advice; forecasts under the
 reader's own assumptions, not guarantees; a simplified model; unofficial; at the reader's own risk; check
 against minPension and the pension provider; nothing leaves the browser) and the contact, which is the
@@ -1386,6 +1387,50 @@ website, `pensionslyft.se`, as a link. No e-mail address is shown because none w
 runs no model, so `render()` only appends its element. The header's short "Inofficiell version" notice stays;
 this page is where the longer text lives. The fourth view's name, in the menu and as its heading, ends in a
 question mark ("När ta ut pensionen?", "When to take out the pension?"), as the fifth's does.
+
+### Portföljvärde
+
+The second entry of the main menu, on request: the tables and charts of the "Portfolio Value" tab of the site's
+Pensionsplaneraren (`Retirement_Planner.html` in `mathiasboos/Calculators`), on this model's own figures. It has no
+inputs: it shows the run Prognos shows -- the form, Avancerat and all -- so `render()` hands `portfolioPanel.show` the
+same `result`, `context` and retirement age it would draw Table 1 from. What the panel keeps is how it is looked at:
+the account picked, "Visa alla konton", and Totalt or Skattekorrigerat.
+
+**The figures are the engine's `result.ledger`**, one row per age with one `PotYear` per pot: `ip`, `pp`, `tjp`, `ips`
+(private pension saving, taxed as income when paid) and `pps` (private saving in a KF, an ISK or a depot, paid out
+tax-free). `closeBalances` records each pot's year while it computes the balances, changing none of them (the golden
+comparison is unchanged): what was paid in (the pension right, the premium, the year's saving, `ipsOpening` in the year
+before the saving starts), the management cost, the yield tax (for a KF or an ISK the difference between the balance
+grown untaxed and what `PrivatSpar` leaves, for a depot the tax on the gain), what was paid out, and a balance typed in
+for `pbhYear` as an adjustment of its own. The return is the one figure taken as the difference, so
+`open + contribution + growth - withdrawal - fee - yieldTax + adjustment = close` holds exactly. A pot asked to pay more
+than it holds -- a pension for life outliving its capital, or a defined-benefit pension the model takes off the pot -- stops
+at zero, and its withdrawal is what it could pay; otherwise the withdrawal is the payout `rows` records, so the tab's
+withdrawals are Table 2's. Each row carries `priceFactor`, the unrounded factor `recordRow` uses, so the tab converts to
+Table 2's units exactly (`kpiFactor` on the row is rounded to four decimals).
+
+**The income pension after retirement.** The model turns the balance into a pension for life at retirement and keeps
+none after it. Rolling a notional balance on with the model's own inheritance gains was tried first and runs away at the
+oldest ages (the gains there approach a doubling a year), so `finishLedger` values what is left instead: next year's
+pension times the divisor at next year's age, from `DeltalTables.ownIncomePension` (the divisor worked out from the death
+risks, which, unlike the published table's 61-82, reaches 105). It falls towards nothing at 105, and the year's return is
+the rest of the change. Under partial withdrawal the pension is grossed up by the share drawn.
+
+`portfolio.ts` turns the ledger into the tab's figures with no DOM: the accounts that hold anything, in stack order; each
+year in its own units and opening on last year's closing balance as shown (so under inflation the return is the real
+one); Skattekorrigerat, which scales every amount of an account taxed when paid out by the average tax Table 1 takes from
+the pension at retirement (`pensionTaxRate`: 1 - pension after tax / gross), one rate so the account still adds up; the
+all-accounts summary with contributions and withdrawals split between accounts paid out tax-free and those taxed (the
+planner's rows); and the CSV/Excel blocks, outflows negative as in the planner's export. `portfolioChart.ts` draws the two
+charts as the other figures are drawn: stacked columns (each account's closing balance, or the year's flows with what came
+in above zero and what went out below it), an area for one account, the retirement year shaded and marked, a legend that
+switches series off and on, and a readout on the pointer and the arrow keys. `portfolioPanel.ts` lays them out as the
+planner does, one chart under the other (side by side they would be too small to read in the results column), with the
+tables under them, the first column sticky and each table scrolled to the retirement year. The colours are validated
+`--fig-pv-*` tokens (see the note in styles.css). Checked by `packages/engine/test/ledger.test.ts`,
+`apps/web/test/portfolio.test.ts` and a block in `verify-offline.mjs` (the menu, the figures, the rows, pinned balances
+at 66 and the pension paid at 67, the legend switch, the readout, one account, Skattekorrigerat against the rate the note
+names, every account, the downloads, English, 375px).
 
 ### Hur mycket får jag?
 

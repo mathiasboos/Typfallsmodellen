@@ -171,6 +171,16 @@ export class DeltalTables {
     return this.ownFigures(cohort).expLife[0]?.[age] ?? 0;
   }
 
+  /**
+   * The income pension's divisor at a whole age worked out from the death risks,
+   * unisex, whatever `deltalFromMortalityIp` says: what a balance is divided by for a
+   * pension from that age on. Unlike the published table it reaches every age up to
+   * 105, which is what valuing a pension already being paid needs. 0 past 105.
+   */
+  ownIncomePension(cohort: number, age: number): number {
+    return this.ownFigures(cohort).dtalip[0]?.[age] ?? 0;
+  }
+
   /** The single divisor for cohorts born 1937 or earlier. */
   oldRules(cohort: number, kind: "income" | "premium"): number {
     const old = this.published.bornBefore1938;

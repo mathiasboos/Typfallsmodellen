@@ -127,6 +127,59 @@ export interface MvaluesRow {
   readonly stateTax: number;
 }
 
+/**
+ * The model's five pots of pension capital: inkomstpension, premiepension, the
+ * occupational pension, private pension saving (IPS, taxed as income when paid) and
+ * private saving held in a KF, an ISK or a depot (paid out untaxed).
+ */
+export const POTS = ["ip", "pp", "tjp", "ips", "pps"] as const;
+
+export type PotId = (typeof POTS)[number];
+
+/**
+ * One pot's year, in nominal kronor, so that
+ * `open + contribution + growth - withdrawal - fee - yieldTax + adjustment = close`.
+ *
+ * Not a workbook output -- the workbook carries the balances only to work out the
+ * pensions. Added for the web app's "Portföljvärde" tab, which shows them year by
+ * year the way an account statement would.
+ */
+export interface PotYear {
+  /** The balance at 31 December last year. */
+  readonly open: number;
+  /** Paid in: the pension right or premium, the year's saving, capital moved in. */
+  readonly contribution: number;
+  /**
+   * What the pot earned: return, indexation, inheritance gains and interest, net of
+   * the interest a payout during the year forgoes. The one figure taken as the
+   * difference, so it also carries the model's rounding of a balance to whole kronor.
+   */
+  readonly growth: number;
+  /** What left the pot to be paid out. */
+  readonly withdrawal: number;
+  /** Management cost. */
+  readonly fee: number;
+  /** Yield tax (avkastningsskatt), or for a depot the tax on its gain. */
+  readonly yieldTax: number;
+  /** A balance typed in for the year (`pbhYear`) less the one the model had built. */
+  readonly adjustment: number;
+  /** The balance at 31 December. */
+  readonly close: number;
+}
+
+/** Every pot's year at one age. */
+export interface LedgerRow {
+  readonly year: number;
+  readonly age: number;
+  /**
+   * What `recordRow` multiplies this age's amounts by -- fixed prices, the wage level
+   * or 1, as `priceBasis` says -- unrounded, where `MvaluesRow.kpiFactor` is rounded to
+   * four decimals. Multiplying a pot's figures by it gives Table 2's units exactly.
+   */
+  readonly priceFactor: number;
+  readonly pots: Readonly<Record<PotId, PotYear>>;
+}
+
 /** Everything the age loop accumulates. */
 export interface RunState {
   // ---- Pension-qualifying income and contributions -------------------------
@@ -250,6 +303,9 @@ export interface RunState {
 
   /** The output matrix, one row per age from `startage`. */
   readonly rows: MvaluesRow[];
+
+  /** Each pot's year, one row per age from `startage` -- see `PotYear`. */
+  readonly ledger: LedgerRow[];
 }
 
 /** The loop locals the post-loop recomputation reads. See `RunState.leftovers`. */
@@ -365,6 +421,7 @@ export function createRunState(startage: number, slutage = SLUTAGE): RunState {
     },
 
     rows: [],
+    ledger: [],
   };
 }
 

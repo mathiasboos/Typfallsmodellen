@@ -208,6 +208,37 @@
   --fig-pu-on-y20: #000000;
   --fig-pu-on-life: #ffffff;
 
+  /*
+   * portfolioChart.ts's two charts on the Portföljvärde tab. The accounts keep the
+   * colours Figur 2 gives the same pensions (income pension dark green, premium pension
+   * green, occupational pension beige, private saving purple) plus the page's blue for
+   * the private saving paid out tax-free, and stack bottom-up in this order -- the one
+   * the `dataviz` skill's validate_palette.js passes for every neighbour pair, and for
+   * the pairs left when an account is missing: worst adjacent CVD ΔE 10.0, normal-vision
+   * 19.1 (green<->beige), in both themes. In the dark theme the income pension takes
+   * Dark green 80% (#358157): the theme's own lighter step reads too close to green and
+   * to beige beside it (normal ΔE 6.3 and 13.7). It is a contrast WARN (2.78:1 on
+   * #003824), with the relief the scenario colours already have: a legend, a readout
+   * and the table under the charts. The purple<->blue pair fails CVD, but the model
+   * carries one kind of private saving per run, so the two are never both drawn.
+   *
+   * The flows are the planner's: in green, return blue, out red, yield tax gold, fee
+   * grey -- in above zero, out below, so the sign says which is which before the colour
+   * does. Worst adjacent CVD ΔE 15.4 (gold<->red), normal 19.0 (grey<->gold) dark.
+   */
+  --fig-pv-ip: #005d35;
+  --fig-pv-pp: #48b866;
+  --fig-pv-tjp: #d3c5a6;
+  --fig-pv-ips: #7a4fa0;
+  --fig-pv-pps: #4885c5;
+  --fig-pv-in: #48b866;
+  --fig-pv-return: #4885c5;
+  --fig-pv-out: #ff5b30;
+  --fig-pv-tax: #fbc111;
+  --fig-pv-fee: #7f7f7f;
+  /* The retirement year's column in the tables: the banner's gold, faint. */
+  --pv-ret-tint: #fdf3d6;
+
   --radius: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -292,6 +323,14 @@
     --fig-pu-on-y15: #000000;
     --fig-pu-on-y20: #000000;
     --fig-pu-on-life: #000000;
+
+    /* portfolioChart.ts, at the dark steps validated against #003824 -- see the light-theme note. */
+    --fig-pv-ip: #358157;
+    --fig-pv-ips: #9d6fc0;
+    --fig-pv-pps: #6d9dd1;
+    --fig-pv-return: #6d9dd1;
+    --fig-pv-fee: #afafaf;
+    --pv-ret-tint: #2a3d12;
   }
 }
 
@@ -1590,3 +1629,62 @@ td.pl-floor-name { font-style: italic; }
 .about-panel h3 { margin: 6px 0 0; font-size: 1rem; }
 .about-panel p, .about-panel ul { margin: 0; line-height: 1.5; }
 .about-panel ul { padding-left: 1.2em; display: grid; gap: 8px; }
+
+/*
+ * "Portföljvärde" (portfolioPanel.ts): the planner's controls in one row, the two
+ * charts side by side where there is room, and year-by-year tables whose first
+ * column stays put while the years scroll under it.
+ */
+.pv-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.pv-controls .panel-toggle { margin: 0; }
+.pv-pick { display: flex; align-items: center; gap: 8px; }
+.pv-select {
+  font: inherit;
+  font-weight: 600;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  max-width: 100%;
+}
+.pv-each { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; }
+.pv-each input { width: 16px; height: 16px; accent-color: var(--accent); }
+/* One under the other: side by side, in the width the results column has, the axis text would be too small to read. */
+.pv-charts { display: grid; gap: 14px; }
+.pv-bar { stroke: var(--surface-raised); stroke-width: 0.6; }
+.pv-area { fill-opacity: 0.18; }
+.pv-line { stroke-width: 2; }
+.pv-ret-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.pv-ret-tag { fill: var(--text-secondary); font-weight: 600; }
+.pv-ret-tick { fill: var(--text-primary); font-weight: 700; }
+.tooltip-total { border-top: 1px solid var(--border); margin-top: 2px; padding-top: 2px; font-weight: 600; }
+
+.pv-card { display: grid; gap: 6px; }
+.pv-card-title { margin: 4px 0 0; font-size: 1rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.pv-badge { font-size: 0.74rem; font-weight: 400; color: var(--text-muted); }
+/* Separate borders: with collapsed ones a sticky cell leaves the table's own edge
+   open, and the figures scrolling under it show through. The frame is the scroller's. */
+.pv-scroll { border: 1px solid var(--rule); }
+.pv-table { width: auto; min-width: 100%; font-size: 0.8rem; border: none; border-collapse: separate; border-spacing: 0; }
+.pv-table th, .pv-table td { padding: 4px 8px; }
+.pv-table thead tr:first-child th { border-bottom: none; padding-bottom: 0; color: var(--text-muted); }
+.pv-table .pv-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  min-width: 170px;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--rule);
+}
+.pv-table thead .pv-label { background: var(--surface-sunken); }
+.pv-table tbody th.pv-label { font-size: 0.8rem; color: var(--text-primary); }
+.pv-table th[title] { text-decoration: underline dotted; text-decoration-color: var(--text-muted); cursor: help; }
+.pv-table .pv-ret { background: var(--pv-ret-tint); }
+.pv-star { font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap; }
+.pv-table td.pv-zero { color: var(--text-muted); }
+.pv-table tr.pv-strong td, .pv-table tr.pv-strong th { font-weight: 700; }
+.pv-table tbody tr.pv-strong:last-child td, .pv-table tbody tr.pv-strong:last-child th { border-top: 1px solid var(--rule); }
+.pv-notes { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 0.86rem; color: var(--text-secondary); }

@@ -34,6 +34,7 @@ import { renderKpis, retirementAge } from "./kpis.js";
 import { createMikrosimPanel } from "./mikrosim.js";
 import { createPensionAgePanel } from "./pensionAgePanel.js";
 import { createPensionLastsPanel } from "./pensionLastsPanel.js";
+import { createPortfolioPanel } from "./portfolioPanel.js";
 import { createPgbGrid } from "./pgb.js";
 import { commitOnPress } from "./pressCommit.js";
 import { createSalaryPath } from "./salaryPath.js";
@@ -64,7 +65,7 @@ type Mode = "normal" | "advanced";
 
 /** Not a workbook mode -- a second, third, fourth and fifth top-level view
  * alongside the forecast, and the page about the site. */
-type Screen = "single" | "compare" | "mikrosim" | "retirement" | "lasts" | "amount" | "about";
+type Screen = "single" | "portfolio" | "compare" | "mikrosim" | "retirement" | "lasts" | "amount" | "about";
 
 const deaths = loadDeathProbabilities();
 
@@ -170,6 +171,8 @@ const pensionAgePanel = createPensionAgePanel(view.lang, () => runInput());
 const pensionLastsPanel = createPensionLastsPanel(view.lang, () => runInput());
 // "Hur mycket får jag?" is the same panel with no budget: what the pension pays a month under each payout period.
 const pensionAmountPanel = createPensionLastsPanel(view.lang, () => runInput(), "amount");
+// "Portföljvärde": the pension capital behind Prognos's own run, account by account -- no inputs of its own.
+const portfolioPanel = createPortfolioPanel(view.lang);
 // Static text, no model run: what the site is for, the disclaimer and how to reach it.
 const aboutPanel = createAboutPanel(view.lang);
 
@@ -251,6 +254,7 @@ function screenToggle(): HTMLElement {
   box.setAttribute("role", "group");
   const choices: readonly { screen: Screen; label: (l: Lang) => string }[] = [
     { screen: "single", label: (l) => (l === "sv" ? "Prognos" : "Forecast") },
+    { screen: "portfolio", label: (l) => (l === "sv" ? "Portföljvärde" : "Portfolio value") },
     { screen: "compare", label: (l) => (l === "sv" ? "Jämför scenarier" : "Compare scenarios") },
     // A proper noun from the workbook's own sheet name -- the same word in
     // both languages, so no `say()`-style branching is needed here.
@@ -328,6 +332,7 @@ function renderHeading(): void {
       pensionAgePanel.relabel(lang);
       pensionLastsPanel.relabel(lang);
       pensionAmountPanel.relabel(lang);
+      portfolioPanel.relabel(lang);
       aboutPanel.relabel(lang);
       document.documentElement.lang = lang;
       render();
@@ -368,12 +373,12 @@ function applyNoticeText(l: Lang): void {
     l === "sv"
       ? ". Det här är en bearbetad version som inte är utvecklad av, kopplad till eller godkänd av " +
           "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. Flikarna " +
-          "Jämför scenarier, Mikrosim, När ta ut pensionen?, Hur länge räcker pensionen? och " +
+          "Portföljvärde, Jämför scenarier, Mikrosim, När ta ut pensionen?, Hur länge räcker pensionen? och " +
           "Hur mycket får jag? är egna tillägg. Resultatet är en prognos under de antaganden du " +
           "anger – inte ett besked om din pension."
       : ". This is an adapted version that is not built by, affiliated with or endorsed by " +
           "Pensionsmyndigheten, the Swedish Pensions Agency. The model, its data and its user manual " +
-          "are theirs. The tabs Compare scenarios, Mikrosim, When to take out the pension?, How long does the " +
+          "are theirs. The tabs Portfolio value, Compare scenarios, Mikrosim, When to take out the pension?, How long does the " +
           "pension last? and How much do I get? are additions of our own. What it shows is a forecast " +
           "under the assumptions you enter – not a statement about your pension.",
   );
@@ -464,6 +469,15 @@ function render(): void {
 
   results.replaceChildren();
   results.append(screenToggle());
+
+  if (screen === "portfolio") {
+    // The same run as the forecast below: the form, Avancerat and all.
+    const warned = warnings(result);
+    if (warned) results.append(warned);
+    results.append(portfolioPanel.element);
+    portfolioPanel.show(result, context, par);
+    return;
+  }
 
   if (screen === "compare") {
     results.append(comparePanel.element);

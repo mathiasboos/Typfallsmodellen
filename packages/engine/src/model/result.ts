@@ -12,12 +12,13 @@
 
 import { gp, tillagg } from "../bidrag/garantipension.js";
 import { recomputeAtRetirement } from "./atRetirement.js";
+import { finishLedger } from "./drawdown.js";
 import { deltal, incomePensionYear } from "../pension/incomePension.js";
 import { tpFaktor } from "../pension/atp.js";
 import { vbaInt, wsMax, wsMin } from "../vba/math.js";
 import type { Run, ResolvedPgbYear } from "./mcalc.js";
 import type { OwnIncomeYear } from "./input.js";
-import type { MvaluesRow } from "./state.js";
+import type { LedgerRow, MvaluesRow } from "./state.js";
 import type { Warning } from "./setup.js";
 
 /** One row of Table 1: an amount, four ways. */
@@ -100,6 +101,11 @@ export interface TypfallResult {
   readonly table2: readonly Table2Row[];
   /** The per-age matrix Table 2 is cut from. */
   readonly rows: readonly MvaluesRow[];
+  /**
+   * Each pot of pension capital, year by year, in nominal kronor -- see `PotYear`.
+   * Not a workbook output; added for the web app's "Portföljvärde" tab.
+   */
+  readonly ledger: readonly LedgerRow[];
   /**
    * The income and wage path the run used, one row per working age.
    *
@@ -554,6 +560,7 @@ function buildPgbBreakdown(run: Run): PgbBreakdownYear[] {
 
 /** Assembles the whole result, after the loop has run. */
 export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResult {
+  finishLedger(run);
   if (run.context.lastPensionRight > 0) creditLastPensionRight(run);
 
   closeRetirementYear(run);
@@ -569,6 +576,7 @@ export function buildResult(run: Run, warnings: readonly Warning[]): TypfallResu
     table1: buildTable1(run),
     table2: buildTable2(run),
     rows: run.s.rows,
+    ledger: run.s.ledger,
     wagePath: buildWagePath(run),
     pgbBreakdown: buildPgbBreakdown(run),
     lifeIncome: lifeIncome(run),
