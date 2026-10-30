@@ -38,6 +38,8 @@ import {
   LONG_LIFE,
   RENT_BOUNDS,
   checklistText,
+  comboKinds,
+  comboText,
   payoutKindName,
   payoutPhases,
   defaultStrategyInput,
@@ -49,7 +51,7 @@ import {
   planAges,
   savingsLabel,
   runStrategy,
-  scenarioDescription,
+  scenarioSummary,
   scenarioName,
   scenariosToCsv,
   scenariosToXlsxRows,
@@ -97,7 +99,7 @@ const PRESETS = [
 const COLOUR: Readonly<Record<ScenarioId, string>> = {
   balanced: "--fig-scenario-0",
   front: "--fig-scenario-3",
-  hybrid: "--fig-scenario-1",
+  optimal: "--fig-scenario-1",
 };
 
 const perMonth = (l: Lang): string => say(l, "kr/mån", "SEK/month");
@@ -402,7 +404,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   frontField.element.dataset.setting = "stFrontYears";
   field(frontField.element, (l) => ({
     label: say(l, "Uttag på kortare tid", "Shorter payout"),
-    hint: say(l, `år, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · i scenarierna Framtung och Hybrid`, `years, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · in the Front-loaded and Hybrid scenarios`),
+    hint: say(l, `år, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · i scenariot Din plan`, `years, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · in the Your plan scenario`),
   }));
 
   // Assumptions
@@ -537,18 +539,30 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
 
   function recommendationText(strategy: Strategy, l: Lang): string {
     const chosen = strategy.scenarios.find((s) => s.id === strategy.recommended)!;
+    const balanced = strategy.scenarios.find((s) => s.id === "balanced")!;
     const floor = money(strategy.input.floor, l);
+    const lifespan = Math.round(strategy.expectedDeath);
+    const what = comboText(chosen.run.combo, comboKinds(chosen.run), l);
+    const plan = what === "" ? "" : say(l, ` (${what})`, ` (${what})`);
     if (!chosen.meetsFloor) {
       return say(
         l,
-        `Inget scenario håller ${floor} ${perMonth(l)} hela livet. ${scenarioName(chosen.id, l)} kommer närmast: lägst ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
-        `No scenario keeps ${floor} ${perMonth(l)} for life. ${scenarioName(chosen.id, l)} comes closest: at least ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
+        `Inget sätt att ta ut håller ${floor} ${perMonth(l)} hela livet. ${scenarioName(chosen.id, l)}${plan} kommer närmast: lägst ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
+        `No way of drawing keeps ${floor} ${perMonth(l)} for life. ${scenarioName(chosen.id, l)}${plan} comes closest: at least ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
       );
     }
+    const total = (s: typeof chosen) => s.totals.find((t) => t.lifespan === lifespan)?.total ?? totalTo(s.run, lifespan);
+    const gain = total(chosen) - total(balanced);
+    const allLifelong = [chosen.run.combo.occupational, chosen.run.combo.pension, chosen.run.combo.savings].every((p) => p === LIFELONG);
+    const versus = allLifelong
+      ? say(l, " Det är detsamma som Balanserad: livsvarigt är bäst för dig.", " That is the same as Balanced: for life is best for you.")
+      : gain >= 1_000
+        ? say(l, ` Det är ${money(gain, l)} kr mer än Balanserad.`, ` That is ${money(gain, l)} SEK more than Balanced.`)
+        : say(l, " Det är ungefär detsamma som Balanserad.", " That is about the same as Balanced.");
     return say(
       l,
-      `Förslag: ${scenarioName(chosen.id, l)}. Det ger mest de första tio åren, ${money(chosen.early, l)} ${perMonth(l)}, och blir aldrig lägre än ${money(chosen.lowest.monthly, l)} ${perMonth(l)} – över din lägsta nivå på ${floor} ${perMonth(l)}.`,
-      `Suggestion: ${scenarioName(chosen.id, l)}. It pays the most in the first ten years, ${money(chosen.early, l)} ${perMonth(l)}, and never falls below ${money(chosen.lowest.monthly, l)} ${perMonth(l)} – above your lowest level of ${floor} ${perMonth(l)}.`,
+      `Förslag: ${scenarioName(chosen.id, l)}${plan}. Det ger mest att leva på totalt fram till ${lifespan} år, ${mkr(total(chosen), l)} mnkr, och blir aldrig lägre än ${money(chosen.lowest.monthly, l)} ${perMonth(l)} – över din lägsta nivå på ${floor} ${perMonth(l)}.${versus}`,
+      `Suggestion: ${scenarioName(chosen.id, l)}${plan}. It leaves the most to live on in all up to ${lifespan}, ${mkr(total(chosen), l)} million SEK, and never falls below ${money(chosen.lowest.monthly, l)} ${perMonth(l)} – above your lowest level of ${floor} ${perMonth(l)}.${versus}`,
     );
   }
 
@@ -598,7 +612,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       key.style.background = `var(${COLOUR[s.id]})`;
       name.append(key, h("strong", undefined, scenarioName(s.id, l)));
       if (s.id === strategy.recommended) name.append(h("span", "st-chip", say(l, "★ Förslag", "★ Suggested")));
-      name.append(h("small", undefined, scenarioDescription(s.id, strategy.input.frontYears, l)));
+      name.append(h("small", undefined, scenarioSummary(s, strategy.input.frontYears, l)));
       const lowest = cell(money(s.lowest.monthly, l), `num${s.meetsFloor ? "" : " st-below"}`);
       if (!s.meetsFloor) lowest.title = say(l, "Under din lägsta nivå", "Below your lowest level");
       return row(
@@ -647,8 +661,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       draw.replaceChildren(timelineSvg(strategy, s.id, l));
       note.textContent = say(
         l,
-        `${scenarioName(s.id, l)}: ${scenarioDescription(s.id, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad före skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.`,
-        `${scenarioName(s.id, l)}: ${scenarioDescription(s.id, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month before tax. Where bars lie above one another, the parts are paid at the same time.`,
+        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad före skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.`,
+        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month before tax. Where bars lie above one another, the parts are paid at the same time.`,
       );
     };
     for (const id of ids) {

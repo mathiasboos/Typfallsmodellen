@@ -1667,16 +1667,24 @@ comparison). A tab that weighs spending the savings early can use neither: with 
 age)` hands `BTP` and `SBTP` the wealth at the start of that age, and up to 100 000 kr is disregarded, as the rules
 say. Without it nothing changes.
 
-**Three scenarios.** Balanserad (everything for life), Framtung (everything over the shorter period) and Hybrid (the
-pensions for life, the private savings over the shorter period; only when there are savings paid out tax-free). Each
+**Three scenarios.** Balanserad (everything for life), Din plan (everything over the shorter period the person sets
+under "Din plan") and Optimalt (`optimalCombo`): every pot that has anything in it -- the agreement's occupational
+pension, the taxed private pots, the private savings -- is run over 5, 10, 15 and 20 years and for life
+(`OPTIMAL_PERIODS`, at most 125 runs, each savings and pension run done once however many lists it is in), and the
+optimal one is the way that leaves the most to live on in all up to the expected lifespan among those whose lowest
+month up to 95 stays at or above the floor; if none does, the one whose lowest month is highest; a tie (within a
+krona) goes to more pots for life, then to longer periods. The own plan and the hybrid (pensions for life, savings
+over the shorter period) are among the candidates, so the optimal one is never worse by that measure than either.
+It is always the one suggested, and its description and the suggestion name the periods it chose. The candidates
+are run once and kept (`StrategyRuns.candidates`), so a new floor or lifespan only reads them again. Each scenario
 has its average a month in three stretches (the first ten years, the next ten, then to 95), its total to 80, the
-expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the lifespan
-from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come back). The
-expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is always for life; only the occupational and private pension and the savings change payout period between the scenarios, and the descriptions say so. The suggestion (`recommend`) is the scenario that pays
-the most in the first ten years among those whose lowest month stays at or above the floor; if none does, the one whose
-lowest month is highest; a tie goes to the simpler way (balanced, then hybrid, then front-loaded). A second table draws
-the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same lifespans
-and the lifespan from which "for life" catches up.
+expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the
+lifespan from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come
+back). The expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is
+always for life; only the occupational and private pension and the savings change payout period between the
+scenarios, and the descriptions say so. With nothing to draw any other way the three are the same. A second table
+draws the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same
+lifespans and the lifespan from which "for life" catches up.
 
 **What most people miss** is a set of rules over the same runs, each measured in kronor for this person and shown only
 when it comes to at least 1 000 kr (`NOTEWORTHY`); at most three, in a fixed order (`INSIGHT_ORDER`):
@@ -1690,7 +1698,8 @@ when it comes to at least 1 000 kr (`NOTEWORTHY`); at most three, in a fixed ord
   the year after would save at the model's marginal rates;
 - the ISK's tax up to the expected lifespan, with the tax-free 300 000 kr from 2026 named;
 - state tax in the front-loaded scenario, and a longer payout period that avoids it;
-- what the hybrid adds a month in the first ten years, against what it costs at a long life.
+- what the hybrid (pensions for life, savings over the shorter period) adds a month in the first ten years, against
+  what it costs at a long life.
 
 **The checklist** has at most five steps, by priority: jämkning first when the autumn deadline for the first pension
 year is now (the dates in `JAMKNING_DEADLINES`) and last when that year is further off, checking the forecast at

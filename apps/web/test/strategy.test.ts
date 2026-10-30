@@ -25,7 +25,9 @@ import {
   insightText,
   normaliseStrategy,
   overtakenAt,
-  recommend,
+  optimalCombo,
+  comboKinds,
+  comboText,
   runStrategy,
   evaluateStrategy,
   scenarioDescription,
@@ -109,10 +111,10 @@ describe("the input", () => {
 });
 
 describe("the scenarios", () => {
-  it("are balanced, front-loaded and hybrid, starting the year the person turns 67", () => {
+  it("are balanced, the own plan and the optimal one, starting the year the person turns 67", () => {
     expect(plain.par).toBe(67);
     expect(plain.retirementYear).toBe(2028);
-    expect(plain.scenarios.map((s) => s.id)).toEqual(["balanced", "front", "hybrid"]);
+    expect(plain.scenarios.map((s) => s.id)).toEqual(["balanced", "front", "optimal"]);
     expect(plain.expectedDeath).toBeCloseTo(86.6, 1);
   });
 
@@ -145,31 +147,50 @@ describe("the scenarios", () => {
     ]);
   });
 
-  it("put more in the first years when front-loaded, and less after", () => {
-    const [balanced, front, hybrid] = plain.scenarios;
-    expect(front!.early).toBeGreaterThan(hybrid!.early);
-    expect(hybrid!.early).toBeGreaterThan(balanced!.early);
+  it("put more in the first years in the own plan, and less after", () => {
+    const [balanced, front] = plain.scenarios;
+    expect(front!.early).toBeGreaterThan(balanced!.early);
     expect(front!.phases[1]!.monthly).toBeLessThan(balanced!.phases[1]!.monthly);
-    // The hybrid keeps the pensions for life, so its lowest month is the balanced one's.
-    expect(hybrid!.lowest.monthly).toBeCloseTo(balanced!.lowest.monthly, 6);
+    expect(front!.run.combo).toEqual({ occupational: 10, pension: 10, savings: 10, delay: 0 });
   });
 
-  it("recommend the one that pays the most early among those above the floor", () => {
-    expect(plain.recommended).toBe("front");
-    // A floor only the pensions for life keep: the hybrid, which pays more early than the balanced.
-    const front = plain.scenarios.find((s) => s.id === "front")!;
-    const between = strategy({ floor: Math.round(front.lowest.monthly) + 50 });
-    expect(between.recommended).toBe("hybrid");
-    // A floor no scenario keeps: the one with the highest lowest month. The savings are spent by 95 either
-    // way, so the hybrid's lowest month is the balanced one's, and the tie goes to the simpler way.
+  it("take as the optimal one the way that leaves the most up to the expected lifespan, above the floor", () => {
+    const total = (s: Scenario) => s.totals.find((t) => t.lifespan === 87)!.total;
+    const [balanced, front, optimal] = plain.scenarios;
+    expect(plain.recommended).toBe("optimal");
+    expect(optimal!.run.combo).toMatchObject({ occupational: 5, savings: 5 });
+    expect(comboText(optimal!.run.combo, comboKinds(optimal!.run), "sv")).toBe("tjänstepension 5 år, sparande 5 år");
+    expect(total(optimal!)).toBeGreaterThanOrEqual(total(front!));
+    expect(total(optimal!)).toBeGreaterThanOrEqual(total(balanced!));
+    // A floor the shorter ways go under: the most of those that keep it.
+    const kept = strategy({ floor: 19_000 });
+    const keptOptimal = kept.scenarios[2]!;
+    expect(keptOptimal.meetsFloor).toBe(true);
+    expect(keptOptimal.run.combo).toMatchObject({ occupational: 0, savings: 20 });
+    expect(total(keptOptimal)).toBeGreaterThanOrEqual(total(kept.scenarios[0]!));
+    // A floor nothing keeps: the highest lowest month, and the tie goes to everything for life.
     const above = strategy({ floor: 60_000 });
     expect(above.scenarios.every((s) => !s.meetsFloor)).toBe(true);
-    expect(above.recommended).toBe("balanced");
+    expect(above.scenarios[2]!.run.combo).toMatchObject({ occupational: 0, pension: 0, savings: 0 });
   });
 
-  it("are only the balanced one when there is nothing to draw any other way", () => {
+  it("choose among every pot's periods, and only the pots there are", () => {
+    const input = normaliseStrategy({ ...defaultStrategyInput(), individualCapital: 400_000 });
+    const runs = runStrategy(input, shared, deaths);
+    // Occupational, private pension and savings, five periods each, and the own plan's 10 years among them.
+    expect(runs.candidates).toHaveLength(125);
+    const bare = runStrategy(normaliseStrategy({ ...defaultStrategyInput(), scheme: Scheme.None, savingsCapital: 0 }), shared, deaths);
+    expect(bare.candidates.map((r) => r.combo)).toEqual([
+      { occupational: 0, pension: 0, savings: 0, delay: 0 },
+      { occupational: 10, pension: 10, savings: 10, delay: 0 },
+    ]);
+  });
+
+  it("are all three, the same, when there is nothing to draw any other way", () => {
     const bare = strategy({ scheme: Scheme.None, savingsCapital: 0 });
-    expect(bare.scenarios.map((s) => s.id)).toEqual(["balanced"]);
+    expect(bare.scenarios.map((s) => s.id)).toEqual(["balanced", "front", "optimal"]);
+    expect(bare.scenarios[1]!.run.disposable).toEqual(bare.scenarios[0]!.run.disposable);
+    expect(bare.scenarios[2]!.run).toBe(bare.scenarios[0]!.run);
     expect(bare.payouts).toEqual([]);
   });
 
@@ -251,7 +272,8 @@ describe("the checklist", () => {
     expect(plain.checklist.length).toBeLessThanOrEqual(5);
     expect(plain.checklist.map((c) => c.kind)).toEqual(["minpension", "payout", "start", "btp", "isk"]);
     const housing = plain.checklist.find((c) => c.kind === "btp")!;
-    expect(checklistText(housing, "sv")).toContain("från 77 år");
+    // Read off the optimal scenario: the occupational pension and the savings over five years.
+    expect(checklistText(housing, "sv")).toContain("från 72 år");
   });
 
   it("puts jämkning first in the autumn before the first pension year, with the day it must be in by", () => {
@@ -283,12 +305,17 @@ describe("the arithmetic behind the comparisons", () => {
     expect(overtakenAt(fake(new Array<number>(101).fill(11)), steady)).toBeUndefined();
   });
 
-  it("recommends the simpler way when the numbers are equal", () => {
-    const s = (id: Scenario["id"], early: number, lowest: number, meetsFloor: boolean) =>
-      ({ id, early, lowest: { age: 0, monthly: lowest }, meetsFloor }) as unknown as Scenario;
-    expect(recommend([s("balanced", 100, 50, true), s("front", 100, 40, true)])).toBe("balanced");
-    expect(recommend([s("balanced", 100, 50, true), s("front", 120, 40, false)])).toBe("balanced");
-    expect(recommend([s("balanced", 100, 30, false), s("hybrid", 110, 35, false)])).toBe("hybrid");
+  it("takes the simpler way when the numbers are equal", () => {
+    const flat = (combo: Partial<ComboRun["combo"]>, perYear: number) =>
+      ({ ...fake(new Array<number>(101).fill(perYear)), combo: { occupational: 0, pension: 0, savings: 0, delay: 0, ...combo } }) as ComboRun;
+    const life = flat({}, 10);
+    const short = flat({ occupational: 5 }, 10);
+    const longer = flat({ occupational: 20 }, 10);
+    expect(optimalCombo([short, life], 0, 90)).toBe(life);
+    expect(optimalCombo([short, longer], 0, 90)).toBe(longer);
+    expect(optimalCombo([life, flat({ occupational: 5 }, 11)], 0, 90).combo.occupational).toBe(5);
+    // Under the floor, all of them: the highest lowest month.
+    expect(optimalCombo([flat({ occupational: 5 }, 11 * 12), life], 200, 90).combo.occupational).toBe(5);
   });
 });
 
@@ -297,14 +324,15 @@ describe("the downloads", () => {
     const csv = scenariosToCsv(plain, "sv").split("\r\n");
     expect(csv).toHaveLength(4);
     expect(csv[0]).toContain("Totalt till 87 år");
-    expect(csv[2]!.startsWith("Framtung")).toBe(true);
+    expect(csv[2]!.startsWith("Din plan")).toBe(true);
+    expect(csv[3]!.startsWith("Optimalt (Tjänstepension 5 år, sparande 5 år:")).toBe(true);
     // Whole kronor without a thousands separator, as in the other tabs' downloads, and the lifespan from
-    // which the balanced way has paid more in all: at 100 for the front-loaded one, at 85 for the hybrid.
+    // which the balanced way has paid more in all: at 100 for the own plan, and not before 100 for the optimal one.
     expect(csv[1]).toMatch(/^Balanserad \(.*\);\d+;\d+;\d+;\d+;\d+;\d+;\d+;\d+;$/);
     expect(csv[2]!.endsWith(";100")).toBe(true);
-    expect(csv[3]!.endsWith(";85")).toBe(true);
+    expect(csv[3]!.endsWith(";inte före 100")).toBe(true);
     const series = seriesToCsv(plain, "en").split("\r\n");
-    expect(series[0]).toBe("Age,Balanced,Front-loaded,Hybrid");
+    expect(series[0]).toBe("Age,Balanced,Your plan,Optimal");
     expect(series[1]).toMatch(/^67,\d+,\d+,\d+$/);
     expect(series).toHaveLength(95 - 67 + 2);
     const sheet = scenariosToXlsxRows(plain, "sv");
@@ -419,8 +447,9 @@ describe("the expected lifespan", () => {
 describe("the scenario descriptions", () => {
   it("say that the public pension is always for life", () => {
     expect(scenarioDescription("front", 15, "sv")).toBe(
-      "Tjänstepension, privat pension och sparande på 15 år: mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.",
+      "Uttag på kortare tid, som du valt under Din plan: tjänstepension, privat pension och sparande på 15 år. Mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.",
     );
+    expect(scenarioDescription("optimal", 15, "sv")).toContain("Den allmänna pensionen är alltid livsvarig.");
     expect(scenarioDescription("balanced", 10, "sv")).toContain("liksom den allmänna pensionen");
   });
 });
@@ -469,7 +498,7 @@ describe("more occupational pensions and private savings", () => {
   it("run an ISK and a depot each on its own, and add what they pay", () => {
     const both = strategy({ extraSavings: [{ kind: "depot", capital: 400_000, monthly: 0 }] });
     const depot = strategy({ savingsKind: "depot", savingsCapital: 400_000 });
-    const [run, iskRun, depotRun] = [both, plain, depot].map((s) => s.scenarios.find((x) => x.id === "hybrid")!.run);
+    const [run, iskRun, depotRun] = [both, plain, depot].map((s) => runStrategy(s.input, shared, deaths).hybrid!);
     expect(savingsByKind(both.input).map((s) => s.savingsKind)).toEqual(["isk", "depot"]);
     for (const age of [67, 70, 76]) {
       expect(run!.savings[age]!).toBeCloseTo(iskRun!.savings[age]! + depotRun!.savings[age]!, 6);

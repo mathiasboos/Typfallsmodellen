@@ -13,12 +13,13 @@
  *   next, which payout period pays the most up to the expected lifespan and from which lifespan the
  *   others catch up, what savings cost in housing supplement, the ISK tax and its tax-free amount,
  *   state tax from a short payout, and how little it costs to spend the savings early.
- * - **Three scenarios**: balanced (everything for life), front-loaded (everything over a number of
- *   years) and a hybrid (the pensions for life, the savings over those years), each with what it
- *   leaves to live on a month after tax, housing supplement included, in three stretches of life; the
- *   total at four lifespans; the lowest month up to 95; and the lifespan from which the balanced way has
- *   paid more. The recommended one is the one that pays the most in the first ten years among those
- *   whose lowest month stays above the floor the person gives.
+ * - **Three scenarios**: balanced (everything for life), the person's own plan (everything over the
+ *   shorter period they give) and the optimal one (`optimalCombo`: of every way of setting each pot's
+ *   payout period, the one that leaves the most to live on in all up to the expected lifespan while the
+ *   lowest month stays at or above the floor), each with what it leaves to live on a month after tax,
+ *   housing supplement included, in three stretches of life; the total at four lifespans; the lowest
+ *   month up to 95; and the lifespan from which the balanced way has paid more. The optimal one is the
+ *   one suggested.
  * - **Tax and tax reductions** (`taxPicture`): the rules on what of the pension is kept -- always draw at least the
  *   tax-free annual income, ROT and RUT and the other tax reductions only take off tax actually paid, interest is set
  *   against an ISK's schablonintäkt first -- with Skatteverket's amounts for the year (`TAX_YEARS`, typed in yearly)
@@ -120,7 +121,7 @@ export interface StrategyInput extends SavingsInput {
   readonly housingSupplement: boolean;
   /** The least a month, after tax, the person wants to have to live on as long as they live. */
   readonly floor: number;
-  /** The front-loaded and hybrid scenarios' payout period, years. */
+  /** The own plan's payout period, years (and the hybrid insight's). */
   readonly frontYears: number;
   /** The age the person expects to live to: what the totals, insights and checklist are read up to. 0 is the model's own. */
   readonly lifespan: number;
@@ -452,7 +453,7 @@ function pensionRun(
 
 // ------------------------------------------------------------- scenarios ---
 
-export type ScenarioId = "balanced" | "front" | "hybrid";
+export type ScenarioId = "balanced" | "front" | "optimal";
 
 export interface Scenario {
   readonly id: ScenarioId;
@@ -540,20 +541,40 @@ function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined,
   };
 }
 
+/** The payout periods the optimal scenario chooses among for each pot: the agreements' fixed ones, and life. */
+export const OPTIMAL_PERIODS: readonly number[] = [...PAYOUT_OPTIONS, LIFELONG];
+
+/** How many of a combo's three periods are for life: the simpler way, which a tie goes to. */
+const lifelongCount = (c: Combo) => [c.occupational, c.pension, c.savings].filter((p) => p === LIFELONG).length;
+/** The total length of a combo's fixed periods: a tie between as many lifelong pots goes to the longer periods. */
+const spread = (c: Combo) => [c.occupational, c.pension, c.savings].reduce((sum, p) => sum + (p === LIFELONG ? 0 : p), 0);
+
 /**
- * The scenario to recommend: the one that pays the most in the first years among those whose lowest month
- * stays above the floor, or -- if none does -- the one whose lowest month is highest. A tie goes to the
- * scenario listed first (balanced, then hybrid, then front-loaded): the simpler way.
+ * The optimal way of drawing the pots, of the runs given: the one that leaves the most to live on in all up to
+ * `lifespan` among those whose lowest month up to `LONG_LIFE` stays at or above the floor, or -- if none does --
+ * the one whose lowest month is highest. A tie (within a krona) goes to the one with more pots for life, then to
+ * the longer periods: the simpler, safer way.
  */
-export function recommend(scenarios: readonly Scenario[]): ScenarioId {
-  const order: readonly ScenarioId[] = ["balanced", "hybrid", "front"];
-  const ranked = [...scenarios].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  const safe = ranked.filter((s) => s.meetsFloor);
-  const pool = safe.length > 0 ? safe : ranked;
-  const score = (s: Scenario) => (safe.length > 0 ? s.early : s.lowest.monthly);
+export function optimalCombo(runs: readonly ComboRun[], floor: number, lifespan: number): ComboRun {
+  const lowest = (r: ComboRun) => {
+    let low = Number.POSITIVE_INFINITY;
+    for (let age = r.par; age <= Math.min(LONG_LIFE, LAST_AGE); age += 1) low = Math.min(low, r.disposable[age]! / 12);
+    return low;
+  };
+  const scored = runs.map((run) => ({ run, low: lowest(run), total: totalTo(run, lifespan) }));
+  const safe = scored.filter((s) => s.low + 0.5 >= floor);
+  const pool = safe.length > 0 ? safe : scored;
+  const score = (s: (typeof scored)[number]) => (safe.length > 0 ? s.total : s.low * 12);
   let best = pool[0]!;
-  for (const s of pool) if (score(s) > score(best) + 0.5) best = s;
-  return best.id;
+  for (const s of pool) {
+    const diff = score(s) - score(best);
+    if (diff > 1) best = s;
+    else if (diff >= -1) {
+      const simpler = lifelongCount(s.run.combo) - lifelongCount(best.run.combo) || spread(s.run.combo) - spread(best.run.combo);
+      if (simpler > 0) best = s;
+    }
+  }
+  return best.run;
 }
 
 // ------------------------------------------------------------- tax rules ---
@@ -757,7 +778,7 @@ export type ChecklistItem =
       readonly atStart: boolean;
     }
   | { readonly kind: "isk"; readonly perYear: number }
-  | { readonly kind: "scenario"; readonly id: ScenarioId; readonly years: number };
+  | { readonly kind: "scenario"; readonly id: ScenarioId; readonly years: number; readonly combo: Combo; readonly kinds: PotKinds };
 
 /**
  * Skatteverket's last day to apply for jämkning that holds for the whole of the next year, by the year it
@@ -794,9 +815,11 @@ export interface Strategy {
 /** The engine runs, kept while only the floor changes. */
 export interface StrategyRuns {
   readonly balanced: ComboRun;
-  readonly front: ComboRun | undefined;
+  readonly front: ComboRun;
   readonly hybrid: ComboRun | undefined;
   readonly payouts: readonly ComboRun[];
+  /** Every way of setting the pots' payout periods the optimal scenario chooses among (`OPTIMAL_PERIODS`). */
+  readonly candidates: readonly ComboRun[];
   readonly withoutSavings: ComboRun | undefined;
   readonly extraWealth: readonly [ComboRun, ComboRun] | undefined;
 }
@@ -815,23 +838,35 @@ export function runStrategy(input: StrategyInput, shared: ModelContext, deaths: 
   const hasTaxed = taxed.capital > 0 || taxed.monthly > 1;
   const life: Combo = { occupational: LIFELONG, pension: LIFELONG, savings: LIFELONG, delay: 0 };
 
-  const savingsLife = savingsRun(typfall, input, shared, deaths, LIFELONG);
-  const savingsFront = hasTaxFree ? savingsRun(typfall, input, shared, deaths, n) : savingsLife;
-  const balanced = pensionRun(typfall, input, shared, deaths, life, savingsLife);
+  // The savings and the pension runs, each done once however many of the lists below it is in.
+  const savingsRuns = new Map<number, SavingsRun>();
+  const savingsFor = (payout: number): SavingsRun => {
+    const key = hasTaxFree ? payout : LIFELONG;
+    if (!savingsRuns.has(key)) savingsRuns.set(key, savingsRun(typfall, input, shared, deaths, key));
+    return savingsRuns.get(key)!;
+  };
+  const pensionRuns = new Map<string, ComboRun>();
+  const runFor = (combo: Combo): ComboRun => {
+    const key = `${combo.occupational}|${combo.pension}|${combo.savings}`;
+    if (!pensionRuns.has(key)) pensionRuns.set(key, pensionRun(typfall, input, shared, deaths, combo, savingsFor(combo.savings)));
+    return pensionRuns.get(key)!;
+  };
+  const savingsLife = savingsFor(LIFELONG);
+  const balanced = runFor(life);
 
   const hasOccupational = balanced.occupational.some((v, age) => age > balanced.par && v > 0);
-  const front =
-    hasOccupational || hasTaxed || hasTaxFree
-      ? pensionRun(typfall, input, shared, deaths, { occupational: n, pension: n, savings: n, delay: 0 }, savingsFront)
-      : undefined;
-  const hybrid = hasTaxFree ? pensionRun(typfall, input, shared, deaths, { ...life, savings: n }, savingsFront) : undefined;
+  const front = runFor({ occupational: n, pension: n, savings: n, delay: 0 });
+  const hybrid = hasTaxFree ? runFor({ ...life, savings: n }) : undefined;
 
-  const payouts = hasOccupational
-    ? [
-        ...PAYOUT_OPTIONS.map((years) => pensionRun(typfall, input, shared, deaths, { ...life, occupational: years }, savingsLife)),
-        balanced,
-      ]
-    : [];
+  const payouts = hasOccupational ? [...PAYOUT_OPTIONS.map((years) => runFor({ ...life, occupational: years })), balanced] : [];
+
+  // The optimal scenario's choice: each pot that has anything in it over every period, the others for life,
+  // and the own plan and the hybrid besides, so that the optimal one is never worse than either.
+  const periods = (has: boolean) => (has ? OPTIMAL_PERIODS : [LIFELONG]);
+  for (const occupational of periods(hasOccupational))
+    for (const pension of periods(hasTaxed))
+      for (const savings of periods(hasTaxFree)) runFor({ occupational, pension, savings, delay: 0 });
+  const candidates = [...pensionRuns.values()];
 
   // The housing supplement against the savings: none at all, and two amounts above the disregarded one.
   const paysHousing = input.housingSupplement && balanced.benefits.some((v) => v > 0);
@@ -847,7 +882,7 @@ export function runStrategy(input: StrategyInput, shared: ModelContext, deaths: 
         ] as const)
       : undefined;
 
-  return { balanced, front, hybrid, payouts, withoutSavings, extraWealth };
+  return { balanced, front, hybrid, payouts, candidates, withoutSavings, extraWealth };
 }
 
 /** What the runs say, for a floor: the scenarios, the recommendation, the insights and the checklist. */
@@ -858,14 +893,14 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
   const lifespan = Math.round(expectedDeath);
   const scenarios = [
     scenario("balanced", balanced, undefined, input.floor, expectedDeath),
-    ...(runs.front ? [scenario("front", runs.front, balanced, input.floor, expectedDeath)] : []),
-    ...(runs.hybrid ? [scenario("hybrid", runs.hybrid, balanced, input.floor, expectedDeath)] : []),
+    scenario("front", runs.front, balanced, input.floor, expectedDeath),
+    scenario("optimal", optimalCombo(runs.candidates, input.floor, lifespan), balanced, input.floor, expectedDeath),
   ];
-  const recommended = recommend(scenarios);
+  const recommended: ScenarioId = "optimal";
   const insights = findInsights(runs, input, lifespan);
   const tax = taxPicture(scenarios.find((s) => s.id === recommended)!, input, today);
   const retirementYear = input.born + par;
-  const warnings = [...new Set([balanced, runs.front, runs.hybrid].flatMap((r) => r?.warnings ?? []))];
+  const warnings = [...new Set(scenarios.flatMap((s) => s.run.warnings))];
   return {
     input,
     par,
@@ -975,7 +1010,7 @@ function findInsights(runs: StrategyRuns, input: StrategyInput, lifespan: number
   }
 
   // State tax from the front-loaded scenario's largest years.
-  if (runs.front !== undefined) {
+  if (runs.front.disposable.some((v, age) => Math.abs(v - balanced.disposable[age]!) > 0.5)) {
     const total = sumBetween(runs.front.stateTax, par, LONG_LIFE);
     if (total >= NOTEWORTHY) {
       const clean = runs.payouts.find((r) => r.combo.occupational !== LIFELONG && sumBetween(r.stateTax, par, LONG_LIFE) < NOTEWORTHY && r.combo.occupational > input.frontYears);
@@ -1086,7 +1121,7 @@ function buildChecklist(
       });
     }
   }
-  items.push({ priority: 6, item: { kind: "scenario", id: recommended, years: input.frontYears } });
+  items.push({ priority: 6, item: { kind: "scenario", id: recommended, years: input.frontYears, combo: chosen.run.combo, kinds: comboKinds(chosen.run) } });
 
   return items
     .sort((a, b) => a.priority - b.priority)
@@ -1106,13 +1141,46 @@ export function scenarioName(id: ScenarioId, lang: Lang): string {
     case "balanced":
       return say(lang, "Balanserad", "Balanced");
     case "front":
-      return say(lang, "Framtung", "Front-loaded");
-    case "hybrid":
-      return say(lang, "Hybrid", "Hybrid");
+      return say(lang, "Din plan", "Your plan");
+    case "optimal":
+      return say(lang, "Optimalt", "Optimal");
   }
 }
 
-export function scenarioDescription(id: ScenarioId, years: number, lang: Lang): string {
+/** Which of the three pots there is anything in. */
+export interface PotKinds {
+  readonly occupational: boolean;
+  readonly pension: boolean;
+  readonly savings: boolean;
+}
+
+/** "tjänstepension 10 år, privat pension livsvarigt, sparande 5 år": the pots a scenario draws, with their periods. */
+export function comboText(combo: Combo, kinds: PotKinds, lang: Lang): string {
+  const parts = [
+    ...(kinds.occupational ? [`${say(lang, "tjänstepension", "occupational pension")} ${payoutText(combo.occupational, lang)}`] : []),
+    ...(kinds.pension ? [`${say(lang, "privat pension", "private pension")} ${payoutText(combo.pension, lang)}`] : []),
+    ...(kinds.savings ? [`${say(lang, "sparande", "savings")} ${payoutText(combo.savings, lang)}`] : []),
+  ];
+  return parts.join(", ");
+}
+
+/** Which pots a run pays anything from after the first year: what `comboText` names. */
+export function comboKinds(run: ComboRun): PotKinds {
+  const paid = (values: readonly number[]) => values.some((v, age) => age > run.par && v > 0);
+  return { occupational: paid(run.occupational), pension: paid(run.individual), savings: paid(run.savings) };
+}
+
+/**
+ * What a scenario does, in a sentence. The optimal one says what it chose (`combo`, with the pots there are,
+ * `kinds`); without them it says how it chooses.
+ */
+export function scenarioDescription(
+  id: ScenarioId,
+  years: number,
+  lang: Lang,
+  combo?: Combo,
+  kinds?: PotKinds,
+): string {
   switch (id) {
     case "balanced":
       return say(
@@ -1123,15 +1191,20 @@ export function scenarioDescription(id: ScenarioId, years: number, lang: Lang): 
     case "front":
       return say(
         lang,
-        `Tjänstepension, privat pension och sparande på ${years} år: mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.`,
-        `Occupational pension, private pension and savings over ${years} years: more in the first years, then only the public pension, which is always for life.`,
+        `Uttag på kortare tid, som du valt under Din plan: tjänstepension, privat pension och sparande på ${years} år. Mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.`,
+        `Shorter payout, as you chose under Your plan: occupational pension, private pension and savings over ${years} years. More in the first years, then only the public pension, which is always for life.`,
       );
-    case "hybrid":
-      return say(
+    case "optimal": {
+      const chosen = combo === undefined || kinds === undefined ? "" : comboText(combo, kinds, lang);
+      const how = say(
         lang,
-        `Tjänstepension och privat pension livsvarigt, sparandet på ${years} år: extra pengar de första åren utan att golvet sänks.`,
-        `Occupational and private pension for life, the savings over ${years} years: extra money in the first years without lowering the floor.`,
+        "det sätt som ger mest att leva på totalt fram till din förväntade livslängd, utan att någon månad hamnar under din lägsta nivå. Den allmänna pensionen är alltid livsvarig.",
+        "the way that leaves the most to live on in all up to your expected lifespan, with no month below your lowest level. The public pension is always for life.",
       );
+      return chosen === ""
+        ? capitalise(how)
+        : say(lang, `${capitalise(chosen)}: ${how}`, `${capitalise(chosen)}: ${how}`);
+    }
   }
 }
 
@@ -1144,6 +1217,11 @@ const about = (value: number, l: Lang) => kr(Math.round(value / 100) * 100, l);
 const ageRange = (from: number, to: number, l: Lang) =>
   from === to ? say(l, `vid ${from} år`, `at ${from}`) : say(l, `vid ${from}–${to} år`, `at ${from}–${to}`);
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** A scenario's description, the optimal one's with what it chose. */
+export function scenarioSummary(s: Scenario, years: number, lang: Lang): string {
+  return scenarioDescription(s.id, years, lang, s.run.combo, comboKinds(s.run));
+}
 
 /** An insight as the reader sees it: a headline, what the numbers are, and what to do. */
 export function insightText(insight: Insight, lang: Lang): { readonly title: string; readonly body: string; readonly action: string } {
@@ -1356,8 +1434,8 @@ export function checklistText(item: ChecklistItem, lang: Lang): string {
     case "scenario":
       return say(
         l,
-        `Bestäm uttagsplan: ${scenarioName(item.id, l).toLowerCase()} – ${scenarioDescription(item.id, item.years, l).toLowerCase()}`,
-        `Settle the withdrawal plan: ${scenarioName(item.id, l).toLowerCase()} – ${scenarioDescription(item.id, item.years, l).toLowerCase()}`,
+        `Bestäm uttagsplan: ${scenarioName(item.id, l).toLowerCase()} – ${scenarioDescription(item.id, item.years, l, item.combo, item.kinds).toLowerCase()}`,
+        `Settle the withdrawal plan: ${scenarioName(item.id, l).toLowerCase()} – ${scenarioDescription(item.id, item.years, l, item.combo, item.kinds).toLowerCase()}`,
       );
   }
 }
@@ -1584,7 +1662,7 @@ function scenarioHeader(strategy: Strategy, lang: Lang): string[] {
 
 function scenarioCells(s: Scenario, lang: Lang, years: number): (string | number)[] {
   return [
-    `${scenarioName(s.id, lang)} (${scenarioDescription(s.id, years, lang)})`,
+    `${scenarioName(s.id, lang)} (${scenarioSummary(s, years, lang)})`,
     ...s.phases.map((p) => Math.round(p.monthly)),
     ...s.totals.map((t) => Math.round(t.total)),
     Math.round(s.lowest.monthly),

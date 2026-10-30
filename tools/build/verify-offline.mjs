@@ -3945,9 +3945,10 @@ if (stHeadSv !== "Uttagsstrategi") problems.push(`the strategy tab is headed "${
 // The same three as the unit tests find: the payout period, the first year's tax and the ISK tax.
 if (!sameList(stStart.insights, ["payout", "firstYear", "iskTax"])) problems.push(`"Det de flesta missar" shows ${stStart.insights.join("/")}, expected payout/firstYear/iskTax`);
 if (!stStart.insightText.includes("219 769") || !stStart.insightText.includes("29,5")) problems.push(`the insights do not carry the default's numbers: "${stStart.insightText.slice(0, 300)}"`);
-if (!sameList(stStart.scenarios, ["balanced", "front", "hybrid"])) problems.push(`the scenario table's rows are ${stStart.scenarios.join("/")}, expected balanced/front/hybrid`);
-if (stStart.recommended !== "front" || !sameList(stStart.chip, ["front"]) || stStart.below !== 0) {
-  problems.push(`the default suggests ${stStart.recommended} (chip on ${stStart.chip.join("/")}, ${stStart.below} below the floor), expected front, its row marked and none below`);
+if (!sameList(stStart.scenarios, ["balanced", "front", "optimal"])) problems.push(`the scenario table's rows are ${stStart.scenarios.join("/")}, expected balanced/front/optimal`);
+const stSuggestion = ((await st.locator(".st-recommendation").textContent()) ?? "").replace(/\s+/g, " ");
+if (stStart.recommended !== "optimal" || !sameList(stStart.chip, ["optimal"]) || stStart.below !== 0 || !stSuggestion.startsWith("Förslag: Optimalt (tjänstepension 5 år, sparande 5 år).")) {
+  problems.push(`the default suggests ${stStart.recommended} (chip on ${stStart.chip.join("/")}, ${stStart.below} below the floor, "${stSuggestion}"), expected the optimal one, its row marked and none below`);
 }
 if (!sameList(stStart.payouts, ["5", "10", "15", "20", "0"]) || !sameList(stStart.best, ["10"])) problems.push(`the payout table has ${stStart.payouts.join("/")} with the best ${stStart.best.join("/")}, expected 5/10/15/20/life with 10 years best`);
 if (stStart.checklist.length < 1 || stStart.checklist.length > 5 || !stStart.checklist.includes("payout")) problems.push(`the checklist is ${stStart.checklist.join("/")}, expected one to five steps with the payout period among them`);
@@ -4026,18 +4027,18 @@ if (!stXLabels.includes("Privat sparande") || stXRows !== 2 || stXAfterRemove !=
   problems.push(`the added rows: timeline ${stXLabels.join("/")}, ${stXRows} rows, ${stXAfterRemove} after remove, ${stXAfterReset.join(" / ")} after reset`);
 }
 
-// A floor only the pensions for life keep: the hybrid is suggested, and the front-loaded row's lowest
-// month is marked below it. The runs are kept, so only the evaluation changes.
+// A floor the five-year ways go under: the optimal one keeps it (the savings over 20 years), and the own
+// plan's lowest month is marked below it. The runs are kept, so only the evaluation changes.
 await stType("stFloor", 19000);
 const stMid = await stRead();
+const stMidText = ((await st.locator(".st-recommendation").textContent()) ?? "").replace(/\s+/g, " ");
 await stType("stFloor", 60000);
 const stHigh = await stRead();
 const stHighText = ((await st.locator(".st-recommendation").textContent()) ?? "").replace(/\s+/g, " ");
 await stType("stFloor", 17600);
 console.log(`strategy floor  : 19 000 -> ${stMid.recommended} (${stMid.below} below), 60 000 -> ${stHigh.recommended} (${stHigh.below} below)`);
-if (stMid.recommended !== "hybrid" || stMid.below !== 1 || !sameList(stMid.insights, stStart.insights)) problems.push(`a floor of 19 000 suggests ${stMid.recommended} with ${stMid.below} below, expected hybrid with the front-loaded row below`);
-if (stHigh.recommended !== "balanced" || stHigh.below !== 3 || !stHighText.startsWith("Inget scenario håller 60 000")) problems.push(`a floor of 60 000 suggests ${stHigh.recommended} with ${stHigh.below} below ("${stHighText}")`);
-if ((await stRead()).recommended !== "front") problems.push("putting the floor back did not suggest the front-loaded scenario again");
+if (stMid.recommended !== "optimal" || stMid.below !== 1 || !sameList(stMid.insights, stStart.insights) || !stMidText.includes("sparande 20 år")) problems.push(`a floor of 19 000 suggests ${stMid.recommended} with ${stMid.below} below ("${stMidText}"), expected the optimal one, savings over 20 years, with the own plan's row below`);
+if (stHigh.recommended !== "optimal" || stHigh.below !== 3 || !stHighText.startsWith("Inget sätt att ta ut håller 60 000")) problems.push(`a floor of 60 000 suggests ${stHigh.recommended} with ${stHigh.below} below ("${stHighText}")`);
 
 // A low income and a higher rent: the housing supplement, tested against the savings, comes first,
 // and the shortest occupational payout pays the most.
@@ -4065,7 +4066,7 @@ await tab.waitForTimeout(150);
 const stReset = await stRead();
 console.log(`strategy        : from Prognos ${stImported.join("/")}; reset -> ${stReset.insights.join("/")}, ${stReset.recommended}`);
 if (stImported.join("/") !== "1959/23/38500/66/1") problems.push(`"Hämta från Prognos" gives ${stImported.join("/")}, expected 1959/23/38500/66/1`);
-if (!sameList(stReset.insights, stStart.insights) || stReset.recommended !== "front" || (await stSetting("stSalary").inputValue()) === "24000") problems.push("Återställ did not put the default strategy back");
+if (!sameList(stReset.insights, stStart.insights) || stReset.recommended !== "optimal" || (await stSetting("stSalary").inputValue()) === "24000") problems.push("Återställ did not put the default strategy back");
 
 // Retiring at 63 on a low salary, with no occupational pension and no savings: the pension before tax is under
 // the tax-free income until the guarantee pension at 67, and the checklist says what that costs.
@@ -4092,10 +4093,10 @@ const stSeries = await download(st.locator('.export-btn[data-file="att-leva-pa-p
 const stCsvLines = stCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
 const stSeriesLines = stSeries.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
 console.log(`strategy        : ${stCsv.filename} ${stCsvLines.length} lines, ${stSeries.filename} ${stSeriesLines.length} lines, ${stXlsx.filename}`);
-if (stCsvLines.length !== 4 || !stCsvLines[0].startsWith("Scenario;") || !/^Framtung \(.*\);\d+;/.test(stCsvLines[2]) || !looksLikeXlsx(stXlsx.buffer)) {
+if (stCsvLines.length !== 4 || !stCsvLines[0].startsWith("Scenario;") || !/^Din plan \(.*\);\d+;/.test(stCsvLines[2]) || !looksLikeXlsx(stXlsx.buffer)) {
   problems.push(`the scenario downloads read "${stCsvLines[0]}" with ${stCsvLines.length} lines, xlsx ${looksLikeXlsx(stXlsx.buffer)}`);
 }
-if (stSeriesLines.length !== 95 - 67 + 2 || stSeriesLines[0] !== "Ålder;Balanserad;Framtung;Hybrid") problems.push(`the per-age download starts "${stSeriesLines[0]}" with ${stSeriesLines.length} lines`);
+if (stSeriesLines.length !== 95 - 67 + 2 || stSeriesLines[0] !== "Ålder;Balanserad;Din plan;Optimalt") problems.push(`the per-age download starts "${stSeriesLines[0]}" with ${stSeriesLines.length} lines`);
 
 await tab.locator(".langs button", { hasText: "EN" }).click();
 await tab.waitForTimeout(150);
