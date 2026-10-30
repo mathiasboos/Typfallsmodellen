@@ -74,12 +74,12 @@ export const CAPITAL_TAX = 0.3;
 /**
  * Skatteverket's amounts the tax rules quote, by income year. They change every year and are updated by hand
  * (docs/YEARLY-UPDATE.md). `taxFreeIncome` is "Skattefri årsinkomst" on Belopp och procent: 42,3 % of the
- * prisbasbelopp, below which no income tax is paid and no tax return is due, and the least income from work
- * that earns a public pension. `rotRutMax` is the most ROT and RUT together can take off one person's tax in a
- * year. A year not listed takes the latest one before it.
+ * prisbasbelopp, the most a year that carries no income tax (a return is due from a krona more), and the line
+ * for income from work to earn a public pension. `rotRutMax` is the most ROT and RUT together can take off one
+ * person's tax in a year, `rotMax` the most of it ROT can be. A year not listed takes the latest one before it.
  */
-export const TAX_YEARS: Readonly<Record<number, { readonly taxFreeIncome: number; readonly rotRutMax: number }>> = {
-  2026: { taxFreeIncome: 25_042, rotRutMax: 75_000 },
+export const TAX_YEARS: Readonly<Record<number, { readonly taxFreeIncome: number; readonly rotRutMax: number; readonly rotMax: number }>> = {
+  2026: { taxFreeIncome: 25_041, rotRutMax: 75_000, rotMax: 50_000 },
 };
 
 /** Skatteverket's pages the amounts come from and the tax rules point to. */
@@ -91,7 +91,7 @@ export const SKATTEVERKET = {
 } as const;
 
 /** The amounts for `year`: its own, or the latest listed year's before it (the first year's, before any). */
-export function taxYear(year: number): { readonly year: number; readonly taxFreeIncome: number; readonly rotRutMax: number } {
+export function taxYear(year: number): { readonly year: number; readonly taxFreeIncome: number; readonly rotRutMax: number; readonly rotMax: number } {
   const years = Object.keys(TAX_YEARS)
     .map(Number)
     .sort((a, b) => a - b);
@@ -463,6 +463,7 @@ export interface TaxPicture {
   readonly year: number;
   readonly taxFreeIncome: number;
   readonly rotRutMax: number;
+  readonly rotMax: number;
   /** The tax-free income in the tab's fixed prices. */
   readonly taxFreeFixed: number;
   readonly scenario: ScenarioId;
@@ -507,7 +508,7 @@ export function taxPicture(scenario: Scenario, input: StrategyInput, today: Date
   const below: number[] = [];
   for (let a = par; a <= last; a += 1) {
     if (run.gross[a]! < lowestTaxable.amount) lowestTaxable = { age: a, amount: run.gross[a]! };
-    if (run.gross[a]! < taxFreeFixed) below.push(a);
+    if (run.gross[a]! < taxFreeFixed - 0.5) below.push(a);
   }
   const tax = (a: number) => Math.max(run.gross[a]! - run.net[a]!, 0);
   const untaxed: number[] = [];
@@ -1263,8 +1264,8 @@ export function taxRuleText(
         title: say(l, "Ta alltid ut minst den skattefria nivån", "Always draw at least the tax-free amount"),
         body: say(
           l,
-          `Skattefri årsinkomst ${tax.year} är ${kr(tax.taxFreeIncome, l)}, 42,3 % av prisbasbeloppet. Under den betalar du ingen inkomstskatt och behöver inte deklarera, och det är också den lägsta arbetsinkomst som ger allmän pension. Ta därför ut minst så mycket i pension varje år, också år då du lever på sparpengar – utrymmet går inte att spara till ett annat år.${raised ? ` Som pensionär är ännu mer skattefritt: från ${age(tax.pensionerTaxFree.age, l)} ger det högre grundavdraget ungefär ${kr(tax.pensionerTaxFree.amount, l)} om året utan skatt, enligt modellen.` : ""}`,
-          `The tax-free annual income for ${tax.year} is ${kr(tax.taxFreeIncome, l)}, 42.3 % of the price base amount. Below it you pay no income tax and need not file a return, and it is also the least income from work that earns a public pension. So draw at least that much in pension every year, also in years you live on savings – the room cannot be saved for another year.${raised ? ` As a pensioner even more is tax-free: from ${age(tax.pensionerTaxFree.age, l)} the higher basic deduction leaves about ${kr(tax.pensionerTaxFree.amount, l)} a year untaxed, in the model.` : ""}`,
+          `Skattefri årsinkomst ${tax.year} är ${kr(tax.taxFreeIncome, l)}, 42,3 % av prisbasbeloppet. Upp till den betalar du ingen inkomstskatt och behöver inte deklarera, och det är också gränsen för att en arbetsinkomst ska ge allmän pension. Ta därför ut minst så mycket i pension varje år, också år då du lever på sparpengar – utrymmet går inte att spara till ett annat år.${raised ? ` Som pensionär är ännu mer skattefritt: från ${age(tax.pensionerTaxFree.age, l)} ger det högre grundavdraget ungefär ${kr(tax.pensionerTaxFree.amount, l)} om året utan skatt, enligt modellen.` : ""}`,
+          `The tax-free annual income for ${tax.year} is ${kr(tax.taxFreeIncome, l)}, 42.3 % of the price base amount. Up to it you pay no income tax and need not file a return, and it is also the line for income from work to earn a public pension. So draw at least that much in pension every year, also in years you live on savings – the room cannot be saved for another year.${raised ? ` As a pensioner even more is tax-free: from ${age(tax.pensionerTaxFree.age, l)} the higher basic deduction leaves about ${kr(tax.pensionerTaxFree.amount, l)} a year untaxed, in the model.` : ""}`,
         ),
         mine:
           below.length === 0
@@ -1313,8 +1314,8 @@ export function taxRuleText(
         title: say(l, "ROT och RUT kräver att du betalar skatt", "ROT and RUT need tax to take off"),
         body: say(
           l,
-          `ROT- och RUT-avdraget är en skattereduktion. Det kan bara minska skatt som du faktiskt betalar, och högst ${kr(tax.rotRutMax, l)} per person och år (${tax.year}). Har du ingen inkomst av tjänst, som pension eller lön, över den skattefria nivån får du inget avdrag alls.`,
-          `ROT and RUT are tax reductions. They can only take off tax you actually pay, and at most ${kr(tax.rotRutMax, l)} per person and year (${tax.year}). With no income from work or pension above the tax-free amount you get no deduction at all.`,
+          `ROT- och RUT-avdraget är en skattereduktion. Det kan bara minska skatt som du faktiskt betalar, och högst ${kr(tax.rotRutMax, l)} per person och år (${tax.year}), varav ROT högst ${kr(tax.rotMax, l)}. Har du ingen inkomst av tjänst, som pension eller lön, över den skattefria nivån får du inget avdrag alls.`,
+          `ROT and RUT are tax reductions. They can only take off tax you actually pay, and at most ${kr(tax.rotRutMax, l)} per person and year (${tax.year}), of which ROT at most ${kr(tax.rotMax, l)}. With no income from work or pension above the tax-free amount you get no deduction at all.`,
         ),
         mine,
         link: page(SKATTEVERKET.rotRut, "ROT- och RUT-arbete"),
@@ -1351,8 +1352,8 @@ export function taxRuleText(
         title: say(l, "Ränteavdrag: först mot ISK, sedan mot pensionen", "Interest: against an ISK first, then the pension"),
         body: say(
           l,
-          `Räntor på bolån och andra lån som uppfyller kraven på säkerhet dras först av mot inkomst av kapital, till exempel schablonintäkten på ett ISK. Det som blir över minskar skatten på pension eller lön. Är din enda inkomst det skattefria beloppet, högst ${kr(tax.taxFreeIncome - 1, l)} (${tax.year}), finns ingen skatt att minska och du får inget ränteavdrag. Har du ett ISK kan räntan ändå kvittas mot schablonintäkten. Det gäller inte kapitalförsäkring, eftersom det är försäkringsbolaget som äger tillgångarna.`,
-          `Interest on mortgages and other loans that meet the security requirements is set first against income from capital, such as an ISK's notional income (schablonintäkt). What is left over takes tax off a pension or salary. If your only income is the tax-free amount, at most ${kr(tax.taxFreeIncome - 1, l)} (${tax.year}), there is no tax to take off and no interest deduction. With an ISK the interest can still be set against its notional income. That does not apply to an endowment insurance (kapitalförsäkring), as the insurer owns the assets.`,
+          `Räntor på bolån och andra lån som uppfyller kraven på säkerhet dras först av mot inkomst av kapital, till exempel schablonintäkten på ett ISK. Det som blir över minskar skatten på pension eller lön. Är din enda inkomst det skattefria beloppet, högst ${kr(tax.taxFreeIncome, l)} (${tax.year}), finns ingen skatt att minska och du får inget ränteavdrag. Har du ett ISK kan räntan ändå kvittas mot schablonintäkten. Det gäller inte kapitalförsäkring, eftersom det är försäkringsbolaget som äger tillgångarna.`,
+          `Interest on mortgages and other loans that meet the security requirements is set first against income from capital, such as an ISK's notional income (schablonintäkt). What is left over takes tax off a pension or salary. If your only income is the tax-free amount, at most ${kr(tax.taxFreeIncome, l)} (${tax.year}), there is no tax to take off and no interest deduction. With an ISK the interest can still be set against its notional income. That does not apply to an endowment insurance (kapitalförsäkring), as the insurer owns the assets.`,
         ),
         mine,
         link: page(SKATTEVERKET.interest, "Avdrag för ränteutgifter"),

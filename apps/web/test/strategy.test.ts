@@ -321,7 +321,7 @@ describe("the tax rules", () => {
   const early = strategy({ monthlySalary: 6_000, retirementAge: 63, scheme: Scheme.None, savingsCapital: 0 });
 
   it("take Skatteverket's amounts for the year, or the latest listed before it", () => {
-    expect(taxYear(2026)).toEqual({ year: 2026, taxFreeIncome: 25_042, rotRutMax: 75_000 });
+    expect(taxYear(2026)).toEqual({ year: 2026, taxFreeIncome: 25_041, rotRutMax: 75_000, rotMax: 50_000 });
     expect(taxYear(2031).year).toBe(2026);
     expect(taxYear(2020).year).toBe(2026);
     expect(Object.values(SKATTEVERKET).every((href) => href.startsWith("https://www.skatteverket.se/"))).toBe(true);
@@ -359,9 +359,9 @@ describe("the tax rules", () => {
     const sv = TAX_RULES.map((rule) => taxRuleText(rule, plain.tax, plain.input, "sv"));
     const en = TAX_RULES.map((rule) => taxRuleText(rule, plain.tax, plain.input, "en"));
     expect(sv.map((t) => t.link.href)).toEqual([SKATTEVERKET.amounts, SKATTEVERKET.rotRut, SKATTEVERKET.interest, SKATTEVERKET.reductions]);
-    expect(plainText(sv[0]!.body)).toContain("Skattefri årsinkomst 2026 är 25 042 kr");
+    expect(plainText(sv[0]!.body)).toContain("Skattefri årsinkomst 2026 är 25 041 kr");
     expect(plainText(sv[0]!.mine)).toContain("över nivån");
-    expect(plainText(sv[1]!.body)).toContain("högst 75 000 kr per person och år (2026)");
+    expect(plainText(sv[1]!.body)).toContain("högst 75 000 kr per person och år (2026), varav ROT högst 50 000 kr");
     expect(plainText(sv[1]!.mine)).toContain("Gör därför större ROT-arbeten de år skatten är som högst.");
     expect(plainText(sv[2]!.body)).toContain("högst 25 041 kr (2026)");
     expect(plainText(sv[2]!.body)).toContain("kapitalförsäkring");
@@ -377,10 +377,10 @@ describe("the tax rules", () => {
     expect(tax.lowestTaxable.amount).toBeLessThan(tax.taxFreeFixed);
     expect(tax.taxLow.amount).toBe(0);
     const step = early.checklist.find((c) => c.kind === "taxFree")!;
-    expect(step).toEqual({ kind: "taxFree", from: 63, to: 66, amount: 25_042, year: 2026, topUp: false });
+    expect(step).toEqual({ kind: "taxFree", from: 63, to: 66, amount: 25_041, year: 2026, topUp: false });
     expect(early.checklist.indexOf(step)).toBeLessThanOrEqual(2);
-    expect(plainText(checklistText(step, "sv"))).toContain("Vid 63–66 år är din pension före skatt under den skattefria årsinkomsten, 25 042 kr (2026).");
-    expect(plainText(checklistText({ ...step, topUp: true }, "sv"))).toContain("Ta ut minst 25 042 kr om året (2026) i pension också vid 63–66 år");
+    expect(plainText(checklistText(step, "sv"))).toContain("Vid 63–66 år är din pension före skatt under den skattefria årsinkomsten, 25 041 kr (2026).");
+    expect(plainText(checklistText({ ...step, topUp: true }, "sv"))).toContain("Ta ut minst 25 041 kr om året (2026) i pension också vid 63–66 år");
     const rules = TAX_RULES.map((rule) => plainText(taxRuleText(rule, tax, early.input, "sv").mine));
     expect(rules[0]).toContain("under nivån vid 63–66 år");
     expect(tax.untaxed).toEqual([63, 64, 65, 66]);

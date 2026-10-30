@@ -161,7 +161,7 @@ has come. All are in `apps/web/src/strategy.ts`:
 - `TAX_YEARS`: add the new year with
   - `taxFreeIncome`, "Skattefri årsinkomst" (42,3 % of the prisbasbelopp) on
     [Belopp och procent](https://www.skatteverket.se/privat/skatter/beloppochprocent.4.18e1b10334ebe8bc80004109.html);
-  - `rotRutMax`, the most ROT and RUT together can take off one person's tax in a year, on
+  - `rotRutMax` and `rotMax`, the most ROT and RUT together (and ROT alone) can take off one person's tax in a year, on
     [ROT- och RUT-arbete](https://www.skatteverket.se/privat/fastigheterochbostad/rotarbeteochrutarbete.4.2e56d4ba1202f95012080002966.html).
 
   Until a year is added the tab quotes the latest listed year's amounts and says which year they are for.

@@ -1693,7 +1693,7 @@ change every year and are typed in by hand by income year in `TAX_YEARS` (YEARLY
 the latest one before it and says which year that is. The amount of a year is put in the tab's fixed prices with the
 run's price factor for that year.
 
-- *Always draw at least the tax-free amount.* Skatteverket's "Skattefri årsinkomst" (2026: 25 042 kr, 42,3 % of the
+- *Always draw at least the tax-free amount.* Skatteverket's "Skattefri årsinkomst" (2026: 25 041 kr, 42,3 % of the
   prisbasbelopp): below it no income tax is paid and no return is due, and it is the least income from work that earns
   a public pension. The room cannot be saved for another year, so the pension drawn should reach it every year, also in
   years lived on savings. The person's figure is the least pension before tax from retirement to 95, and the ages it is
