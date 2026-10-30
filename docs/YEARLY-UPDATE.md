@@ -152,6 +152,27 @@ Three things that would otherwise be hand-copying are not:
 So a year that brings **only new data** is: extract, run the checks in step 6, build, verify, ship
 — with no code change at all.
 
+### 8. Skatteverket's amounts in "Uttagsstrategi"
+
+These are not in the workbook. They change every income year and are copied by hand from Skatteverket
+once a year, in December or January when the new year's amounts are out, whether or not a new workbook
+has come. All are in `apps/web/src/strategy.ts`:
+
+- `TAX_YEARS`: add the new year with
+  - `taxFreeIncome`, "Skattefri årsinkomst" (42,3 % of the prisbasbelopp) on
+    [Belopp och procent](https://www.skatteverket.se/privat/skatter/beloppochprocent.4.18e1b10334ebe8bc80004109.html);
+  - `rotRutMax` and `rotMax`, the most ROT and RUT together (and ROT alone) can take off one person's tax in a year, on
+    [ROT- och RUT-arbete](https://www.skatteverket.se/privat/fastigheterochbostad/rotarbeteochrutarbete.4.2e56d4ba1202f95012080002966.html).
+
+  Until a year is added the tab quotes the latest listed year's amounts and says which year they are for.
+- `JAMKNING_DEADLINES`: the last day in the autumn to apply for a jämkning that holds from January.
+- Read [Avdrag för ränteutgifter](https://www.skatteverket.se/privat/deklaration/avdragforprivatpersoner/avdragforranteutgifter.106.1b39a64a1919eabb488b87.html)
+  and [Skattereduktioner](https://www.skatteverket.se/privat/skatter/arbeteochinkomst/skattereduktioner.4.3810a01c150939e893f1a17e.html)
+  for changed rules. The texts are in `taxRuleText`.
+
+`apps/web/test/strategy.test.ts` fixes its day in 2026, so its numbers hold after a year is added; add
+the new year's amounts to its `taxYear` test beside 2026's. Then rebuild and run `npm run verify:offline`.
+
 ## What needs a human, and what does not
 
 | Step | Automated |
@@ -162,3 +183,4 @@ So a year that brings **only new data** is: extract, run the checks in step 6, b
 | Writing the TypeScript for a new rule | No |
 | Deciding a rule change is faithfully ported | No |
 | Producing golden files from Excel | No — needs Windows and Excel |
+| Skatteverket's amounts in "Uttagsstrategi" (`TAX_YEARS`, `JAMKNING_DEADLINES`) | No — copied from Skatteverket's pages each year (step 8) |

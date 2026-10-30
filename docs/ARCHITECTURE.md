@@ -1684,27 +1684,54 @@ when it comes to at least 1 000 kr (`NOTEWORTHY`); at most three, in a fixed ord
 year is now (the dates in `JAMKNING_DEADLINES`) and last when that year is further off, checking the forecast at
 minPension, the payout period, starting the taxed pots on 1 January the year after (when that saves at least 500 kr),
 applying for the housing supplement (from which age, and what it comes to a month on average), the ISK, and settling on
-the suggested scenario. `today` is passed in, so the tests fix it.
+the suggested scenario. Right after minPension comes the tax-free income, when some year's pension before tax is under
+it (below). `today` is passed in, so the tests fix it.
+
+**Tax and tax reductions** (`taxPicture`, `taxRuleText`): four rules that decide how much of the pension the person
+keeps, each with Skatteverket's page and what it comes to for this person, read off the suggested scenario. The amounts
+change every year and are typed in by hand by income year in `TAX_YEARS` (YEARLY-UPDATE.md); a year not listed quotes
+the latest one before it and says which year that is. The amount of a year is put in the tab's fixed prices with the
+run's price factor for that year.
+
+- *Always draw at least the tax-free amount.* Skatteverket's "Skattefri årsinkomst" (2026: 25 041 kr, 42,3 % of the
+  prisbasbelopp): below it no income tax is paid and no return is due, and it is the least income from work that earns
+  a public pension. The room cannot be saved for another year, so the pension drawn should reach it every year, also in
+  years lived on savings. The person's figure is the least pension before tax from retirement to 95, and the ages it is
+  under the amount (a checklist step then, with the advice to draw an occupational or private pension earlier where the
+  plan has one). The card also gives what the model leaves untaxed once the higher basic deduction applies, from the
+  year after the riktålder (`zeroTaxLevel`, by bisection on `netAt`: about 65 800 kr a year), far more than the general
+  amount.
+- *ROT and RUT need tax to take off.* A tax reduction takes off only tax actually paid, at most `rotRutMax` a person and
+  year (2026: 75 000 kr). The person's figure is the tax on the pension after the first year, the most and the least
+  (`gross - net`, the public-service fee and the burial fee included, so "about"), and the ages with none at all; where
+  the least is well under the most, larger ROT work belongs in the years the tax is highest.
+- *Interest: against an ISK first.* Interest on loans that meet the security requirements is set first against income
+  from capital, such as an ISK's schablonintäkt; only the rest takes tax off a pension or salary, and with only the
+  tax-free amount as income there is none. A kapitalförsäkring does not count: the insurer owns the assets. The
+  person's figure is the ISK's schablonintäkt the first year: its tax over the 30 % tax on capital.
+- *Other tax reductions*: the same holds; a link to Skatteverket's list.
 
 **The page** (`strategyPanel.ts`): the inputs, the insight cards (a number, a title, the arithmetic, what to do), the
 suggestion in words, the scenario table (the suggested row marked "★ Förslag", a lowest month below the floor marked in
 its cell), the line chart (each scenario a month by age, the suggested one heavy, and the floor dashed, drawn by
 `renderLineChart` with its legend switches; the colours are the comparison tab's `--fig-scenario-*` steps), the payout
-table, the checklist, the notes, and four downloads (the scenarios and what there is to live on by age, CSV and Excel,
-whole kronor).
+table, the tax rules (the same cards, two to a row, without a number and ending in a link), the checklist, the notes,
+and four downloads (the scenarios and what there is to live on by age, CSV and Excel, whole kronor).
 
 **Left out on purpose:** a couple (the housing supplement is a single person's), other orders of the pots than the three
 scenarios, taking the public pension later or in part ("När ta ut pensionen?" and Avancerat do that), and discounting.
 
-**Checked** by `apps/web/test/strategy.test.ts` (22 tests: the inputs and their bounds, what each run asks the model, that
+**Checked** by `apps/web/test/strategy.test.ts` (26 tests: the inputs and their bounds, what each run asks the model, that
 the balanced scenario without the housing supplement is the fifth tab's lifelong run to the krona, the scenarios adding
 up, the suggestion with a floor that each scenario does or does not keep, the housing supplement following the savings,
 each rule's trigger and order, the checklist with and without a jämkning deadline near, `overtakenAt` and `recommend` on
-hand-built runs, and the downloads), by `packages/engine/test/btpWealth.test.ts` (five tests: up to 100 000 kr per age is
+hand-built runs, the downloads, and the tax rules: the amounts by year, the person's figures against the run, the four
+texts and their pages, and a retirement at 63 on a low salary with years under the tax-free income), by `packages/engine/test/btpWealth.test.ts` (five tests: up to 100 000 kr per age is
 no wealth, the static amount keeps the workbook's quirk, a larger amount per age is the static one, a falling balance
 is followed year by year, and nothing changes without it), and by a block in `verify-offline.mjs` (the insights, the
-scenarios and the suggestion, the payout table, the checklist, the chart, two floors, a low income with a higher rent,
-the housing supplement switched off, the import from Prognos and reset, the downloads, English, 375px).
+scenarios and the suggestion, the payout table, the checklist, the chart, the tax rules and their links, two floors, a
+low income with a higher rent, the housing supplement switched off, the import from Prognos and reset, a retirement at
+63 with years under the tax-free income, the downloads, English, 375px).
 
 ### Table 2's own column tooltips, and Ordlista
 
