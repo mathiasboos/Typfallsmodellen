@@ -1640,6 +1640,18 @@ lowest level a month to live on, a shorter payout period, an expected lifespan (
 `tempIpsUttag`), on `tjpPar` for a later start of the taxed pots, and on one addition to the engine,
 `formogenhetPerAge` (VBA-MAPPING.md).
 
+**More occupational pensions and private savings.** Below the first of each, the tab lists more, up to five
+(`MAX_EXTRA`), a row each with its capital and monthly saving, added and taken away with a button (the rows are rebuilt
+only then, so a field being typed in keeps its focus). An added occupational pension -- from an earlier employer or
+another agreement, a paid-up policy say -- is taxed as income: it is pooled with the individual occupational and the
+private pension in the model's IPS pot (`pooledPension`), which has the same return, payout period and tax, so it is
+paid out as the private pension is (for life, or over the shorter period). The agreement's own pension is still the
+model's TJP, the only pot the payout table varies. An added saving is an ISK or a depot: savings of one kind are summed
+into one pot (`savingsByKind`), and each kind with anything in it is a savings run of its own -- the model carries one
+kind per run -- whose payouts, balances, yield tax and wealth add up. What is held in the ISK kind alone (`iskBalance`,
+`iskTax`) is what the ISK's insight and its schablonintäkt are read from; the timeline's row is named "Privat
+sparande" when both kinds are in the plan.
+
 **Two runs for each way of drawing the pots.** `strategy.ts` (no DOM) runs the private savings on their own, as the
 fifth tab does -- the kind of saving, its payout period as `tempIpsUttag`, the taxed pots off -- for what they pay, their
 balance and yield tax by age, and their nominal balance at the start of each age. Then it runs the pensions
@@ -1655,16 +1667,24 @@ comparison). A tab that weighs spending the savings early can use neither: with 
 age)` hands `BTP` and `SBTP` the wealth at the start of that age, and up to 100 000 kr is disregarded, as the rules
 say. Without it nothing changes.
 
-**Three scenarios.** Balanserad (everything for life), Framtung (everything over the shorter period) and Hybrid (the
-pensions for life, the private savings over the shorter period; only when there are savings paid out tax-free). Each
+**Three scenarios.** Balanserad (everything for life), Din plan (everything over the shorter period the person sets
+under "Din plan") and Optimalt (`optimalCombo`): every pot that has anything in it -- the agreement's occupational
+pension, the taxed private pots, the private savings -- is run over 5, 10, 15 and 20 years and for life
+(`OPTIMAL_PERIODS`, at most 125 runs, each savings and pension run done once however many lists it is in), and the
+optimal one is the way that leaves the most to live on in all up to the expected lifespan among those whose lowest
+month up to 95 stays at or above the floor; if none does, the one whose lowest month is highest; a tie (within a
+krona) goes to more pots for life, then to longer periods. The own plan and the hybrid (pensions for life, savings
+over the shorter period) are among the candidates, so the optimal one is never worse by that measure than either.
+It is always the one suggested, and its description and the suggestion name the periods it chose. The candidates
+are run once and kept (`StrategyRuns.candidates`), so a new floor or lifespan only reads them again. Each scenario
 has its average a month in three stretches (the first ten years, the next ten, then to 95), its total to 80, the
-expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the lifespan
-from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come back). The
-expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is always for life; only the occupational and private pension and the savings change payout period between the scenarios, and the descriptions say so. The suggestion (`recommend`) is the scenario that pays
-the most in the first ten years among those whose lowest month stays at or above the floor; if none does, the one whose
-lowest month is highest; a tie goes to the simpler way (balanced, then hybrid, then front-loaded). A second table draws
-the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same lifespans
-and the lifespan from which "for life" catches up.
+expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the
+lifespan from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come
+back). The expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is
+always for life; only the occupational and private pension and the savings change payout period between the
+scenarios, and the descriptions say so. With nothing to draw any other way the three are the same. A second table
+draws the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same
+lifespans and the lifespan from which "for life" catches up.
 
 **What most people miss** is a set of rules over the same runs, each measured in kronor for this person and shown only
 when it comes to at least 1 000 kr (`NOTEWORTHY`); at most three, in a fixed order (`INSIGHT_ORDER`):
@@ -1678,7 +1698,8 @@ when it comes to at least 1 000 kr (`NOTEWORTHY`); at most three, in a fixed ord
   the year after would save at the model's marginal rates;
 - the ISK's tax up to the expected lifespan, with the tax-free 300 000 kr from 2026 named;
 - state tax in the front-loaded scenario, and a longer payout period that avoids it;
-- what the hybrid adds a month in the first ten years, against what it costs at a long life.
+- what the hybrid (pensions for life, savings over the shorter period) adds a month in the first ten years, against
+  what it costs at a long life.
 
 **The checklist** has at most five steps, by priority: jämkning first when the autumn deadline for the first pension
 year is now (the dates in `JAMKNING_DEADLINES`) and last when that year is further off, checking the forecast at
