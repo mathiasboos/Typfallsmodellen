@@ -1688,3 +1688,59 @@ td.pl-floor-name { font-style: italic; }
 .pv-table tr.pv-strong td, .pv-table tr.pv-strong th { font-weight: 700; }
 .pv-table tbody tr.pv-strong:last-child td, .pv-table tbody tr.pv-strong:last-child th { border-top: 1px solid var(--rule); }
 .pv-notes { margin: 4px 0 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 0.86rem; color: var(--text-secondary); }
+
+/*
+ * "Uttagsstrategi" (strategyPanel.ts): three numbered cards for what most people miss, the scenarios'
+ * table with the suggested one marked, the payout table and a numbered checklist. The cards sit on the
+ * sunken surface with the accent rule the answer boxes use; nothing here is a new colour.
+ */
+.st-insights { display: grid; gap: 12px; }
+@media (min-width: 900px) { .st-insights { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); } }
+.st-insight {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px 14px 14px 46px;
+  background: var(--surface-sunken);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+.st-insight-number {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--surface-raised);
+  font-weight: 700;
+  font-size: 0.8rem;
+  display: grid;
+  place-items: center;
+}
+.st-insight-title { margin: 0; font-size: 0.98rem; line-height: 1.3; }
+.st-insight-body { margin: 0; font-size: 0.86rem; color: var(--text-primary); }
+.st-insight-action { margin: 2px 0 0; font-size: 0.86rem; color: var(--text-secondary); }
+.st-recommendation { font-size: 0.92rem; color: var(--text-primary); font-weight: 600; max-width: 90ch; }
+.st-table td.st-scenario-name { white-space: normal; min-width: 210px; max-width: 320px; text-align: left; }
+.st-table td.st-scenario-name strong { margin-right: 6px; }
+.st-chip {
+  display: inline-block;
+  margin-left: 2px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--banner);
+  color: var(--banner-ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.st-table td.st-below { color: var(--danger-ink); background: var(--danger-tint); font-weight: 700; }
+.st-table td.st-best { font-weight: 700; }
+.st-subhead { margin: 6px 0 0; font-size: 0.95rem; }
+.st-payouts { display: grid; gap: 8px; }
+.st-downloads { justify-content: flex-start; }
+.st-checklist { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; max-width: 90ch; }
+.st-checklist li { padding-left: 4px; line-height: 1.45; }
+.st-checklist li::marker { font-weight: 700; color: var(--accent); }

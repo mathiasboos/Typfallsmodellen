@@ -1486,9 +1486,9 @@ await tab.waitForTimeout(50);
 // controls reach its own run and nothing else's.
 
 const screenButtons = await tab.locator(".screen-toggle .panel-btn").count();
-if (screenButtons !== 8) {
+if (screenButtons !== 9) {
   problems.push(
-    `screen toggle has ${screenButtons} buttons, expected 8 (Prognos / Portföljvärde / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft)`,
+    `screen toggle has ${screenButtons} buttons, expected 9 (Prognos / Portföljvärde / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Uttagsstrategi / Om Pensionslyft)`,
   );
 }
 
@@ -3903,6 +3903,129 @@ await tab.waitForTimeout(100);
 await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
 await tab.waitForTimeout(50);
 
+// ---- Uttagsstrategi ------------------------------------------------------------
+//
+// One person's withdrawals three ways -- everything for life, everything over a few years, and the
+// pensions for life with the savings over those years -- against a lowest level a month to live on;
+// up to three things most people miss, worked out from the same runs; and a checklist of at most five
+// steps. The default is someone born 1961 with 500 000 kronor in an ISK, as in the unit tests.
+
+await tab.locator('.screen-toggle .panel-btn[data-screen="strategy"]').click();
+await tab.waitForSelector('[data-role="strategy-panel"] [data-role="st-scenario-table"]');
+await tab.waitForTimeout(250);
+const st = tab.locator('[data-role="strategy-panel"]');
+const stSetting = (name) => st.locator(`[data-setting="${name}"]`);
+const stType = async (name, value) => {
+  const field = stSetting(name);
+  await field.fill(String(value));
+  await field.dispatchEvent("change");
+  await field.evaluate((el) => el.blur());
+  await tab.waitForTimeout(150);
+};
+const stRead = async () => ({
+  insights: await st.locator('[data-role="st-insights"] .st-insight').evaluateAll((cards) => cards.map((card) => card.dataset.insight)),
+  insightText: ((await st.locator('[data-role="st-insights"]').textContent()) ?? "").replace(/\s+/g, " "),
+  scenarios: await st.locator('[data-role="st-scenario-table"] tbody tr').evaluateAll((trs) => trs.map((tr) => tr.dataset.scenario)),
+  chip: await st.locator('[data-role="st-scenario-table"] tbody tr:has(.st-chip)').evaluateAll((trs) => trs.map((tr) => tr.dataset.scenario)),
+  recommended: await st.locator(".st-recommendation").getAttribute("data-recommended"),
+  below: await st.locator('[data-role="st-scenario-table"] td.st-below').count(),
+  payouts: await st.locator('[data-role="st-payout-table"] tbody tr').evaluateAll((trs) => trs.map((tr) => tr.dataset.payout)),
+  best: await st.locator('[data-role="st-payout-table"] tbody tr:has(td.st-best)').evaluateAll((trs) => trs.map((tr) => tr.dataset.payout)),
+  checklist: await st.locator('[data-role="st-checklist"] li').evaluateAll((items) => items.map((li) => li.dataset.item)),
+});
+const stHeadSv = ((await st.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
+const stStart = await stRead();
+const stLines = await st.locator('[data-role="st-fig-scenarios"] svg polyline.pa-line').count();
+const stDashed = await st.locator('[data-role="st-fig-scenarios"] svg polyline.pa-line-dashed').count();
+console.log(
+  `strategy        : "${stHeadSv}", insights ${stStart.insights.join("/")}, scenarios ${stStart.scenarios.join("/")} (${stStart.recommended} suggested), ` +
+    `payouts ${stStart.payouts.join("/")} (best ${stStart.best.join("/")}), checklist ${stStart.checklist.join("/")}, chart ${stLines} lines`,
+);
+if (stHeadSv !== "Uttagsstrategi") problems.push(`the strategy tab is headed "${stHeadSv}", expected "Uttagsstrategi"`);
+// The same three as the unit tests find: the payout period, the first year's tax and the ISK tax.
+if (!sameList(stStart.insights, ["payout", "firstYear", "iskTax"])) problems.push(`"Det de flesta missar" shows ${stStart.insights.join("/")}, expected payout/firstYear/iskTax`);
+if (!stStart.insightText.includes("219 769") || !stStart.insightText.includes("29,5")) problems.push(`the insights do not carry the default's numbers: "${stStart.insightText.slice(0, 300)}"`);
+if (!sameList(stStart.scenarios, ["balanced", "front", "hybrid"])) problems.push(`the scenario table's rows are ${stStart.scenarios.join("/")}, expected balanced/front/hybrid`);
+if (stStart.recommended !== "front" || !sameList(stStart.chip, ["front"]) || stStart.below !== 0) {
+  problems.push(`the default suggests ${stStart.recommended} (chip on ${stStart.chip.join("/")}, ${stStart.below} below the floor), expected front, its row marked and none below`);
+}
+if (!sameList(stStart.payouts, ["5", "10", "15", "20", "0"]) || !sameList(stStart.best, ["10"])) problems.push(`the payout table has ${stStart.payouts.join("/")} with the best ${stStart.best.join("/")}, expected 5/10/15/20/life with 10 years best`);
+if (stStart.checklist.length < 1 || stStart.checklist.length > 5 || !stStart.checklist.includes("payout")) problems.push(`the checklist is ${stStart.checklist.join("/")}, expected one to five steps with the payout period among them`);
+if (stLines !== 4 || stDashed !== 1) problems.push(`the scenario chart has ${stLines} lines (${stDashed} dashed), expected three scenarios and the dashed floor`);
+
+// A floor only the pensions for life keep: the hybrid is suggested, and the front-loaded row's lowest
+// month is marked below it. The runs are kept, so only the evaluation changes.
+await stType("stFloor", 19000);
+const stMid = await stRead();
+await stType("stFloor", 60000);
+const stHigh = await stRead();
+const stHighText = ((await st.locator(".st-recommendation").textContent()) ?? "").replace(/\s+/g, " ");
+await stType("stFloor", 17600);
+console.log(`strategy floor  : 19 000 -> ${stMid.recommended} (${stMid.below} below), 60 000 -> ${stHigh.recommended} (${stHigh.below} below)`);
+if (stMid.recommended !== "hybrid" || stMid.below !== 1 || !sameList(stMid.insights, stStart.insights)) problems.push(`a floor of 19 000 suggests ${stMid.recommended} with ${stMid.below} below, expected hybrid with the front-loaded row below`);
+if (stHigh.recommended !== "balanced" || stHigh.below !== 3 || !stHighText.startsWith("Inget scenario håller 60 000")) problems.push(`a floor of 60 000 suggests ${stHigh.recommended} with ${stHigh.below} below ("${stHighText}")`);
+if ((await stRead()).recommended !== "front") problems.push("putting the floor back did not suggest the front-loaded scenario again");
+
+// A low income and a higher rent: the housing supplement, tested against the savings, comes first,
+// and the shortest occupational payout pays the most.
+await stType("stSalary", 24000);
+await stType("stRent", 7000);
+const stLow = await stRead();
+await st.locator('[data-setting="stHousing"]').uncheck();
+await tab.waitForTimeout(150);
+const stLowOff = await stRead();
+await st.locator('[data-setting="stHousing"]').check();
+await tab.waitForTimeout(150);
+console.log(`strategy low    : insights ${stLow.insights.join("/")}, best payout ${stLow.best.join("/")}; without the housing supplement ${stLowOff.insights.join("/")}`);
+if (stLow.insights[0] !== "btpWealth" || !sameList(stLow.best, ["5"]) || !stLow.checklist.includes("btp")) {
+  problems.push(`at 24 000 a month and a rent of 7 000 the insights are ${stLow.insights.join("/")}, the best payout ${stLow.best.join("/")} and the checklist ${stLow.checklist.join("/")}`);
+}
+if (stLowOff.insights.includes("btpWealth")) problems.push("with the housing supplement switched off the insights still tell of it");
+
+// "Hämta från Prognos" copies the form's person; Återställ puts the default back.
+await st.locator('[data-action="st-import-forecast"]').click();
+await tab.waitForTimeout(150);
+const stImported = [];
+for (const name of ["stBorn", "stStartWork", "stSalary", "stRetirement", "stScheme"]) stImported.push(await stSetting(name).inputValue());
+await st.locator('[data-action="st-reset"]').click();
+await tab.waitForTimeout(150);
+const stReset = await stRead();
+console.log(`strategy        : from Prognos ${stImported.join("/")}; reset -> ${stReset.insights.join("/")}, ${stReset.recommended}`);
+if (stImported.join("/") !== "1959/23/38500/66/1") problems.push(`"Hämta från Prognos" gives ${stImported.join("/")}, expected 1959/23/38500/66/1`);
+if (!sameList(stReset.insights, stStart.insights) || stReset.recommended !== "front" || (await stSetting("stSalary").inputValue()) === "24000") problems.push("Återställ did not put the default strategy back");
+
+// The downloads, the English labels and a phone.
+const stCsv = await download(st.locator('.export-btn[data-file="uttagsstrategi.csv"]'));
+const stXlsx = await download(st.locator('.export-btn[data-file="uttagsstrategi.xlsx"]'));
+const stSeries = await download(st.locator('.export-btn[data-file="att-leva-pa-per-ar.csv"]'));
+const stCsvLines = stCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+const stSeriesLines = stSeries.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`strategy        : ${stCsv.filename} ${stCsvLines.length} lines, ${stSeries.filename} ${stSeriesLines.length} lines, ${stXlsx.filename}`);
+if (stCsvLines.length !== 4 || !stCsvLines[0].startsWith("Scenario;") || !/^Framtung \(.*\);\d+;/.test(stCsvLines[2]) || !looksLikeXlsx(stXlsx.buffer)) {
+  problems.push(`the scenario downloads read "${stCsvLines[0]}" with ${stCsvLines.length} lines, xlsx ${looksLikeXlsx(stXlsx.buffer)}`);
+}
+if (stSeriesLines.length !== 95 - 67 + 2 || stSeriesLines[0] !== "Ålder;Balanserad;Framtung;Hybrid") problems.push(`the per-age download starts "${stSeriesLines[0]}" with ${stSeriesLines.length} lines`);
+
+await tab.locator(".langs button", { hasText: "EN" }).click();
+await tab.waitForTimeout(150);
+const stHeadEn = ((await st.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
+const stButtonEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="strategy"]').textContent()) ?? "").trim();
+const stInsightsEn = ((await st.locator('[data-role="st-insights"] h2 span').first().textContent()) ?? "").trim();
+const stChipEn = ((await st.locator(".st-chip").textContent()) ?? "").trim();
+await tab.locator(".langs button", { hasText: "SV" }).click();
+await tab.waitForTimeout(150);
+if (stHeadEn !== "Withdrawal strategy" || stButtonEn !== "Withdrawal strategy" || stInsightsEn !== "What most people miss" || stChipEn !== "★ Suggested") {
+  problems.push(`in English the tab reads "${stHeadEn}" / "${stButtonEn}" / "${stInsightsEn}" / "${stChipEn}"`);
+}
+await tab.setViewportSize({ width: 375, height: 800 });
+await tab.waitForTimeout(150);
+const stOverflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+if (stOverflow > 1) problems.push(`the Uttagsstrategi tab widens the page by ${stOverflow}px at 375px`);
+await tab.setViewportSize({ width: 1280, height: 1000 });
+await tab.waitForTimeout(100);
+await tab.locator('.screen-toggle .panel-btn[data-screen="single"]').click();
+await tab.waitForTimeout(50);
+
 // ---- Om Pensionslyft -----------------------------------------------------------
 //
 // The last entry of the main menu: what the site is for, the disclaimer and how to reach it.
@@ -3925,8 +4048,8 @@ const tabNameEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="ab
 await tab.locator(".langs button", { hasText: "SV" }).click();
 await tab.waitForTimeout(100);
 console.log(`about           : menu ${tabNamesSv.join(" / ")}; "${aboutSv.head}" / "${aboutEn.head}", ${aboutSv.headings.join("/")}, link ${aboutSv.link}`);
-if (!sameList(tabNamesSv, ["Prognos", "Portföljvärde", "Jämför scenarier", "Mikrosim", "När ta ut pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Om Pensionslyft"])) {
-  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Portföljvärde / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Om Pensionslyft`);
+if (!sameList(tabNamesSv, ["Prognos", "Portföljvärde", "Jämför scenarier", "Mikrosim", "När ta ut pensionen?", "Hur länge räcker pensionen?", "Hur mycket får jag?", "Uttagsstrategi", "Om Pensionslyft"])) {
+  problems.push(`the main menu reads ${tabNamesSv.join(" / ")}, expected Prognos / Portföljvärde / Jämför scenarier / Mikrosim / När ta ut pensionen? / Hur länge räcker pensionen? / Hur mycket får jag? / Uttagsstrategi / Om Pensionslyft`);
 }
 if (aboutSv.head !== "Om Pensionslyft" || aboutEn.head !== "About Pensionslyft" || tabNameEn !== "About Pensionslyft") {
   problems.push(`the about page is headed "${aboutSv.head}" / "${aboutEn.head}" and its button reads "${tabNameEn}" in English`);

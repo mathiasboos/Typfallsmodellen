@@ -173,6 +173,16 @@ export interface ModelContext {
   readonly hyra: number;
   /** `rng_Formogenhet`: wealth beyond the home. */
   readonly formogenhet: number;
+  /**
+   * Wealth beyond the home at the start of each age, by age, in nominal kronor: when
+   * present it replaces `formogenhet` in the housing supplement's wealth test, year by
+   * year. Not in the workbook, which holds one amount for the whole retirement. Added for
+   * the web app's "Uttagsstrategi" tab, which passes the private saving's balance as it
+   * is spent down. With it the test is applied as the rule reads -- wealth up to
+   * 100 000 kronor is disregarded -- where the workbook's own code adds an amount that
+   * small to income in full (see `BTP`'s note); `formogenhet` alone keeps that, for parity.
+   */
+  readonly formogenhetPerAge?: readonly number[];
   /** `rng_Makens_inkomst`: the spouse's annual income. */
   readonly makensInkomst: number;
   /** `rng_Make_Bald`: the spouse's year of birth; 0 takes the typfall's own. */
