@@ -12,7 +12,7 @@ import { Scheme, defaultContext, riktalderFor } from "@typfallsmodellen/engine";
 import type { ModelContext } from "@typfallsmodellen/engine";
 
 import { loadDeathProbabilities } from "../src/deaths.js";
-import { LIFELONG as LASTS_LIFELONG, defaultLastsInput, normaliseLasts, runPayouts } from "../src/pensionLasts.js";
+import { LIFELONG as LASTS_LIFELONG, defaultLastsInput, monthlySalaryForTarget, normaliseLasts, runPayouts } from "../src/pensionLasts.js";
 import {
   CAPITAL_TAX,
   JAMKNING_DEADLINES,
@@ -40,6 +40,8 @@ import {
   scenariosToXlsxRows,
   seriesToCsv,
   strategyContext,
+  strategyFinalSalary,
+  strategySalaryForFinal,
   strategyRunsKey,
   taxRuleText,
   taxYear,
@@ -525,5 +527,34 @@ describe("more occupational pensions and private savings", () => {
 
   it("change the runs' key, so that the runs are redone", () => {
     expect(strategyRunsKey({ ...plain.input, extraSavings: [{ kind: "isk", capital: 1, monthly: 0 }] })).not.toBe(strategyRunsKey(plain.input));
+  });
+});
+
+describe("the same person in Hur länge räcker pensionen?", () => {
+  const person = { born: 1981, retirementAge: riktalderFor(1981), monthlySalary: 40_000, scheme: Scheme.Itp1 };
+
+  it("leaves the same to live on, housing supplement included, for every payout period", () => {
+    const input = normaliseStrategy({ ...defaultStrategyInput(), ...person, monthlySalary: 24_000, savingsCapital: 300_000, rent: 7_000, housingSupplement: true });
+    const runs = runStrategy(input, shared, deaths);
+    const lasts = runPayouts(
+      normaliseLasts({ ...defaultLastsInput(), ...person, monthlySalary: 24_000, savingsKind: "isk", savingsCapital: 300_000, rent: 7_000, housingSupplement: true }),
+      shared,
+      deaths,
+    );
+    for (const payout of [5, 10, 20, 0]) {
+      const ours = runs.candidates.find((r) => r.combo.occupational === payout && r.combo.savings === payout)!;
+      const theirs = lasts.runs.find((r) => r.payout === payout)!;
+      for (let age = ours.par; age <= 100; age += 1) expect(ours.disposable[age], `${payout} at ${age}`).toBeCloseTo(theirs.net[age]!, 6);
+    }
+    expect(runs.balanced.benefits.some((b) => b > 0)).toBe(true);
+  });
+
+  it("finds the same monthly salary for a final salary", () => {
+    const input = normaliseStrategy({ ...defaultStrategyInput(), ...person });
+    const monthly = strategySalaryForFinal(input, 40_000, shared, deaths);
+    expect(strategyFinalSalary({ ...input, monthlySalary: monthly }, shared, deaths)).toBeCloseTo(40_000, -1);
+    const lastsInput = normaliseLasts({ ...defaultLastsInput(), ...person });
+    expect(monthly).toBe(monthlySalaryForTarget(lastsInput, 40_000, shared, deaths));
+    expect(runStrategy({ ...input, monthlySalary: monthly }, shared, deaths).balanced.finalSalary).toBeCloseTo(40_000, -1);
   });
 });

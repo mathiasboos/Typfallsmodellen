@@ -1529,8 +1529,13 @@ life (the model's rule) and it is gone. The notes say so when there is any.
 **The budget is after tax.** minPension's three examples (Baspensionär 17 600, Medelpensionär 18 400,
 Pluspensionär 27 300 kr a month -- the amounts the site's Pensionsöversikt uses, so a change there
 should be made here) or one's own, in the reference year's money. Everything is in fixed prices
-(`priceBasis: 1`) whatever Avancerat says, since a budget is purchasing power; benefits such as housing
-supplement are not counted.
+(`priceBasis: 1`) whatever Avancerat says, since a budget is purchasing power. Benefits such as the housing
+supplement are not counted unless the person ticks "Räkna med bostadstillägg" under Boende (off by default; only
+in this tab, not in "Hur mycket får jag?"), as "Uttagsstrategi" asks: then the context gets the person's housing
+cost (`hyra`) and `ansokt: 1`, the private savings run comes first and its balance by age is the wealth the
+supplement is tested against (`formogenhetPerAge`), and the benefits (`bidrag`, Table 1's first year) are added
+tax-free on top of the pension after tax -- what is left to live on is then, payout by payout, the same as
+"Uttagsstrategi"'s (a unit test holds the two together). Before tax, they are grossed up with the savings.
 
 **Before tax, the budget is what the model's tax turns into it -- not a rate.** Tax is progressive and
 its rules change with the person's age (the higher grundavdrag for the old begins at an age of its own),
@@ -1633,7 +1638,8 @@ widening at 375px.
 
 The eighth entry of the main menu, after "Hur mycket får jag?", on request: *how* to take the pension -- in which
 order, when and from which pot -- where the two tabs before it ask how much it pays and for how long. It has a typfall
-of its own, as they do: the person, the salary, the agreement, the individual and private pension and the private
+of its own, as they do: the person, the salary (a monthly salary, or a final salary turned into the monthly salary
+behind it, `strategySalaryForFinal`, as "Hur länge räcker pensionen?" does), the agreement, the individual and private pension and the private
 savings (`savingsInputs.ts`, the same sections), the housing cost and whether the housing supplement is counted, a
 lowest level a month to live on, a shorter payout period, an expected lifespan (under Person, filled in with the model's own, `lifeIncome.throughAge`, until another is typed; 0 in the input stands for the model's, and like the floor it only changes how the runs are read), and the three assumptions, with "Hämta från Prognos" and
 Återställ. There is no such sheet in the workbook. It is built on the settings the fifth tab uses (`tempTjpUttag`,

@@ -58,6 +58,7 @@ import {
   amountsToXlsxRows,
   totalPaid,
   CHART_PAYOUTS,
+  RENT_BOUNDS,
   LIFELONG,
   balanceText,
   budgetIdOf,
@@ -400,6 +401,20 @@ export function createPensionLastsPanel(
   savingsUi.appendPension();
   savingsUi.appendPrivateSavings();
 
+  // Housing, where there is a budget to set it against: the housing supplement, counted on request as
+  // "Uttagsstrategi" counts it. Built either way, which keeps `sync` as it is.
+  const housingSet = fieldSet(variant === "lasts" ? grid : h("div"), relabels, lang);
+  if (variant === "lasts") group("Boende", "Housing");
+  const rentField = housingSet.number(input.rent, RENT_BOUNDS, (rent) => update({ rent }));
+  rentField.element.dataset.setting = "plRent";
+  housingSet.field(rentField.element, (l) => ({
+    label: say(l, "Boendekostnad per månad", "Housing cost per month"),
+    hint: say(l, "kr/mån · hyra eller avgift och drift", "SEK/month · rent, or fee and running costs"),
+  }));
+  const housingBox = housingSet.check(input.housingSupplement, (housingSupplement) => update({ housingSupplement }));
+  housingBox.dataset.setting = "plHousing";
+  housingSet.field(housingBox, (l) => ({ label: say(l, "Räkna med bostadstillägg", "Count the housing supplement") }), "field field-check");
+
   // Assumptions: two ready-made sets, then the three numbers behind them.
   group("Antaganden", "Assumptions");
   const presetBox = h("div", "panel-toggle pa-toggle");
@@ -467,6 +482,8 @@ export function createPensionLastsPanel(
     retirementField.element.disabled = riktalderLocked;
     riktalderBox.checked = riktalderLocked;
     lifespanField.setValue(input.lifespan);
+    rentField.setValue(input.rent);
+    housingBox.checked = input.housingSupplement;
     salaryAsSelect.element.value = salaryAs === "final" ? "1" : "0";
     salaryField.setValue(salaryAs === "final" ? finalTarget : input.monthlySalary);
     const tier = ownBudget ? undefined : BUDGETS.findIndex((b) => b.amount === input.budget);
@@ -1098,8 +1115,8 @@ export function createPensionLastsPanel(
     const paragraphs = [
       say(
         l,
-        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart till och med året före ${lasts.to}-årsdagen (${lasts.to - lasts.from} hela år). Belopp i ${priceText(lasts, l)}, utan diskontering. Bidrag som bostadstillägg räknas inte med; efter skatt är modellens nettoinkomst.`,
-        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, private pension and private savings, from the start up to the year before the ${lasts.to}th birthday (${lasts.to - lasts.from} whole years). Amounts are in ${priceText(lasts, l)}, not discounted. Benefits such as housing supplement are not counted; after tax is the model's net income.`,
+        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart till och med året före ${lasts.to}-årsdagen (${lasts.to - lasts.from} hela år). Belopp i ${priceText(lasts, l)}, utan diskontering. ${lasts.input.housingSupplement ? `Bostadstillägg och modellens andra bidrag räknas med, skattefritt ovanpå pensionen, med boendekostnaden ${kronor(lasts.input.rent, l)} kr/mån; bostadstillägget prövas mot det privata sparandet år för år, medan det tas ut.` : "Bidrag som bostadstillägg räknas inte med."} Efter skatt är modellens nettoinkomst.`,
+        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, private pension and private savings, from the start up to the year before the ${lasts.to}th birthday (${lasts.to - lasts.from} whole years). Amounts are in ${priceText(lasts, l)}, not discounted. ${lasts.input.housingSupplement ? `Housing supplement and the model's other benefits are counted, tax-free on top of the pension, with a housing cost of ${kronor(lasts.input.rent, l)} SEK a month; the housing supplement is tested against the private savings year by year, as they are spent.` : "Benefits such as housing supplement are not counted."} After tax is the model's net income.`,
       ),
       say(
         l,
@@ -1326,8 +1343,8 @@ export function createPensionLastsPanel(
     const paragraphs = [
       say(
         l,
-        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart till och med året före ${lasts.to}-årsdagen. Belopp i ${priceText(lasts, l)}, utan diskontering. Bidrag som bostadstillägg räknas inte med; efter skatt är modellens nettoinkomst.`,
-        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, private pension and private savings, from the start up to the year before the ${lasts.to}th birthday. Amounts are in ${priceText(lasts, l)}, not discounted. Benefits such as housing supplement are not counted; after tax is the model's net income.`,
+        `Pensionen är allmän pension (inkomstpension, premiepension, garantipension och inkomstpensionstillägg), tjänstepension från avtalsområdet och eventuell individuell tjänstepension, privat pension och privat sparande, från pensionsstart till och med året före ${lasts.to}-årsdagen. Belopp i ${priceText(lasts, l)}, utan diskontering. ${lasts.input.housingSupplement ? `Bostadstillägg och modellens andra bidrag räknas med, skattefritt ovanpå pensionen, med boendekostnaden ${kronor(lasts.input.rent, l)} kr/mån; bostadstillägget prövas mot det privata sparandet år för år, medan det tas ut.` : "Bidrag som bostadstillägg räknas inte med."} Efter skatt är modellens nettoinkomst.`,
+        `The pension is the public pension (income pension, premium pension, guarantee pension and the income-pension supplement), occupational pension from the agreement area and any individual occupational pension, private pension and private savings, from the start up to the year before the ${lasts.to}th birthday. Amounts are in ${priceText(lasts, l)}, not discounted. ${lasts.input.housingSupplement ? `Housing supplement and the model's other benefits are counted, tax-free on top of the pension, with a housing cost of ${kronor(lasts.input.rent, l)} SEK a month; the housing supplement is tested against the private savings year by year, as they are spent.` : "Benefits such as housing supplement are not counted."} After tax is the model's net income.`,
       ),
       say(
         l,

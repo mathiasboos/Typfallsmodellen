@@ -3540,7 +3540,7 @@ const plPairRows = () =>
     }),
   );
 const plSeq = await plSequence();
-const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "saving-note", "#Privat sparande", "plSavingsKind", "saving-note", "plSavingsCapital+plSavingsMonthly", "#Antaganden"];
+const plWantedSeq = ["#Pension", "plScheme", "plCapital+plSaving", "plPrivCapital+plPrivSaving", "saving-note", "#Privat sparande", "plSavingsKind", "saving-note", "plSavingsCapital+plSavingsMonthly", "#Boende", "plRent", "plHousing", "#Antaganden"];
 const plSeqAt = plSeq.indexOf("#Pension");
 if (plSeqAt === -1 || !sameList(plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length), plWantedSeq)) {
   problems.push(`the input order from "Pension" on is ${plSeq.slice(plSeqAt, plSeqAt + plWantedSeq.length).join(" > ")}, expected ${plWantedSeq.join(" > ")}`);
@@ -3720,6 +3720,23 @@ if (!plGrowthActive || plGrowthFields.join("/") !== "2/1,8/1,7") problems.push(`
 await pl.locator('button[data-preset="standard"]').click();
 await tab.waitForTimeout(100);
 if (!sameList((await plRibbon()).map((item) => item.text), PL_RIBBON_DEFAULT)) problems.push("the standard preset did not restore the default short answer");
+
+// The housing supplement, as in "Uttagsstrategi": off by default, and on a low income it raises what the
+// lifelong payout leaves a month.
+await plType("plSalary", 24000);
+const plHousingOff = await plCells(0);
+await plSetting("plHousing").check();
+await tab.waitForTimeout(100);
+await plType("plRent", 7000);
+const plHousingOn = await plCells(0);
+const plHousingNote = (await pl.locator(".pa-notes, [data-role='pl-notes']").allTextContents()).join(" ");
+console.log(`pension lasts   : housing supplement off ${plHousingOff[1]} -> on ${plHousingOn[1]} (lifelong)`);
+if (!(Number(plHousingOn[1]) > Number(plHousingOff[1])) || (plHousingNote !== "" && !plHousingNote.includes("Bostadstillägg och modellens andra bidrag räknas med"))) {
+  problems.push(`counting the housing supplement takes the lifelong payout from ${plHousingOff[1]} to ${plHousingOn[1]}; notes "${plHousingNote.slice(0, 200)}"`);
+}
+await plSetting("plHousing").uncheck();
+await tab.waitForTimeout(100);
+await plType("plSalary", 38500);
 
 // Reset puts everything back; "Hämta från Prognos" copies the form's person once.
 await plType("plBudget", 27300);
@@ -4055,6 +4072,23 @@ if (stLow.insights[0] !== "btpWealth" || !sameList(stLow.best, ["5"]) || !stLow.
   problems.push(`at 24 000 a month and a rent of 7 000 the insights are ${stLow.insights.join("/")}, the best payout ${stLow.best.join("/")} and the checklist ${stLow.checklist.join("/")}`);
 }
 if (stLowOff.insights.includes("btpWealth")) problems.push("with the housing supplement switched off the insights still tell of it");
+
+// A final salary as the input, as in "Hur länge räcker pensionen?": the model's final salary is shown, and a
+// typed one is turned into the monthly salary behind it, which the hint quotes.
+const stBeforeFinal = await stBalancedFirst();
+await stSetting("stSalaryAs").selectOption("1");
+await tab.waitForTimeout(150);
+const stFinalShown = Number(await stSetting("stSalary").inputValue());
+await stType("stSalary", 40000);
+const stFinalHint = ((await st.locator('label:has([data-setting="stSalary"]) .field-hint').textContent()) ?? "").replace(/\s/g, " ");
+const stFinalFirst = await stBalancedFirst();
+await stSetting("stSalaryAs").selectOption("0");
+await tab.waitForTimeout(150);
+const stBackMonthly = Number(await stSetting("stSalary").inputValue());
+console.log(`strategy salary : final shown ${stFinalShown}, 40 000 -> "${stFinalHint}", ${stBeforeFinal} -> ${stFinalFirst} kr/mån, monthly ${stBackMonthly}`);
+if (!(stFinalShown > 20000) || !/månadslön \d/.test(stFinalHint) || !(kr(stFinalFirst) > kr(stBeforeFinal)) || !(stBackMonthly > 30000 && stBackMonthly < 45000)) {
+  problems.push(`a final salary in the strategy tab: shown ${stFinalShown}, hint "${stFinalHint}", ${stBeforeFinal} -> ${stFinalFirst}, back to monthly ${stBackMonthly}`);
+}
 
 // "Hämta från Prognos" copies the form's person; Återställ puts the default back.
 await st.locator('[data-action="st-import-forecast"]').click();
