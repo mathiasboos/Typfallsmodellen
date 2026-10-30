@@ -1723,6 +1723,10 @@ td.pl-floor-name { font-style: italic; }
 .st-insight-title { margin: 0; font-size: 0.98rem; line-height: 1.3; }
 .st-insight-body { margin: 0; font-size: 0.86rem; color: var(--text-primary); }
 .st-insight-action { margin: 2px 0 0; font-size: 0.86rem; color: var(--text-secondary); }
+/* A tax rule: the same card without the number, ending in a link to Skatteverket's page. */
+.st-rule { padding-left: 14px; }
+@media (min-width: 900px) { .st-insights.st-rules { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.st-rule-link { justify-self: start; margin-top: 2px; font-size: 0.84rem; font-weight: 600; color: var(--accent); text-underline-offset: 2px; }
 .st-recommendation { font-size: 0.92rem; color: var(--text-primary); font-weight: 600; max-width: 90ch; }
 .st-table td.st-scenario-name { white-space: normal; min-width: 210px; max-width: 320px; text-align: left; }
 .st-table td.st-scenario-name strong { margin-right: 6px; }

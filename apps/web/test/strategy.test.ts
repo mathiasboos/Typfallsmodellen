@@ -14,7 +14,10 @@ import type { ModelContext } from "@typfallsmodellen/engine";
 import { loadDeathProbabilities } from "../src/deaths.js";
 import { LIFELONG as LASTS_LIFELONG, defaultLastsInput, normaliseLasts, runPayouts } from "../src/pensionLasts.js";
 import {
+  CAPITAL_TAX,
   JAMKNING_DEADLINES,
+  SKATTEVERKET,
+  TAX_RULES,
   checklistText,
   computeStrategy,
   defaultStrategyInput,
@@ -29,6 +32,8 @@ import {
   seriesToCsv,
   strategyContext,
   strategyRunsKey,
+  taxRuleText,
+  taxYear,
   totalTo,
 } from "../src/strategy.js";
 import type { ComboRun, Insight, Scenario, StrategyInput } from "../src/strategy.js";
@@ -306,5 +311,80 @@ describe("the downloads", () => {
     const again = evaluateStrategy(runs, { ...input, floor: 25_000 }, shared, today);
     expect(again.scenarios[0]!.totals).toEqual(plain.scenarios[0]!.totals);
     expect(again.scenarios.find((s) => s.id === "front")!.meetsFloor).toBe(false);
+  });
+});
+
+describe("the tax rules", () => {
+  /** Kronor as the text writes them, with ordinary spaces. */
+  const plainText = (text: string) => text.replace(/\s/g, " ");
+  /** Early retirement on a low salary, no occupational pension and no savings: years under the tax-free income. */
+  const early = strategy({ monthlySalary: 6_000, retirementAge: 63, scheme: Scheme.None, savingsCapital: 0 });
+
+  it("take Skatteverket's amounts for the year, or the latest listed before it", () => {
+    expect(taxYear(2026)).toEqual({ year: 2026, taxFreeIncome: 25_042, rotRutMax: 75_000 });
+    expect(taxYear(2031).year).toBe(2026);
+    expect(taxYear(2020).year).toBe(2026);
+    expect(Object.values(SKATTEVERKET).every((href) => href.startsWith("https://www.skatteverket.se/"))).toBe(true);
+  });
+
+  it("read the person's figures off the suggested scenario", () => {
+    const tax = plain.tax;
+    expect(tax.year).toBe(2026);
+    expect(tax.scenario).toBe(plain.recommended);
+    // The default's prices do not move, so the 2026 amount is the same in the tab's fixed prices.
+    expect(tax.taxFreeFixed).toBeGreaterThan(24_000);
+    expect(tax.taxFreeFixed).toBeLessThan(26_000);
+    expect(tax.below).toEqual([]);
+    expect(tax.untaxed).toEqual([]);
+    const run = plain.scenarios.find((s) => s.id === plain.recommended)!.run;
+    expect(tax.lowestTaxable.amount).toBe(Math.min(...run.gross.slice(run.par, 96)));
+    // The higher basic deduction from the year after the riktålder leaves far more untaxed than the general amount.
+    expect(tax.pensionerTaxFree.age).toBe(68);
+    expect(tax.pensionerTaxFree.amount).toBeGreaterThan(60_000);
+    expect(tax.pensionerTaxFree.amount).toBeLessThan(70_000);
+    expect(run.netAt(68, tax.pensionerTaxFree.amount)).toBeCloseTo(tax.pensionerTaxFree.amount, 0);
+    expect(run.netAt(68, tax.pensionerTaxFree.amount + 200)).toBeLessThan(tax.pensionerTaxFree.amount + 200);
+    // The tax after the first year: the most while the occupational pension is paid, the least at 95.
+    expect(tax.taxHigh.age).toBe(68);
+    expect(tax.taxLow.age).toBe(95);
+    expect(tax.taxLow.amount).toBeLessThan(tax.taxHigh.amount * 0.8);
+    expect(tax.taxHigh.amount).toBeCloseTo(run.gross[68]! - run.net[68]!, 6);
+    // An ISK's schablonintäkt is its tax over the tax on capital.
+    expect(tax.hasIsk).toBe(true);
+    expect(tax.iskIncome).toBeCloseTo(run.savingsTax[67]! / CAPITAL_TAX, 6);
+    expect(tax.iskIncome).toBeGreaterThan(5_000);
+  });
+
+  it("read as four rules with the amounts, the person's figures and Skatteverket's pages", () => {
+    const sv = TAX_RULES.map((rule) => taxRuleText(rule, plain.tax, plain.input, "sv"));
+    const en = TAX_RULES.map((rule) => taxRuleText(rule, plain.tax, plain.input, "en"));
+    expect(sv.map((t) => t.link.href)).toEqual([SKATTEVERKET.amounts, SKATTEVERKET.rotRut, SKATTEVERKET.interest, SKATTEVERKET.reductions]);
+    expect(plainText(sv[0]!.body)).toContain("Skattefri årsinkomst 2026 är 25 042 kr");
+    expect(plainText(sv[0]!.mine)).toContain("över nivån");
+    expect(plainText(sv[1]!.body)).toContain("högst 75 000 kr per person och år (2026)");
+    expect(plainText(sv[1]!.mine)).toContain("Gör därför större ROT-arbeten de år skatten är som högst.");
+    expect(plainText(sv[2]!.body)).toContain("högst 25 041 kr (2026)");
+    expect(plainText(sv[2]!.body)).toContain("kapitalförsäkring");
+    expect(plainText(sv[2]!.mine)).toContain("schablonintäkten ungefär");
+    expect(sv[3]!.mine).toBe("");
+    sv.forEach((text, i) => expect(en[i]!.body).not.toBe(text.body));
+  });
+
+  it("find the years under the tax-free income, and say what that costs", () => {
+    const tax = early.tax;
+    expect(tax.below).toEqual([63, 64, 65, 66]);
+    expect(tax.canTopUp).toBe(false);
+    expect(tax.lowestTaxable.amount).toBeLessThan(tax.taxFreeFixed);
+    expect(tax.taxLow.amount).toBe(0);
+    const step = early.checklist.find((c) => c.kind === "taxFree")!;
+    expect(step).toEqual({ kind: "taxFree", from: 63, to: 66, amount: 25_042, year: 2026, topUp: false });
+    expect(early.checklist.indexOf(step)).toBeLessThanOrEqual(2);
+    expect(plainText(checklistText(step, "sv"))).toContain("Vid 63–66 år är din pension före skatt under den skattefria årsinkomsten, 25 042 kr (2026).");
+    expect(plainText(checklistText({ ...step, topUp: true }, "sv"))).toContain("Ta ut minst 25 042 kr om året (2026) i pension också vid 63–66 år");
+    const rules = TAX_RULES.map((rule) => plainText(taxRuleText(rule, tax, early.input, "sv").mine));
+    expect(rules[0]).toContain("under nivån vid 63–66 år");
+    expect(tax.untaxed).toEqual([63, 64, 65, 66]);
+    expect(rules[1]).toContain("betalar du ingen skatt på pensionen vid 63–66 år, och då kan du inte få ROT, RUT eller ränteavdrag.");
+    expect(rules[2]).toContain("Du har inget sparande med inkomst av kapital i planen");
   });
 });

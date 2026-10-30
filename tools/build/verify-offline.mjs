@@ -3953,6 +3953,25 @@ if (!sameList(stStart.payouts, ["5", "10", "15", "20", "0"]) || !sameList(stStar
 if (stStart.checklist.length < 1 || stStart.checklist.length > 5 || !stStart.checklist.includes("payout")) problems.push(`the checklist is ${stStart.checklist.join("/")}, expected one to five steps with the payout period among them`);
 if (stLines !== 4 || stDashed !== 1) problems.push(`the scenario chart has ${stLines} lines (${stDashed} dashed), expected three scenarios and the dashed floor`);
 
+// The tax rules: four cards with Skatteverket's amounts for the year and the person's own figures, each with
+// a link to Skatteverket's page. The amounts change every year, so only their form is checked here.
+const stTaxCards = async () =>
+  st.locator('[data-role="st-tax"] .st-rule').evaluateAll((cards) =>
+    cards.map((card) => ({
+      rule: card.dataset.rule,
+      text: card.innerText.replace(/\s+/g, " "),
+      href: card.querySelector("a")?.getAttribute("href") ?? "",
+    })),
+  );
+const stTax = await stTaxCards();
+console.log(`strategy tax    : ${stTax.map((c) => c.rule).join("/")}; "${(stTax[0]?.text ?? "").slice(0, 90)}…"`);
+if (!sameList(stTax.map((c) => c.rule), ["taxFree", "rotRut", "interest", "reductions"]) || !stTax.every((c) => c.href.startsWith("https://www.skatteverket.se/"))) {
+  problems.push(`the tax rules are ${stTax.map((c) => `${c.rule} -> ${c.href}`).join(", ")}, expected four cards linking to Skatteverket`);
+}
+if (!/Skattefri årsinkomst \d{4} är \d[\d ]* kr/.test(stTax[0]?.text ?? "") || !(stTax[0]?.text ?? "").includes("över nivån") || !/högst \d[\d ]* kr per person och år/.test(stTax[1]?.text ?? "") || !(stTax[2]?.text ?? "").includes("schablonintäkten ungefär")) {
+  problems.push(`the tax rules read "${(stTax[0]?.text ?? "").slice(0, 200)}" / "${(stTax[1]?.text ?? "").slice(0, 200)}"`);
+}
+
 // A floor only the pensions for life keep: the hybrid is suggested, and the front-loaded row's lowest
 // month is marked below it. The runs are kept, so only the evaluation changes.
 await stType("stFloor", 19000);
@@ -3994,6 +4013,24 @@ console.log(`strategy        : from Prognos ${stImported.join("/")}; reset -> ${
 if (stImported.join("/") !== "1959/23/38500/66/1") problems.push(`"Hämta från Prognos" gives ${stImported.join("/")}, expected 1959/23/38500/66/1`);
 if (!sameList(stReset.insights, stStart.insights) || stReset.recommended !== "front" || (await stSetting("stSalary").inputValue()) === "24000") problems.push("Återställ did not put the default strategy back");
 
+// Retiring at 63 on a low salary, with no occupational pension and no savings: the pension before tax is under
+// the tax-free income until the guarantee pension at 67, and the checklist says what that costs.
+await st.locator('[data-setting="stRiktalder"]').uncheck();
+await tab.waitForTimeout(100);
+await stType("stRetirement", 63);
+await stType("stSalary", 6000);
+await st.locator('[data-setting="stScheme"]').selectOption("1");
+await tab.waitForTimeout(150);
+await stType("stSavingsCapital", 0);
+const stEarly = await stRead();
+const stEarlyTax = await stTaxCards();
+console.log(`strategy early  : checklist ${stEarly.checklist.join("/")}`);
+if (!stEarly.checklist.includes("taxFree") || !(stEarlyTax[0]?.text ?? "").includes("under nivån vid 63–66 år") || !(stEarlyTax[1]?.text ?? "").includes("ingen skatt på pensionen vid 63–66 år")) {
+  problems.push(`retiring at 63 on 6 000 a month gives the checklist ${stEarly.checklist.join("/")} and "${(stEarlyTax[0]?.text ?? "").slice(-220)}"`);
+}
+await st.locator('[data-action="st-reset"]').click();
+await tab.waitForTimeout(150);
+
 // The downloads, the English labels and a phone.
 const stCsv = await download(st.locator('.export-btn[data-file="uttagsstrategi.csv"]'));
 const stXlsx = await download(st.locator('.export-btn[data-file="uttagsstrategi.xlsx"]'));
@@ -4011,11 +4048,12 @@ await tab.waitForTimeout(150);
 const stHeadEn = ((await st.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
 const stButtonEn = ((await tab.locator('.screen-toggle .panel-btn[data-screen="strategy"]').textContent()) ?? "").trim();
 const stInsightsEn = ((await st.locator('[data-role="st-insights"] h2 span').first().textContent()) ?? "").trim();
+const stTaxEn = ((await st.locator('[data-role="st-tax"] h2 span').first().textContent()) ?? "").trim();
 const stChipEn = ((await st.locator(".st-chip").textContent()) ?? "").trim();
 await tab.locator(".langs button", { hasText: "SV" }).click();
 await tab.waitForTimeout(150);
-if (stHeadEn !== "Withdrawal strategy" || stButtonEn !== "Withdrawal strategy" || stInsightsEn !== "What most people miss" || stChipEn !== "★ Suggested") {
-  problems.push(`in English the tab reads "${stHeadEn}" / "${stButtonEn}" / "${stInsightsEn}" / "${stChipEn}"`);
+if (stHeadEn !== "Withdrawal strategy" || stButtonEn !== "Withdrawal strategy" || stInsightsEn !== "What most people miss" || stChipEn !== "★ Suggested" || stTaxEn !== "Tax and tax reductions") {
+  problems.push(`in English the tab reads "${stHeadEn}" / "${stButtonEn}" / "${stInsightsEn}" / "${stChipEn}" / "${stTaxEn}"`);
 }
 await tab.setViewportSize({ width: 375, height: 800 });
 await tab.waitForTimeout(150);

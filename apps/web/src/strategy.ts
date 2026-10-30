@@ -19,6 +19,10 @@
  *   total at four lifespans; the lowest month up to 95; and the lifespan from which the balanced way has
  *   paid more. The recommended one is the one that pays the most in the first ten years among those
  *   whose lowest month stays above the floor the person gives.
+ * - **Tax and tax reductions** (`taxPicture`): the rules on what of the pension is kept -- always draw at least the
+ *   tax-free annual income, ROT and RUT and the other tax reductions only take off tax actually paid, interest is set
+ *   against an ISK's schablonintäkt first -- with Skatteverket's amounts for the year (`TAX_YEARS`, typed in yearly)
+ *   and the person's own figures.
  * - **A checklist** of at most five steps, dated where a date matters (jämkning).
  *
  * Everything is in fixed prices, as in the other question-mark tabs, and what is left to live on is the
@@ -64,6 +68,36 @@ export const LIFELONG = 0;
 export const WEALTH_DISREGARDED = 100_000;
 /** What an ISK, a KF or a depot insurance is not taxed on, per person, from 2026 (the engine's `AvkastningsskattKFISK`). */
 export const ISK_TAX_FREE = 300_000;
+/** The tax on capital income: what an ISK's schablonintäkt is taxed at. */
+export const CAPITAL_TAX = 0.3;
+
+/**
+ * Skatteverket's amounts the tax rules quote, by income year. They change every year and are updated by hand
+ * (docs/YEARLY-UPDATE.md). `taxFreeIncome` is "Skattefri årsinkomst" on Belopp och procent: 42,3 % of the
+ * prisbasbelopp, below which no income tax is paid and no tax return is due, and the least income from work
+ * that earns a public pension. `rotRutMax` is the most ROT and RUT together can take off one person's tax in a
+ * year. A year not listed takes the latest one before it.
+ */
+export const TAX_YEARS: Readonly<Record<number, { readonly taxFreeIncome: number; readonly rotRutMax: number }>> = {
+  2026: { taxFreeIncome: 25_042, rotRutMax: 75_000 },
+};
+
+/** Skatteverket's pages the amounts come from and the tax rules point to. */
+export const SKATTEVERKET = {
+  amounts: "https://www.skatteverket.se/privat/skatter/beloppochprocent.4.18e1b10334ebe8bc80004109.html",
+  rotRut: "https://www.skatteverket.se/privat/fastigheterochbostad/rotarbeteochrutarbete.4.2e56d4ba1202f95012080002966.html",
+  interest: "https://www.skatteverket.se/privat/deklaration/avdragforprivatpersoner/avdragforranteutgifter.106.1b39a64a1919eabb488b87.html",
+  reductions: "https://www.skatteverket.se/privat/skatter/arbeteochinkomst/skattereduktioner.4.3810a01c150939e893f1a17e.html",
+} as const;
+
+/** The amounts for `year`: its own, or the latest listed year's before it (the first year's, before any). */
+export function taxYear(year: number): { readonly year: number; readonly taxFreeIncome: number; readonly rotRutMax: number } {
+  const years = Object.keys(TAX_YEARS)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const pick = years.filter((y) => y <= year).pop() ?? years[0]!;
+  return { year: pick, ...TAX_YEARS[pick]! };
+}
 
 export interface StrategyInput extends SavingsInput {
   readonly born: number;
@@ -244,6 +278,8 @@ export interface ComboRun {
   readonly savingsTax: readonly number[];
   /** What is left of `gross` kronor a year at `age` after the model's tax. */
   readonly netAt: (age: number, gross: number) => number;
+  /** What a nominal amount at each age is multiplied by to be in this run's fixed prices, `0..LAST_AGE`. */
+  readonly kpiFactor: readonly number[];
   /** The model's expected age at death for the person at retirement. */
   readonly expectedDeath: number;
   readonly warnings: readonly string[];
@@ -281,6 +317,8 @@ function pensionRun(
     benefits[par] = yearly(Table1Key.BenefitsAtRetirement);
   }
   const gross = publicPension.map((p, age) => p + occupational[age]! + individual[age]!);
+  const kpiFactor = new Array<number>(LAST_AGE + 1).fill(1);
+  for (const row of rows) if (row.age >= 0 && row.age <= LAST_AGE) kpiFactor[row.age] = row.kpiFactor;
   return {
     combo,
     par,
@@ -296,6 +334,7 @@ function pensionRun(
     savingsBalance: own.balance,
     savingsTax: own.tax,
     netAt: probe.netAt,
+    kpiFactor,
     expectedDeath: probe.result.lifeIncome.throughAge,
     warnings: probe.result.warnings.map((w) => w.message),
   };
@@ -407,6 +446,97 @@ export function recommend(scenarios: readonly Scenario[]): ScenarioId {
   return best.id;
 }
 
+// ------------------------------------------------------------- tax rules ---
+
+/** An amount a year at an age. */
+export interface AtAge {
+  readonly age: number;
+  readonly amount: number;
+}
+
+/**
+ * What the tax rules come to for this person, read off the suggested scenario: kronor a year in the tab's fixed
+ * prices, beside Skatteverket's amounts for the year they are for (`TAX_YEARS`).
+ */
+export interface TaxPicture {
+  /** The year the amounts are for, and the amounts in that year's kronor. */
+  readonly year: number;
+  readonly taxFreeIncome: number;
+  readonly rotRutMax: number;
+  /** The tax-free income in the tab's fixed prices. */
+  readonly taxFreeFixed: number;
+  readonly scenario: ScenarioId;
+  /** What the model leaves untaxed a year once the higher basic deduction applies, from the age it applies. */
+  readonly pensionerTaxFree: AtAge;
+  /** The least pension before tax a year, retirement to `LONG_LIFE`, and the ages it is under the tax-free income. */
+  readonly lowestTaxable: AtAge;
+  readonly below: readonly number[];
+  /** An occupational or private pension in the plan, which could be drawn earlier to fill those years. */
+  readonly canTopUp: boolean;
+  /** The tax on the pension a year after the first year (taken higher, see `firstYear`): the most and the least. */
+  readonly taxHigh: AtAge;
+  readonly taxLow: AtAge;
+  /** The ages, retirement to `LONG_LIFE`, with no tax on the pension: no tax reduction can be had then. */
+  readonly untaxed: readonly number[];
+  /** Whether the private savings are taxed on a schablonintäkt (the ISK kind), and that intäkt the first year. */
+  readonly hasIsk: boolean;
+  readonly iskIncome: number;
+}
+
+/** The most a year that is left untaxed at `age`: where the model's tax starts, to the hundred below. */
+export function zeroTaxLevel(run: ComboRun, age: number): number {
+  let lo = 0;
+  let hi = 1_000_000;
+  for (let i = 0; i < 40; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (run.netAt(age, mid) >= mid - 0.5) lo = mid;
+    else hi = mid;
+  }
+  return Math.floor(lo / 100) * 100;
+}
+
+export function taxPicture(scenario: Scenario, input: StrategyInput, today: Date): TaxPicture {
+  const { run } = scenario;
+  const par = run.par;
+  const last = Math.min(LONG_LIFE, LAST_AGE);
+  const amounts = taxYear(today.getFullYear());
+  const factor = run.kpiFactor[Math.min(Math.max(amounts.year - input.born, 0), LAST_AGE)] ?? 1;
+  const taxFreeFixed = amounts.taxFreeIncome * factor;
+
+  let lowestTaxable: AtAge = { age: par, amount: Number.POSITIVE_INFINITY };
+  const below: number[] = [];
+  for (let a = par; a <= last; a += 1) {
+    if (run.gross[a]! < lowestTaxable.amount) lowestTaxable = { age: a, amount: run.gross[a]! };
+    if (run.gross[a]! < taxFreeFixed) below.push(a);
+  }
+  const tax = (a: number) => Math.max(run.gross[a]! - run.net[a]!, 0);
+  const untaxed: number[] = [];
+  for (let a = par; a <= last; a += 1) if (tax(a) < 1) untaxed.push(a);
+  const from = Math.min(par + 1, last);
+  let taxHigh: AtAge = { age: from, amount: tax(from) };
+  let taxLow: AtAge = taxHigh;
+  for (let a = from; a <= last; a += 1) {
+    if (tax(a) > taxHigh.amount + 0.5) taxHigh = { age: a, amount: tax(a) };
+    if (tax(a) < taxLow.amount - 0.5) taxLow = { age: a, amount: tax(a) };
+  }
+  const raised = Math.min(Math.max(par, riktalderFor(input.born)) + 1, LAST_AGE);
+  const hasIsk = input.savingsKind === "isk" && taxFreeSaving(input) !== null;
+  return {
+    ...amounts,
+    taxFreeFixed,
+    scenario: scenario.id,
+    pensionerTaxFree: { age: raised, amount: zeroTaxLevel(run, raised) },
+    lowestTaxable,
+    below,
+    canTopUp: run.occupational.some((v) => v > 0) || run.individual.some((v) => v > 0),
+    taxHigh,
+    taxLow,
+    untaxed,
+    hasIsk,
+    iskIncome: hasIsk ? Math.max(run.savingsTax[par] ?? 0, 0) / CAPITAL_TAX : 0,
+  };
+}
+
 // -------------------------------------------------------------- insights ---
 
 export type Insight =
@@ -497,6 +627,15 @@ export type ChecklistItem =
       readonly when: "soon" | "late" | "later";
     }
   | { readonly kind: "minpension" }
+  | {
+      /** Years when the pension before tax is under the tax-free income, and whether a pension could be drawn earlier. */
+      readonly kind: "taxFree";
+      readonly from: number;
+      readonly to: number;
+      readonly amount: number;
+      readonly year: number;
+      readonly topUp: boolean;
+    }
   | { readonly kind: "payout"; readonly best: number; readonly worst: number; readonly difference: number; readonly lifespan: number }
   | { readonly kind: "start"; readonly year: number; readonly saving: number; readonly bridge: number; readonly covered: boolean }
   | {
@@ -530,6 +669,8 @@ export interface Strategy {
   /** The occupational payout periods compared, for life last. */
   readonly payouts: readonly ComboRun[];
   readonly insights: readonly Insight[];
+  /** The tax rules for this person: the tax-free income, ROT and RUT, interest. */
+  readonly tax: TaxPicture;
   readonly checklist: readonly ChecklistItem[];
   readonly referenceYear: number;
   readonly savingYear: number;
@@ -607,6 +748,7 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
   ];
   const recommended = recommend(scenarios);
   const insights = findInsights(runs, input, lifespan);
+  const tax = taxPicture(scenarios.find((s) => s.id === recommended)!, input, today);
   const retirementYear = input.born + par;
   const warnings = [...new Set([balanced, runs.front, runs.hybrid].flatMap((r) => r?.warnings ?? []))];
   return {
@@ -618,7 +760,8 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
     recommended,
     payouts: runs.payouts,
     insights,
-    checklist: buildChecklist(insights, scenarios, recommended, input, retirementYear, today),
+    tax,
+    checklist: buildChecklist(insights, scenarios, recommended, input, retirementYear, today, tax),
     referenceYear: shared.referenceYear,
     savingYear: savingYear(input, shared),
     warnings,
@@ -750,6 +893,7 @@ function buildChecklist(
   input: StrategyInput,
   retirementYear: number,
   today: Date,
+  tax: TaxPicture,
 ): ChecklistItem[] {
   const items: { priority: number; item: ChecklistItem }[] = [];
   const thisYear = today.getFullYear();
@@ -770,6 +914,19 @@ function buildChecklist(
     },
   });
   items.push({ priority: 1, item: { kind: "minpension" } });
+  if (tax.below.length > 0) {
+    items.push({
+      priority: 1.5,
+      item: {
+        kind: "taxFree",
+        from: tax.below[0]!,
+        to: tax.below[tax.below.length - 1]!,
+        amount: tax.taxFreeIncome,
+        year: tax.year,
+        topUp: tax.canTopUp,
+      },
+    });
+  }
 
   for (const insight of insights) {
     if (insight.kind === "payout") {
@@ -860,6 +1017,12 @@ export function scenarioDescription(id: ScenarioId, years: number, lang: Lang): 
 const kr = (value: number, l: Lang) => `${kronor(Math.round(value), l)} ${say(l, "kr", "SEK")}`;
 const perMonth = (value: number, l: Lang) => `${kronor(Math.round(value), l)} ${say(l, "kr/mån", "SEK/month")}`;
 const age = (value: number, l: Lang) => say(l, `${value} år`, `${value}`);
+/** About so many kronor: to the hundred. */
+const about = (value: number, l: Lang) => kr(Math.round(value / 100) * 100, l);
+/** "vid 63 år", "vid 63–66 år". */
+const ageRange = (from: number, to: number, l: Lang) =>
+  from === to ? say(l, `vid ${from} år`, `at ${from}`) : say(l, `vid ${from}–${to} år`, `at ${from}–${to}`);
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** An insight as the reader sees it: a headline, what the numbers are, and what to do. */
 export function insightText(insight: Insight, lang: Lang): { readonly title: string; readonly body: string; readonly action: string } {
@@ -1027,6 +1190,18 @@ export function checklistText(item: ChecklistItem, lang: Lang): string {
         "Hämta dina saldon på minPension och fyll i dem här: tjänstepensionens avtal och uttagsregler, privat pension och sparande.",
         "Fetch your balances at minPension and enter them here: the occupational pension's agreement and payout rules, private pension and savings.",
       );
+    case "taxFree":
+      return item.topUp
+        ? say(
+            l,
+            `Ta ut minst ${kr(item.amount, l)} om året (${item.year}) i pension också ${ageRange(item.from, item.to, l)}, till exempel genom att börja ta ut tjänstepensionen eller den privata pensionen tidigare. Så mycket är skattefritt, och utrymmet går förlorat om du inte använder det.`,
+            `Draw at least ${kr(item.amount, l)} a year (${item.year}) in pension ${ageRange(item.from, item.to, l)} too, for instance by starting the occupational or private pension earlier. That much is tax-free, and the room is lost if you do not use it.`,
+          )
+        : say(
+            l,
+            `${capitalise(ageRange(item.from, item.to, l))} är din pension före skatt under den skattefria årsinkomsten, ${kr(item.amount, l)} (${item.year}). Då betalar du ingen inkomstskatt, men du kan inte heller få ROT, RUT eller ränteavdrag – lägg därför större ROT- och RUT-arbeten till andra år.`,
+            `${capitalise(ageRange(item.from, item.to, l))} your pension before tax is under the tax-free annual income, ${kr(item.amount, l)} (${item.year}). You pay no income tax then, but cannot get ROT, RUT or the interest deduction either – so put larger ROT and RUT work in other years.`,
+          );
     case "payout":
       return say(
         l,
@@ -1063,6 +1238,137 @@ export function checklistText(item: ChecklistItem, lang: Lang): string {
         `Bestäm uttagsplan: ${scenarioName(item.id, l).toLowerCase()} – ${scenarioDescription(item.id, item.years, l).toLowerCase()}`,
         `Settle the withdrawal plan: ${scenarioName(item.id, l).toLowerCase()} – ${scenarioDescription(item.id, item.years, l).toLowerCase()}`,
       );
+  }
+}
+
+export type TaxRule = "taxFree" | "rotRut" | "interest" | "reductions";
+export const TAX_RULES: readonly TaxRule[] = ["taxFree", "rotRut", "interest", "reductions"];
+
+/** A tax rule as the reader sees it: the rule, what it comes to for this person, and Skatteverket's page on it. */
+export function taxRuleText(
+  rule: TaxRule,
+  tax: TaxPicture,
+  input: StrategyInput,
+  lang: Lang,
+): { readonly title: string; readonly body: string; readonly mine: string; readonly link: { readonly href: string; readonly label: string } } {
+  const l = lang;
+  const plan = scenarioName(tax.scenario, l);
+  const page = (href: string, name: string) => ({ href, label: say(l, `Skatteverket: ${name}`, `Skatteverket (in Swedish): ${name}`) });
+  switch (rule) {
+    case "taxFree": {
+      const raised = tax.pensionerTaxFree.amount > tax.taxFreeFixed + 1_000;
+      const lowest = tax.lowestTaxable;
+      const below = tax.below;
+      return {
+        title: say(l, "Ta alltid ut minst den skattefria nivån", "Always draw at least the tax-free amount"),
+        body: say(
+          l,
+          `Skattefri årsinkomst ${tax.year} är ${kr(tax.taxFreeIncome, l)}, 42,3 % av prisbasbeloppet. Under den betalar du ingen inkomstskatt och behöver inte deklarera, och det är också den lägsta arbetsinkomst som ger allmän pension. Ta därför ut minst så mycket i pension varje år, också år då du lever på sparpengar – utrymmet går inte att spara till ett annat år.${raised ? ` Som pensionär är ännu mer skattefritt: från ${age(tax.pensionerTaxFree.age, l)} ger det högre grundavdraget ungefär ${kr(tax.pensionerTaxFree.amount, l)} om året utan skatt, enligt modellen.` : ""}`,
+          `The tax-free annual income for ${tax.year} is ${kr(tax.taxFreeIncome, l)}, 42.3 % of the price base amount. Below it you pay no income tax and need not file a return, and it is also the least income from work that earns a public pension. So draw at least that much in pension every year, also in years you live on savings – the room cannot be saved for another year.${raised ? ` As a pensioner even more is tax-free: from ${age(tax.pensionerTaxFree.age, l)} the higher basic deduction leaves about ${kr(tax.pensionerTaxFree.amount, l)} a year untaxed, in the model.` : ""}`,
+        ),
+        mine:
+          below.length === 0
+            ? say(
+                l,
+                `I förslaget (${plan}) är din pension före skatt som lägst ${about(lowest.amount, l)} om året, vid ${age(lowest.age, l)}. Det är över nivån, så det skattefria utrymmet används varje år.`,
+                `In the suggestion (${plan}) your pension before tax is at least ${about(lowest.amount, l)} a year, at ${age(lowest.age, l)}. That is above the amount, so the tax-free room is used every year.`,
+              )
+            : say(
+                l,
+                `I förslaget (${plan}) är din pension före skatt under nivån ${ageRange(below[0]!, below[below.length - 1]!, l)}, som lägst ${about(lowest.amount, l)} om året.${tax.canTopUp ? " Ta ut tjänstepension eller privat pension tidigare, så att du når nivån de åren." : " Då betalar du ingen inkomstskatt de åren, men kan inte heller få ROT, RUT eller ränteavdrag."}`,
+                `In the suggestion (${plan}) your pension before tax is under the amount ${ageRange(below[0]!, below[below.length - 1]!, l)}, at least ${about(lowest.amount, l)} a year.${tax.canTopUp ? " Draw occupational or private pension earlier, so that you reach the amount in those years." : " You pay no income tax in those years, but cannot get ROT, RUT or the interest deduction either."}`,
+              ),
+        link: page(SKATTEVERKET.amounts, "Belopp och procent"),
+      };
+    }
+    case "rotRut": {
+      const { taxHigh: high, taxLow: low, untaxed } = tax;
+      let mine: string;
+      if (untaxed.length > 0) {
+        const when = ageRange(untaxed[0]!, untaxed[untaxed.length - 1]!, l);
+        const most =
+          high.amount >= 1
+            ? say(l, ` Som mest betalar du ungefär ${about(high.amount, l)} om året, vid ${age(high.age, l)}.`, ` At most you pay about ${about(high.amount, l)} a year, at ${age(high.age, l)}.`)
+            : "";
+        mine = say(
+          l,
+          `I förslaget (${plan}) betalar du ingen skatt på pensionen ${when}, och då kan du inte få ROT, RUT eller ränteavdrag.${most}`,
+          `In the suggestion (${plan}) you pay no tax on the pension ${when}, so you cannot get ROT, RUT or the interest deduction then.${most}`,
+        );
+      } else if (high.age === low.age) {
+        mine = say(
+          l,
+          `I förslaget (${plan}) betalar du ungefär ${about(high.amount, l)} i skatt på pensionen om året. Så mycket kan ROT, RUT och ränteavdrag som mest bli tillsammans.`,
+          `In the suggestion (${plan}) you pay about ${about(high.amount, l)} in tax on the pension a year. That is the most ROT, RUT and the interest deduction can come to together.`,
+        );
+      } else {
+        const plan2 = low.amount < 0.8 * high.amount;
+        mine = say(
+          l,
+          `I förslaget (${plan}) betalar du ungefär ${about(high.amount, l)} i skatt på pensionen om året vid ${age(high.age, l)} och ${about(low.amount, l)} vid ${age(low.age, l)}. Så mycket kan ROT, RUT och ränteavdrag som mest bli tillsammans de åren.${plan2 ? " Gör därför större ROT-arbeten de år skatten är som högst." : ""}`,
+          `In the suggestion (${plan}) you pay about ${about(high.amount, l)} in tax on the pension a year at ${age(high.age, l)} and ${about(low.amount, l)} at ${age(low.age, l)}. That is the most ROT, RUT and the interest deduction can come to together in those years.${plan2 ? " So do larger ROT work in the years the tax is highest." : ""}`,
+        );
+      }
+      return {
+        title: say(l, "ROT och RUT kräver att du betalar skatt", "ROT and RUT need tax to take off"),
+        body: say(
+          l,
+          `ROT- och RUT-avdraget är en skattereduktion. Det kan bara minska skatt som du faktiskt betalar, och högst ${kr(tax.rotRutMax, l)} per person och år (${tax.year}). Har du ingen inkomst av tjänst, som pension eller lön, över den skattefria nivån får du inget avdrag alls.`,
+          `ROT and RUT are tax reductions. They can only take off tax you actually pay, and at most ${kr(tax.rotRutMax, l)} per person and year (${tax.year}). With no income from work or pension above the tax-free amount you get no deduction at all.`,
+        ),
+        mine,
+        link: page(SKATTEVERKET.rotRut, "ROT- och RUT-arbete"),
+      };
+    }
+    case "interest": {
+      let mine: string;
+      if (tax.hasIsk && tax.iskIncome >= 100) {
+        mine = say(
+          l,
+          `Om ditt sparande ligger på ISK är schablonintäkten ungefär ${about(tax.iskIncome, l)} det första året. Räntor upp till det beloppet kvittas direkt mot den, och bara resten minskar skatten på pensionen.`,
+          `If your savings are in an ISK, the notional income is about ${about(tax.iskIncome, l)} the first year. Interest up to that amount is set against it directly, and only the rest takes tax off the pension.`,
+        );
+      } else if (tax.hasIsk) {
+        mine = say(
+          l,
+          `Ditt sparande ger nästan ingen schablonintäkt, eftersom de första ${kr(ISK_TAX_FREE, l)} är skattefria. Därför minskar räntan i stället skatten på pensionen.`,
+          `Your savings give almost no notional income, as the first ${kr(ISK_TAX_FREE, l)} are tax-free, so interest takes tax off the pension instead.`,
+        );
+      } else if (input.savingsKind === "depot" && taxFreeSaving(input) !== null) {
+        mine = say(
+          l,
+          "Utdelningar och vinster i din depå är också inkomst av kapital, och räntan kvittas först mot dem. Bara resten minskar skatten på pensionen.",
+          "Dividends and gains in your securities account are income from capital too, and the interest is set against them first. Only the rest takes tax off the pension.",
+        );
+      } else {
+        mine = say(
+          l,
+          "Du har inget sparande med inkomst av kapital i planen, så räntan minskar skatten på pensionen – så länge du betalar skatt.",
+          "There are no savings with income from capital in your plan, so interest takes tax off the pension – as long as you pay tax.",
+        );
+      }
+      return {
+        title: say(l, "Ränteavdrag: först mot ISK, sedan mot pensionen", "Interest: against an ISK first, then the pension"),
+        body: say(
+          l,
+          `Räntor på bolån och andra lån som uppfyller kraven på säkerhet dras först av mot inkomst av kapital, till exempel schablonintäkten på ett ISK. Det som blir över minskar skatten på pension eller lön. Är din enda inkomst det skattefria beloppet, högst ${kr(tax.taxFreeIncome - 1, l)} (${tax.year}), finns ingen skatt att minska och du får inget ränteavdrag. Har du ett ISK kan räntan ändå kvittas mot schablonintäkten. Det gäller inte kapitalförsäkring, eftersom det är försäkringsbolaget som äger tillgångarna.`,
+          `Interest on mortgages and other loans that meet the security requirements is set first against income from capital, such as an ISK's notional income (schablonintäkt). What is left over takes tax off a pension or salary. If your only income is the tax-free amount, at most ${kr(tax.taxFreeIncome - 1, l)} (${tax.year}), there is no tax to take off and no interest deduction. With an ISK the interest can still be set against its notional income. That does not apply to an endowment insurance (kapitalförsäkring), as the insurer owns the assets.`,
+        ),
+        mine,
+        link: page(SKATTEVERKET.interest, "Avdrag för ränteutgifter"),
+      };
+    }
+    case "reductions":
+      return {
+        title: say(l, "Andra skattereduktioner", "Other tax reductions"),
+        body: say(
+          l,
+          "Samma sak gäller andra skattereduktioner: de kan bara minska skatt som du faktiskt betalar. Skatteverket har en lista över alla, med belopp och villkor.",
+          "The same holds for other tax reductions: they can only take off tax you actually pay. Skatteverket lists them all, with amounts and conditions.",
+        ),
+        mine: "",
+        link: page(SKATTEVERKET.reductions, "Skattereduktioner"),
+      };
   }
 }
 

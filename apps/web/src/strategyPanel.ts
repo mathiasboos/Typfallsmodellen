@@ -49,6 +49,8 @@ import {
   seriesToCsv,
   seriesToXlsxRows,
   strategyRunsKey,
+  TAX_RULES,
+  taxRuleText,
   totalTo,
 } from "./strategy.js";
 import type { ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
@@ -519,6 +521,44 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     return box;
   }
 
+  /** The tax rules: the tax-free income, ROT and RUT, interest, and the other tax reductions, each with its page. */
+  function taxPanel(strategy: Strategy, l: Lang): HTMLElement {
+    const { tax } = strategy;
+    const { section, body } = panel(say(l, "Skatt och skattereduktioner", "Tax and tax reductions"));
+    section.dataset.role = "st-tax";
+    body.append(
+      h(
+        "p",
+        "pa-lead",
+        say(
+          l,
+          `Fyra regler som avgör hur mycket av pensionen du får behålla. Beloppen är Skatteverkets för ${tax.year} och ändras varje år. Siffrorna för dig kommer från förslaget, i fasta priser.`,
+          `Four rules that decide how much of the pension you keep. The amounts are Skatteverket's for ${tax.year} and change every year. Your own figures come from the suggestion, in constant prices.`,
+        ),
+      ),
+    );
+    const list = h("div", "st-insights st-rules");
+    for (const rule of TAX_RULES) {
+      const text = taxRuleText(rule, tax, strategy.input, l);
+      const card = h("article", "st-insight st-rule");
+      card.dataset.rule = rule;
+      card.append(h("h3", "st-insight-title", text.title), h("p", "st-insight-body", text.body));
+      if (text.mine !== "") {
+        const mine = h("p", "st-insight-action");
+        mine.append(h("strong", undefined, say(l, "För dig: ", "For you: ")), document.createTextNode(text.mine));
+        card.append(mine);
+      }
+      const link = h("a", "st-rule-link", text.link.label);
+      link.href = text.link.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      card.append(link);
+      list.append(card);
+    }
+    body.append(list);
+    return section;
+  }
+
   function checklistPanel(strategy: Strategy, l: Lang): HTMLElement {
     const { section, body } = panel(say(l, "Checklista för den här månaden", "Checklist for this month"));
     section.dataset.role = "st-checklist";
@@ -586,7 +626,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       for (const message of strategy.warnings) box.append(h("p", undefined, message));
       out.push(box);
     }
-    out.push(insightsPanel(strategy, l), scenariosPanel(strategy, l), checklistPanel(strategy, l), notesPanel(strategy, l));
+    out.push(insightsPanel(strategy, l), scenariosPanel(strategy, l), taxPanel(strategy, l), checklistPanel(strategy, l), notesPanel(strategy, l));
     results.replaceChildren(...out);
   }
 
