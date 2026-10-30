@@ -3972,6 +3972,16 @@ if (!/Skattefri årsinkomst \d{4} är \d[\d ]* kr/.test(stTax[0]?.text ?? "") ||
   problems.push(`the tax rules read "${(stTax[0]?.text ?? "").slice(0, 200)}" / "${(stTax[1]?.text ?? "").slice(0, 200)}"`);
 }
 
+// The expected lifespan: filled in with the model's, and when another is typed the totals are read up to it.
+const stLifeStart = await stSetting("stLifespan").inputValue();
+await stType("stLifespan", 92);
+const stLifeHead = (await st.locator('[data-role="st-scenario-table"] thead th').allTextContents()).join("|");
+await st.locator('[data-action="st-reset"]').click();
+await tab.waitForTimeout(150);
+const stLifeReset = await stSetting("stLifespan").inputValue();
+console.log(`strategy life   : ${stLifeStart} -> 92 (${stLifeHead.includes("Till 92 år") ? "totals to 92" : "no total to 92"}), reset ${stLifeReset}`);
+if (stLifeStart !== "87" || !stLifeHead.includes("Till 92 år") || stLifeReset !== "87") problems.push(`the expected lifespan field reads ${stLifeStart}, gives the headers ${stLifeHead}, and resets to ${stLifeReset}`);
+
 // A floor only the pensions for life keep: the hybrid is suggested, and the front-loaded row's lowest
 // month is marked below it. The runs are kept, so only the evaluation changes.
 await stType("stFloor", 19000);

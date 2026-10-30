@@ -56,6 +56,8 @@ const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
 export const FRONT_BOUNDS = { min: 5, max: 20, step: 1 } as const;
 export const FLOOR_BOUNDS = { min: 0, max: 200_000, step: 100 } as const;
 export const RENT_BOUNDS = { min: 0, max: 50_000, step: 100 } as const;
+/** The expected lifespan one can type: an age; 0 in the input stands for the model's own. */
+export const LIFESPAN_BOUNDS = { min: 60, max: 100, step: 1 } as const;
 /** A long life: the lowest month is looked for up to here, and it is one of the lifespans the totals are given at. */
 export const LONG_LIFE = 95;
 /** The first years of retirement, when most people want the most: what "early" averages. */
@@ -118,6 +120,8 @@ export interface StrategyInput extends SavingsInput {
   readonly floor: number;
   /** The front-loaded and hybrid scenarios' payout period, years. */
   readonly frontYears: number;
+  /** The age the person expects to live to: what the totals, insights and checklist are read up to. 0 is the model's own. */
+  readonly lifespan: number;
 }
 
 /**
@@ -144,6 +148,7 @@ export function defaultStrategyInput(): StrategyInput {
     housingSupplement: true,
     floor: BUDGETS[0].amount,
     frontYears: 10,
+    lifespan: 0,
   };
 }
 
@@ -158,6 +163,10 @@ export function normaliseStrategy(input: StrategyInput): StrategyInput {
     frontYears: Math.round(clamp(input.frontYears, FRONT_BOUNDS)),
     floor: clamp(input.floor, FLOOR_BOUNDS),
     rent: clamp(input.rent, RENT_BOUNDS),
+    lifespan:
+      input.lifespan > 0
+        ? Math.round(Math.max(clamp(input.lifespan, LIFESPAN_BOUNDS), referenceAge(input.born, input.retirementAge) + 1))
+        : 0,
   };
 }
 
@@ -399,12 +408,12 @@ export function overtakenAt(run: ComboRun, other: ComboRun): number | undefined 
 }
 
 /** The lifespans the totals are given at: 80, the expected one, 90 and a long life, past retirement. */
-export function planAges(run: ComboRun): readonly number[] {
-  const expected = Math.round(run.expectedDeath);
+export function planAges(run: ComboRun, expectedDeath: number): readonly number[] {
+  const expected = Math.round(expectedDeath);
   return [...new Set([80, expected, 90, LONG_LIFE])].filter((age) => age > run.par).sort((a, b) => a - b);
 }
 
-function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined, floor: number): Scenario {
+function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined, floor: number, expectedDeath: number): Scenario {
   const par = run.par;
   const phases = [
     { from: par, to: par + EARLY_YEARS - 1 },
@@ -422,7 +431,7 @@ function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined,
     id,
     run,
     phases,
-    totals: planAges(run).map((lifespan) => ({ lifespan, total: totalTo(run, lifespan) })),
+    totals: planAges(run, expectedDeath).map((lifespan) => ({ lifespan, total: totalTo(run, lifespan) })),
     lowest,
     early: average(run.disposable, par, par + EARLY_YEARS - 1) / 12,
     breakEven: balanced === undefined || id === "balanced" ? undefined : overtakenAt(run, balanced),
@@ -664,7 +673,10 @@ export interface Strategy {
   readonly input: StrategyInput;
   readonly par: number;
   readonly retirementYear: number;
+  /** The lifespan everything is read up to: the person's own, or the model's. */
   readonly expectedDeath: number;
+  /** The model's expected age at death for the person at retirement. */
+  readonly modelExpectedDeath: number;
   readonly scenarios: readonly Scenario[];
   readonly recommended: ScenarioId;
   /** The occupational payout periods compared, for life last. */
@@ -688,9 +700,9 @@ export interface StrategyRuns {
   readonly extraWealth: readonly [ComboRun, ComboRun] | undefined;
 }
 
-/** What a set of runs is valid for: everything but the floor. */
+/** What a set of runs is valid for: everything but the floor and the lifespan, which only the reading of them uses. */
 export function strategyRunsKey(input: StrategyInput): string {
-  const { floor: _floor, ...rest } = input;
+  const { floor: _floor, lifespan: _lifespan, ...rest } = input;
   return JSON.stringify(rest);
 }
 
@@ -741,11 +753,12 @@ export function runStrategy(input: StrategyInput, shared: ModelContext, deaths: 
 export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, shared: ModelContext, today: Date): Strategy {
   const { balanced } = runs;
   const par = balanced.par;
-  const lifespan = Math.round(balanced.expectedDeath);
+  const expectedDeath = input.lifespan > 0 ? input.lifespan : balanced.expectedDeath;
+  const lifespan = Math.round(expectedDeath);
   const scenarios = [
-    scenario("balanced", balanced, undefined, input.floor),
-    ...(runs.front ? [scenario("front", runs.front, balanced, input.floor)] : []),
-    ...(runs.hybrid ? [scenario("hybrid", runs.hybrid, balanced, input.floor)] : []),
+    scenario("balanced", balanced, undefined, input.floor, expectedDeath),
+    ...(runs.front ? [scenario("front", runs.front, balanced, input.floor, expectedDeath)] : []),
+    ...(runs.hybrid ? [scenario("hybrid", runs.hybrid, balanced, input.floor, expectedDeath)] : []),
   ];
   const recommended = recommend(scenarios);
   const insights = findInsights(runs, input, lifespan);
@@ -756,13 +769,14 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
     input,
     par,
     retirementYear,
-    expectedDeath: balanced.expectedDeath,
+    expectedDeath,
+    modelExpectedDeath: balanced.expectedDeath,
     scenarios,
     recommended,
     payouts: runs.payouts,
     insights,
     tax,
-    checklist: buildChecklist(insights, scenarios, recommended, input, retirementYear, today, tax),
+    checklist: buildChecklist(insights, scenarios, recommended, input, retirementYear, today, tax, lifespan),
     referenceYear: shared.referenceYear,
     savingYear: savingYear(input, shared),
     warnings,
@@ -895,6 +909,7 @@ function buildChecklist(
   retirementYear: number,
   today: Date,
   tax: TaxPicture,
+  lifespan: number,
 ): ChecklistItem[] {
   const items: { priority: number; item: ChecklistItem }[] = [];
   const thisYear = today.getFullYear();
@@ -955,7 +970,7 @@ function buildChecklist(
     }
     if (fromAge >= 0) {
       // What it comes to a month, on average over the years it is paid up to the expected lifespan.
-      const until = Math.max(Math.round(chosen.run.expectedDeath), fromAge + 1);
+      const until = Math.max(lifespan, fromAge + 1);
       let sum = 0;
       let years = 0;
       for (let a = fromAge; a < Math.min(until, LAST_AGE + 1); a += 1) {
@@ -999,18 +1014,22 @@ export function scenarioName(id: ScenarioId, lang: Lang): string {
 export function scenarioDescription(id: ScenarioId, years: number, lang: Lang): string {
   switch (id) {
     case "balanced":
-      return say(lang, "Allt livsvarigt: tjänstepension, privat pension och sparande.", "Everything for life: occupational pension, private pension and savings.");
+      return say(
+        lang,
+        "Tjänstepension, privat pension och sparande livsvarigt, liksom den allmänna pensionen.",
+        "Occupational pension, private pension and savings for life, like the public pension.",
+      );
     case "front":
       return say(
         lang,
-        `Allt på ${years} år: mer de första åren, mindre sedan.`,
-        `Everything over ${years} years: more in the first years, less after.`,
+        `Tjänstepension, privat pension och sparande på ${years} år: mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.`,
+        `Occupational pension, private pension and savings over ${years} years: more in the first years, then only the public pension, which is always for life.`,
       );
     case "hybrid":
       return say(
         lang,
-        `Pensionerna livsvarigt, sparandet på ${years} år: extra pengar de första åren utan att golvet sänks.`,
-        `The pensions for life, the savings over ${years} years: extra money in the first years without lowering the floor.`,
+        `Tjänstepension och privat pension livsvarigt, sparandet på ${years} år: extra pengar de första åren utan att golvet sänks.`,
+        `Occupational and private pension for life, the savings over ${years} years: extra money in the first years without lowering the floor.`,
       );
   }
 }
@@ -1076,8 +1095,8 @@ export function insightText(insight: Insight, lang: Lang): { readonly title: str
         title: say(l, `Tjänstepension på ${best} ger mest`, `An occupational pension over ${best} pays the most`),
         body: say(
           l,
-          `Fram till din förväntade livslängd, ${age(insight.lifespan, l)} enligt modellen, ger ${best} ${kr(insight.bestTotal - insight.worstTotal, l)} mer att leva på än ${worst}. ${reasons.join(" ")}`,
-          `Up to your expected lifespan, ${age(insight.lifespan, l)} in the model, ${best} leaves ${kr(insight.bestTotal - insight.worstTotal, l)} more to live on than ${worst}. ${reasons.join(" ")}`,
+          `Fram till din förväntade livslängd, ${age(insight.lifespan, l)}, ger ${best} ${kr(insight.bestTotal - insight.worstTotal, l)} mer att leva på än ${worst}. ${reasons.join(" ")}`,
+          `Up to your expected lifespan, ${age(insight.lifespan, l)}, ${best} leaves ${kr(insight.bestTotal - insight.worstTotal, l)} more to live on than ${worst}. ${reasons.join(" ")}`,
         ).trim(),
         action: say(
           l,

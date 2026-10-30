@@ -27,6 +27,7 @@ import {
   recommend,
   runStrategy,
   evaluateStrategy,
+  scenarioDescription,
   scenariosToCsv,
   scenariosToXlsxRows,
   seriesToCsv,
@@ -386,5 +387,34 @@ describe("the tax rules", () => {
     expect(tax.untaxed).toEqual([63, 64, 65, 66]);
     expect(rules[1]).toContain("betalar du ingen skatt på pensionen vid 63–66 år, och då kan du inte få ROT, RUT eller ränteavdrag.");
     expect(rules[2]).toContain("Du har inget sparande med inkomst av kapital i planen");
+  });
+});
+
+describe("the expected lifespan", () => {
+  it("is the model's until one is typed, and then reads everything up to it", () => {
+    expect(defaultStrategyInput().lifespan).toBe(0);
+    expect(plain.expectedDeath).toBeCloseTo(plain.modelExpectedDeath, 9);
+    const own = strategy({ lifespan: 92 });
+    expect(own.expectedDeath).toBe(92);
+    expect(own.modelExpectedDeath).toBeCloseTo(plain.modelExpectedDeath, 9);
+    expect(own.scenarios[0]!.totals.map((t) => t.lifespan)).toEqual([80, 90, 92, 95]);
+    const payout = insight(own.insights, "payout");
+    expect(payout.lifespan).toBe(92);
+    // The runs do not depend on it, so they are kept.
+    expect(strategyRunsKey({ ...defaultStrategyInput(), lifespan: 92 })).toBe(strategyRunsKey(defaultStrategyInput()));
+  });
+
+  it("is kept after the retirement age", () => {
+    expect(normaliseStrategy({ ...defaultStrategyInput(), lifespan: 50 }).lifespan).toBe(68);
+    expect(normaliseStrategy({ ...defaultStrategyInput(), lifespan: 140 }).lifespan).toBe(100);
+  });
+});
+
+describe("the scenario descriptions", () => {
+  it("say that the public pension is always for life", () => {
+    expect(scenarioDescription("front", 15, "sv")).toBe(
+      "Tjänstepension, privat pension och sparande på 15 år: mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.",
+    );
+    expect(scenarioDescription("balanced", 10, "sv")).toContain("liksom den allmänna pensionen");
   });
 });

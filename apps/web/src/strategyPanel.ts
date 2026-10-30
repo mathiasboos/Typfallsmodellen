@@ -30,6 +30,7 @@ import { createSavingsInputs } from "./savingsInputs.js";
 import {
   FLOOR_BOUNDS,
   FRONT_BOUNDS,
+  LIFESPAN_BOUNDS,
   LIFELONG,
   LONG_LIFE,
   RENT_BOUNDS,
@@ -219,6 +220,17 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     label: say(l, "Uttag på kortare tid", "Shorter payout"),
     hint: say(l, `år, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · i scenarierna Framtung och Hybrid`, `years, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · in the Front-loaded and Hybrid scenarios`),
   }));
+  /** The model's expected lifespan for the person, from the last results: what the field shows until one is typed. */
+  let modelLifespan = 0;
+  const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
+  lifespanField.element.dataset.setting = "stLifespan";
+  const relabelLifespan = field(lifespanField.element, (l) => ({
+    label: say(l, "Förväntad livslängd (ålder)", "Expected lifespan (age)"),
+    hint:
+      modelLifespan > 0
+        ? say(l, `år · förifyllt med modellens antagande, ${decimals(modelLifespan, 1, l)} år`, `years · filled in with the model's assumption, ${decimals(modelLifespan, 1, l)}`)
+        : say(l, "år · förifyllt med modellens antagande", "years · filled in with the model's assumption"),
+  }));
 
   // Assumptions
   group("Antaganden", "Assumptions");
@@ -270,6 +282,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     housingBox.checked = input.housingSupplement;
     floorField.setValue(input.floor);
     frontField.setValue(input.frontYears);
+    if (input.lifespan > 0 || modelLifespan > 0) lifespanField.setValue(input.lifespan > 0 ? input.lifespan : Math.round(modelLifespan));
     inflationField.setValue(input.yearlyInflation);
     growthField.setValue(input.realGrowth);
     returnField.setValue(input.realReturn);
@@ -393,7 +406,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
           say(l, `Till ${t.lifespan} år`, `To ${t.lifespan}`),
           say(l, "Mkr totalt", "MSEK in all"),
           t.lifespan === Math.round(strategy.expectedDeath)
-            ? say(l, "Till din förväntade livslängd enligt modellen", "To your expected lifespan in the model")
+            ? say(l, "Till din förväntade livslängd", "To your expected lifespan")
             : undefined,
         ),
       ),
@@ -464,8 +477,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       title: say(l, "Att leva på per månad", "To live on per month"),
       subtitle: say(
         l,
-        `Pension efter skatt, bostadstillägg och sparpengar, i fasta priser. Den streckade linjen är din lägsta nivå. Modellens förväntade livslängd för dig är ${decimals(strategy.expectedDeath, 1, l)} år.`,
-        `Pension after tax, housing supplement and savings, in constant prices. The dashed line is your lowest level. The model's expected lifespan for you is ${decimals(strategy.expectedDeath, 1, l)}.`,
+        `Pension efter skatt, bostadstillägg och sparpengar, i fasta priser. Den streckade linjen är din lägsta nivå. ${strategy.input.lifespan > 0 ? `Du räknar med att leva till ${strategy.input.lifespan} år (modellen: ${decimals(strategy.modelExpectedDeath, 1, l)} år).` : `Modellens förväntade livslängd för dig är ${decimals(strategy.modelExpectedDeath, 1, l)} år.`}`,
+        `Pension after tax, housing supplement and savings, in constant prices. The dashed line is your lowest level. ${strategy.input.lifespan > 0 ? `You count on living to ${strategy.input.lifespan} (the model: ${decimals(strategy.modelExpectedDeath, 1, l)}).` : `The model's expected lifespan for you is ${decimals(strategy.modelExpectedDeath, 1, l)}.`}`,
       ),
       xMin: from,
       xMax: to,
@@ -485,7 +498,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const box = h("div", "st-payouts");
     if (strategy.payouts.length < 2) return box;
     const life = strategy.payouts[strategy.payouts.length - 1]!;
-    const lifespans = planAges(life);
+    const lifespans = planAges(life, strategy.expectedDeath);
     const expected = Math.round(strategy.expectedDeath);
     const best = strategy.payouts.reduce((a, b) => (totalTo(b, expected) > totalTo(a, expected) + 0.5 ? b : a));
     box.append(
@@ -618,6 +631,9 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   function redraw(): void {
     if (context === undefined || deaths === undefined) return;
     const strategy = evaluateStrategy(runsFor(context, deaths), input, context, new Date());
+    modelLifespan = strategy.modelExpectedDeath;
+    if (input.lifespan === 0) lifespanField.setValue(Math.round(modelLifespan));
+    relabelLifespan(currentLang);
     savingsUi.relabel(currentLang);
     const l = currentLang;
     const out: HTMLElement[] = [];
