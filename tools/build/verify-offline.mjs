@@ -3972,6 +3972,18 @@ if (!/Skattefri årsinkomst \d{4} är \d[\d ]* kr/.test(stTax[0]?.text ?? "") ||
   problems.push(`the tax rules read "${(stTax[0]?.text ?? "").slice(0, 200)}" / "${(stTax[1]?.text ?? "").slice(0, 200)}"`);
 }
 
+// The payout timeline: a row per part of the pension, the suggested scenario first, and a switch to the others.
+const stTimeline = async () =>
+  st.locator('[data-role="st-fig-timeline"] .st-tl-bar').evaluateAll((bars) => bars.map((bar) => bar.dataset.kind));
+const stTlFront = await stTimeline();
+await st.locator('[data-role="st-fig-timeline"] button[data-scenario="balanced"]').click();
+await tab.waitForTimeout(100);
+const stTlBalanced = await stTimeline();
+console.log(`strategy gantt  : front ${stTlFront.join("/")}; balanced ${stTlBalanced.join("/")}`);
+if (!sameList(stTlFront.slice(0, 5), ["income", "premium", "guarantee", "occupational", "savings"]) || stTlBalanced.length < 5) {
+  problems.push(`the payout timeline shows ${stTlFront.join("/")} and, balanced, ${stTlBalanced.join("/")}`);
+}
+
 // The expected lifespan: filled in with the model's, and when another is typed the totals are read up to it.
 const stLifeStart = await stSetting("stLifespan").inputValue();
 await stType("stLifespan", 92);

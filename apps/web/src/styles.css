@@ -1745,6 +1745,17 @@ td.pl-floor-name { font-style: italic; }
 .st-subhead { margin: 6px 0 0; font-size: 0.95rem; }
 .st-payouts { display: grid; gap: 8px; }
 .st-downloads { justify-content: flex-start; }
+/* The payout timeline (a Gantt chart): rows per kind of money, the expected lifespan dashed. */
+.st-timeline { margin: 4px 0 0; display: grid; gap: 6px; }
+.st-timeline-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.st-timeline .scroll svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.st-tl-grid { stroke: var(--rule); stroke-width: 1; }
+.st-tl-life { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.st-tl-tick { font-size: 11px; fill: var(--text-secondary); }
+.st-tl-year { fill: var(--text-muted); }
+.st-tl-label { font-size: 13px; font-weight: 600; fill: var(--text-primary); }
+.st-tl-text { font-size: 11.5px; fill: var(--text-secondary); }
+.st-tl-bar { stroke: var(--surface-raised); stroke-width: 1; }
 .st-checklist { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; max-width: 90ch; }
 .st-checklist li { padding-left: 4px; line-height: 1.45; }
 .st-checklist li::marker { font-weight: 700; color: var(--accent); }

@@ -1715,13 +1715,13 @@ run's price factor for that year.
 suggestion in words, the scenario table (the suggested row marked "★ Förslag", a lowest month below the floor marked in
 its cell), the line chart (each scenario a month by age, the suggested one heavy, and the floor dashed, drawn by
 `renderLineChart` with its legend switches; the colours are the comparison tab's `--fig-scenario-*` steps), the payout
-table, the tax rules (the same cards, two to a row, without a number and ending in a link), the checklist, the notes,
+table, a payout timeline (a Gantt chart, `payoutPhases`: one row per part -- income, premium and guarantee pension, occupational and private pension, the savings, the housing supplement -- a bar per stretch of years from the retirement age, its span and average a month under it, the expected lifespan dashed, the colours the Portföljvärde tab's account tokens, and a switch between the scenarios, the suggested one first), the tax rules (the same cards, two to a row, without a number and ending in a link), the checklist, the notes,
 and four downloads (the scenarios and what there is to live on by age, CSV and Excel, whole kronor).
 
 **Left out on purpose:** a couple (the housing supplement is a single person's), other orders of the pots than the three
 scenarios, taking the public pension later or in part ("När ta ut pensionen?" and Avancerat do that), and discounting.
 
-**Checked** by `apps/web/test/strategy.test.ts` (29 tests: the inputs and their bounds, what each run asks the model, that
+**Checked** by `apps/web/test/strategy.test.ts` (30 tests: the inputs and their bounds, what each run asks the model, that
 the balanced scenario without the housing supplement is the fifth tab's lifelong run to the krona, the scenarios adding
 up, the suggestion with a floor that each scenario does or does not keep, the housing supplement following the savings,
 each rule's trigger and order, the checklist with and without a jämkning deadline near, `overtakenAt` and `recommend` on

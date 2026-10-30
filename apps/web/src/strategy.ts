@@ -269,6 +269,10 @@ export interface ComboRun {
   readonly combo: Combo;
   readonly par: number;
   readonly publicPension: readonly number[];
+  /** The public pension's parts: income pension (with ATP), premium pension, guarantee pension and its supplement. */
+  readonly incomePension: readonly number[];
+  readonly premiumPension: readonly number[];
+  readonly guaranteePension: readonly number[];
   readonly occupational: readonly number[];
   readonly individual: readonly number[];
   /** All that is taxed: the three above. */
@@ -307,6 +311,9 @@ function pensionRun(
   const { rows } = probe.result;
   const par = retirementAge(typfall, probe.result);
   const publicPension = annual(rows, par, (r) => r.ip + r.tp + r.pp + r.garp + r.ptillagg);
+  const incomePension = annual(rows, par, (r) => r.ip + r.tp);
+  const premiumPension = annual(rows, par, (r) => r.pp);
+  const guaranteePension = annual(rows, par, (r) => r.garp + r.ptillagg);
   const occupational = annual(rows, par, (r) => r.tjp);
   const individual = annual(rows, par, (r) => r.ips);
   const net = annual(rows, par, (r) => r.netto);
@@ -332,6 +339,9 @@ function pensionRun(
     combo,
     par,
     publicPension,
+    incomePension,
+    premiumPension,
+    guaranteePension,
     occupational,
     individual,
     gross,
@@ -1389,6 +1399,73 @@ export function taxRuleText(
         mine: "",
         link: page(SKATTEVERKET.reductions, "Skattereduktioner"),
       };
+  }
+}
+
+// --------------------------------------------------------------- payouts ---
+
+/** The kinds of money a scenario pays, in the order the timeline lists them. */
+export type PayoutKind = "income" | "premium" | "guarantee" | "occupational" | "individual" | "savings" | "benefits";
+export const PAYOUT_KINDS: readonly PayoutKind[] = ["income", "premium", "guarantee", "occupational", "individual", "savings", "benefits"];
+
+/** One stretch of years a kind of money is paid, ages `from` to `to` inclusive, and what it pays a month on average. */
+export interface PayoutPhase {
+  readonly kind: PayoutKind;
+  readonly from: number;
+  readonly to: number;
+  /** Still paid at `LONG_LIFE`: for life, as far as the tab reads. */
+  readonly lifelong: boolean;
+  readonly monthly: number;
+}
+
+/**
+ * When each kind of money is paid in a run, from the retirement age to `LONG_LIFE`: the stretches of years it is more
+ * than a krona a month. Before tax for the pensions, as paid for the savings and the housing supplement.
+ */
+export function payoutPhases(run: ComboRun): PayoutPhase[] {
+  const series: Record<PayoutKind, readonly number[]> = {
+    income: run.incomePension,
+    premium: run.premiumPension,
+    guarantee: run.guaranteePension,
+    occupational: run.occupational,
+    individual: run.individual,
+    savings: run.savings,
+    benefits: run.benefits,
+  };
+  const last = Math.min(LONG_LIFE, LAST_AGE);
+  const phases: PayoutPhase[] = [];
+  for (const kind of PAYOUT_KINDS) {
+    const values = series[kind];
+    let from = -1;
+    for (let a = run.par; a <= last + 1; a += 1) {
+      const paid = a <= last && values[a]! / 12 >= 1;
+      if (paid && from < 0) from = a;
+      if (!paid && from >= 0) {
+        const to = a - 1;
+        phases.push({ kind, from, to, lifelong: to === last, monthly: average(values, from, to) / 12 });
+        from = -1;
+      }
+    }
+  }
+  return phases;
+}
+
+export function payoutKindName(kind: PayoutKind, lang: Lang, savingsKind: StrategyInput["savingsKind"] = "isk"): string {
+  switch (kind) {
+    case "income":
+      return say(lang, "Inkomstpension", "Income pension");
+    case "premium":
+      return say(lang, "Premiepension", "Premium pension");
+    case "guarantee":
+      return say(lang, "Garantipension m.m.", "Guarantee pension etc.");
+    case "occupational":
+      return say(lang, "Tjänstepension", "Occupational pension");
+    case "individual":
+      return say(lang, "Privat pension", "Private pension");
+    case "savings":
+      return savingsKind === "depot" ? say(lang, "Depå / fondkonto", "Securities account") : say(lang, "ISK / kapitalförsäkring", "ISK / endowment insurance");
+    case "benefits":
+      return say(lang, "Bostadstillägg", "Housing supplement");
   }
 }
 

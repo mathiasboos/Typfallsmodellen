@@ -28,6 +28,8 @@ import {
   runStrategy,
   evaluateStrategy,
   scenarioDescription,
+  payoutKindName,
+  payoutPhases,
   scenariosToCsv,
   scenariosToXlsxRows,
   seriesToCsv,
@@ -416,5 +418,23 @@ describe("the scenario descriptions", () => {
       "Tjänstepension, privat pension och sparande på 15 år: mer de första åren, sedan bara den allmänna pensionen, som alltid är livsvarig.",
     );
     expect(scenarioDescription("balanced", 10, "sv")).toContain("liksom den allmänna pensionen");
+  });
+});
+
+describe("the payout timeline", () => {
+  it("has a stretch for each part of the pension, the front-loaded ones ending after the shorter period", () => {
+    const front = plain.scenarios.find((s) => s.id === "front")!;
+    const phases = payoutPhases(front.run);
+    const of = (kind: string) => phases.filter((p) => p.kind === kind);
+    expect(of("income")).toEqual([expect.objectContaining({ from: 67, to: 95, lifelong: true })]);
+    expect(of("premium")[0]!.lifelong).toBe(true);
+    expect(of("occupational")).toEqual([expect.objectContaining({ from: 67, to: 76, lifelong: false })]);
+    expect(of("savings")).toEqual([expect.objectContaining({ from: 67, to: 76, lifelong: false })]);
+    expect(of("benefits")[0]!.from).toBe(77);
+    const occ = of("occupational")[0]!;
+    let sum = 0;
+    for (let a = 67; a <= 76; a += 1) sum += front.run.occupational[a]!;
+    expect(occ.monthly).toBeCloseTo(sum / 10 / 12, 6);
+    expect(payoutKindName("savings", "sv", "depot")).toBe("Depå / fondkonto");
   });
 });
