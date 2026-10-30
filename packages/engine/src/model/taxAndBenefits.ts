@@ -34,6 +34,7 @@ import {
   statlig,
 } from "../skatt/index.js";
 import { vbaInt, vbaRound, wsMax, wsMin } from "../vba/math.js";
+import type { ModelContext } from "./context.js";
 import type { Run } from "./mcalc.js";
 import { runVectors } from "./state.js";
 import type { MvaluesRow } from "./state.js";
@@ -342,7 +343,7 @@ export function benefits(run: Run, age: number, utgyear: number, tax: TaxResult)
       s.uttagIp *
       BTP(
         base * scale, makaInk * scale, 12 * hyraT, civ, v.pbb.get(age), context,
-        ap, apm, context.formogenhet, partYear ? 0 : v.wage.get(age), 0, marginal, s.maxhyra,
+        ap, apm, btpWealth(context, age), partYear ? 0 : v.wage.get(age), 0, marginal, s.maxhyra,
         utgyear, run.iyear, v.ibb.get(age), s.kvoten, age,
         s.tjp.get(age) * scale, tjpm * scale, s.garp.get(age) * scale, s.garp.get(age) * scale,
         iyearIbb, s.mpension, run.pmonth, ftid, v.iindex.get(age), s.uttagIp, ansoker,
@@ -359,7 +360,7 @@ export function benefits(run: Run, age: number, utgyear: number, tax: TaxResult)
         Iyear: run.iyear,
         vectors: runVectors(v),
       },
-      v.komSkatt.get(age), ap, context.formogenhet, v.pbb.get(age), s.maxhyra,
+      v.komSkatt.get(age), ap, btpWealth(context, age), v.pbb.get(age), s.maxhyra,
       utgyear, run.iyear, v.ibb.get(age), s.kvoten, age, context.kapital, makaInk, marginal, -99, run.forstid,
     );
 
@@ -421,6 +422,21 @@ export function benefits(run: Run, age: number, utgyear: number, tax: TaxResult)
     s.bidrag.set(age, s.bidrag.get(age) + bist);
     s.indDisp.set(age, s.indDisp.get(age) + bist);
   }
+}
+
+/**
+ * The wealth the housing supplement is tested against at `age`.
+ *
+ * `formogenhet` as the workbook has it, unless the context carries a wealth for each
+ * age (`formogenhetPerAge`): then that age's, with an amount of 100 000 kronor or less
+ * disregarded as the rule says -- `BTP` itself adds an amount that small to income in
+ * full, a quirk kept for the workbook's own setting.
+ */
+export function btpWealth(context: ModelContext, age: number): number {
+  const perAge = context.formogenhetPerAge;
+  if (perAge === undefined) return context.formogenhet;
+  const wealth = perAge[age] ?? 0;
+  return wealth > 100_000 ? wealth : 0;
 }
 
 /**

@@ -1379,7 +1379,7 @@ chosen agreement marked, the cohort swapping the defaults, both downloads, both 
 
 ### Om Pensionslyft
 
-The eighth and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
+The ninth and last entry of the main menu (`about.ts`, screen `about` in `main.ts`) is static text in both
 languages: the purpose of the site, a disclaimer (not financial, legal or tax advice; forecasts under the
 reader's own assumptions, not guarantees; a simplified model; unofficial; at the reader's own risk; check
 against minPension and the pension provider; nothing leaves the browser) and the contact, which is the
@@ -1628,6 +1628,83 @@ and 375px, no agreement, the retirement age moved and clamped, the lifespan (ope
 final salary, the riktålder following the birth year, a preset, reset and the import from Prognos, the
 three CSV downloads and an Excel one, the theme tokens in both themes, both languages, and the page not
 widening at 375px.
+
+### Uttagsstrategi
+
+The eighth entry of the main menu, after "Hur mycket får jag?", on request: *how* to take the pension -- in which
+order, when and from which pot -- where the two tabs before it ask how much it pays and for how long. It has a typfall
+of its own, as they do: the person, the salary, the agreement, the individual and private pension and the private
+savings (`savingsInputs.ts`, the same sections), the housing cost and whether the housing supplement is counted, a
+lowest level a month to live on, a shorter payout period, and the three assumptions, with "Hämta från Prognos" and
+Återställ. There is no such sheet in the workbook. It is built on the settings the fifth tab uses (`tempTjpUttag`,
+`tempIpsUttag`), on `tjpPar` for a later start of the taxed pots, and on one addition to the engine,
+`formogenhetPerAge` (VBA-MAPPING.md).
+
+**Two runs for each way of drawing the pots.** `strategy.ts` (no DOM) runs the private savings on their own, as the
+fifth tab does -- the kind of saving, its payout period as `tempIpsUttag`, the taxed pots off -- for what they pay, their
+balance and yield tax by age, and their nominal balance at the start of each age. Then it runs the pensions
+(`runWithTaxProbe`, the IPS part alone, the payout periods and the start) with that balance as `formogenhetPerAge`, for
+the pension after tax (`netto`), the housing supplement and the model's other benefits (`bidrag`), and the state tax.
+What there is to live on is `netto + bidrag +` the savings, in fixed prices. The first year is Table 1's, the net moved
+by the model's own tax (`netAt`) when the gross is, so it matches Prognos. The runs are kept while only the floor
+changes (`strategyRunsKey`).
+
+**The housing supplement against the savings as they are spent.** `ModelContext.formogenhet` is one amount for the
+whole run, and `BTP` as written adds an amount up to 100 000 kr to income in full (a quirk kept for the golden
+comparison). A tab that weighs spending the savings early can use neither: with `formogenhetPerAge`, `btpWealth(context,
+age)` hands `BTP` and `SBTP` the wealth at the start of that age, and up to 100 000 kr is disregarded, as the rules
+say. Without it nothing changes.
+
+**Three scenarios.** Balanserad (everything for life), Framtung (everything over the shorter period) and Hybrid (the
+pensions for life, the private savings over the shorter period; only when there are savings paid out tax-free). Each
+has its average a month in three stretches (the first ten years, the next ten, then to 95), its total to 80, the
+expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the lifespan
+from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come back). The
+expected lifespan is the model's own (`lifeIncome.throughAge`). The suggestion (`recommend`) is the scenario that pays
+the most in the first ten years among those whose lowest month stays at or above the floor; if none does, the one whose
+lowest month is highest; a tie goes to the simpler way (balanced, then hybrid, then front-loaded). A second table draws
+the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same lifespans
+and the lifespan from which "for life" catches up.
+
+**What most people miss** is a set of rules over the same runs, each measured in kronor for this person and shown only
+when it comes to at least 1 000 kr (`NOTEWORTHY`); at most three, in a fixed order (`INSIGHT_ORDER`):
+
+- the housing supplement the savings cost up to the expected lifespan (the plan against a run with no savings at all),
+  and the supplement a month each 100 000 kr costs (two runs with a constant 200 000 and 300 000 kr);
+- which occupational payout period pays the most up to the expected lifespan, before which lifespan the shortest one
+  is ahead, from which lifespan "for life" takes over, and whether the housing supplement is the reason;
+- the first pension year taxed harder than the next (the higher basic deduction applies from the year after the
+  riktålder is reached), what that is a month, and what starting the occupational and private pension on 1 January
+  the year after would save at the model's marginal rates;
+- the ISK's tax up to the expected lifespan, with the tax-free 300 000 kr from 2026 named;
+- state tax in the front-loaded scenario, and a longer payout period that avoids it;
+- what the hybrid adds a month in the first ten years, against what it costs at a long life.
+
+**The checklist** has at most five steps, by priority: jämkning first when the autumn deadline for the first pension
+year is now (the dates in `JAMKNING_DEADLINES`) and last when that year is further off, checking the forecast at
+minPension, the payout period, starting the taxed pots on 1 January the year after (when that saves at least 500 kr),
+applying for the housing supplement (from which age, and what it comes to a month on average), the ISK, and settling on
+the suggested scenario. `today` is passed in, so the tests fix it.
+
+**The page** (`strategyPanel.ts`): the inputs, the insight cards (a number, a title, the arithmetic, what to do), the
+suggestion in words, the scenario table (the suggested row marked "★ Förslag", a lowest month below the floor marked in
+its cell), the line chart (each scenario a month by age, the suggested one heavy, and the floor dashed, drawn by
+`renderLineChart` with its legend switches; the colours are the comparison tab's `--fig-scenario-*` steps), the payout
+table, the checklist, the notes, and four downloads (the scenarios and what there is to live on by age, CSV and Excel,
+whole kronor).
+
+**Left out on purpose:** a couple (the housing supplement is a single person's), other orders of the pots than the three
+scenarios, taking the public pension later or in part ("När ta ut pensionen?" and Avancerat do that), and discounting.
+
+**Checked** by `apps/web/test/strategy.test.ts` (22 tests: the inputs and their bounds, what each run asks the model, that
+the balanced scenario without the housing supplement is the fifth tab's lifelong run to the krona, the scenarios adding
+up, the suggestion with a floor that each scenario does or does not keep, the housing supplement following the savings,
+each rule's trigger and order, the checklist with and without a jämkning deadline near, `overtakenAt` and `recommend` on
+hand-built runs, and the downloads), by `packages/engine/test/btpWealth.test.ts` (five tests: up to 100 000 kr per age is
+no wealth, the static amount keeps the workbook's quirk, a larger amount per age is the static one, a falling balance
+is followed year by year, and nothing changes without it), and by a block in `verify-offline.mjs` (the insights, the
+scenarios and the suggestion, the payout table, the checklist, the chart, two floors, a low income with a higher rent,
+the housing supplement switched off, the import from Prognos and reset, the downloads, English, 375px).
 
 ### Table 2's own column tooltips, and Ordlista
 

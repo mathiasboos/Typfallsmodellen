@@ -38,6 +38,7 @@ import { createPortfolioPanel } from "./portfolioPanel.js";
 import { createPgbGrid } from "./pgb.js";
 import { commitOnPress } from "./pressCommit.js";
 import { createSalaryPath } from "./salaryPath.js";
+import { createStrategyPanel } from "./strategyPanel.js";
 import {
   renderTable1,
   renderTable2,
@@ -65,7 +66,7 @@ type Mode = "normal" | "advanced";
 
 /** Not a workbook mode -- a second, third, fourth and fifth top-level view
  * alongside the forecast, and the page about the site. */
-type Screen = "single" | "portfolio" | "compare" | "mikrosim" | "retirement" | "lasts" | "amount" | "about";
+type Screen = "single" | "portfolio" | "compare" | "mikrosim" | "retirement" | "lasts" | "amount" | "strategy" | "about";
 
 const deaths = loadDeathProbabilities();
 
@@ -171,6 +172,8 @@ const pensionAgePanel = createPensionAgePanel(view.lang, () => runInput());
 const pensionLastsPanel = createPensionLastsPanel(view.lang, () => runInput());
 // "Hur mycket får jag?" is the same panel with no budget: what the pension pays a month under each payout period.
 const pensionAmountPanel = createPensionLastsPanel(view.lang, () => runInput(), "amount");
+// "Uttagsstrategi": in which order, when and from which pot -- its own person, like the two tabs above.
+const strategyPanel = createStrategyPanel(view.lang, () => runInput());
 // "Portföljvärde": the pension capital behind Prognos's own run, account by account -- no inputs of its own.
 const portfolioPanel = createPortfolioPanel(view.lang);
 // Static text, no model run: what the site is for, the disclaimer and how to reach it.
@@ -262,6 +265,7 @@ function screenToggle(): HTMLElement {
     { screen: "retirement", label: (l) => (l === "sv" ? "När ta ut pensionen?" : "When to take out the pension?") },
     { screen: "lasts", label: (l) => (l === "sv" ? "Hur länge räcker pensionen?" : "How long does the pension last?") },
     { screen: "amount", label: (l) => (l === "sv" ? "Hur mycket får jag?" : "How much do I get?") },
+    { screen: "strategy", label: (l) => (l === "sv" ? "Uttagsstrategi" : "Withdrawal strategy") },
     { screen: "about", label: (l) => (l === "sv" ? "Om Pensionslyft" : "About Pensionslyft") },
   ];
   for (const choice of choices) {
@@ -332,6 +336,7 @@ function renderHeading(): void {
       pensionAgePanel.relabel(lang);
       pensionLastsPanel.relabel(lang);
       pensionAmountPanel.relabel(lang);
+      strategyPanel.relabel(lang);
       portfolioPanel.relabel(lang);
       aboutPanel.relabel(lang);
       document.documentElement.lang = lang;
@@ -373,13 +378,13 @@ function applyNoticeText(l: Lang): void {
     l === "sv"
       ? ". Det här är en bearbetad version som inte är utvecklad av, kopplad till eller godkänd av " +
           "Pensionsmyndigheten. Modellen, dess data och dess användarmanual är deras. Flikarna " +
-          "Portföljvärde, Jämför scenarier, Mikrosim, När ta ut pensionen?, Hur länge räcker pensionen? och " +
-          "Hur mycket får jag? är egna tillägg. Resultatet är en prognos under de antaganden du " +
+          "Portföljvärde, Jämför scenarier, Mikrosim, När ta ut pensionen?, Hur länge räcker pensionen?, " +
+          "Hur mycket får jag? och Uttagsstrategi är egna tillägg. Resultatet är en prognos under de antaganden du " +
           "anger – inte ett besked om din pension."
       : ". This is an adapted version that is not built by, affiliated with or endorsed by " +
           "Pensionsmyndigheten, the Swedish Pensions Agency. The model, its data and its user manual " +
           "are theirs. The tabs Portfolio value, Compare scenarios, Mikrosim, When to take out the pension?, How long does the " +
-          "pension last? and How much do I get? are additions of our own. What it shows is a forecast " +
+          "pension last?, How much do I get? and Withdrawal strategy are additions of our own. What it shows is a forecast " +
           "under the assumptions you enter – not a statement about your pension.",
   );
 }
@@ -515,6 +520,12 @@ function render(): void {
   if (screen === "amount") {
     results.append(pensionAmountPanel.element);
     pensionAmountPanel.setContext(context, deaths);
+    return;
+  }
+
+  if (screen === "strategy") {
+    results.append(strategyPanel.element);
+    strategyPanel.setContext(context, deaths);
     return;
   }
 

@@ -24,6 +24,7 @@ import { FAared, PublicAvg, avdragxx, statlig } from "../skatt/index.js";
 import { vbaInt, wsMax, wsMin } from "../vba/math.js";
 import type { Run } from "./mcalc.js";
 import { runVectors } from "./state.js";
+import { btpWealth } from "./taxAndBenefits.js";
 
 /** What the recomputation leaves behind, for the three Table 1 rows. */
 export interface AtRetirement {
@@ -189,7 +190,7 @@ function benefitsAtRetirement(
       context,
       leftovers.ap,
       leftovers.apm,
-      context.formogenhet,
+      btpWealth(context, par),
       0,
       0,
       marginal,
@@ -233,7 +234,7 @@ function benefitsAtRetirement(
       },
       v.komSkatt.get(par),
       leftovers.ap,
-      context.formogenhet,
+      btpWealth(context, par),
       v.pbb.get(par),
       s.maxhyra,
       rules,

@@ -518,7 +518,8 @@ while the flat middle bracket is not rounded at all.
 **`BTP`** sets `PAR = 0.95` for non-pensioners after 2017 and then overwrites it unconditionally
 with `PAR = 0.96` two lines later, so that branch is dead. It scales only the wealth *above* the
 threshold and adds anything below it to income in full rather than disregarding it — the opposite of
-`SBTP`. Its age guard on the extra consumption support applies only to 2012–2021; from 2022 it is
+`SBTP`. (`formogenhetPerAge`, below, is the way round it for a caller that gives the wealth per age.)
+Its age guard on the extra consumption support applies only to 2012–2021; from 2022 it is
 paid at any age. `BTPm` is assigned the finished amount, so `dela = 1` doubles a cohabiting
 pensioner's supplement. `marginal`, `mgarp`, `month`, `ftid`, `index`, `uttag` and `ansokt` are
 never read.
@@ -776,7 +777,7 @@ The original is one long procedure, so its loop locals are still in scope when t
 second pass reads several of them. `RunState.leftovers` keeps exactly those, which is why splitting
 `Mcalc` into functions did not lose them.
 
-### Three additions that are not in the workbook
+### Four additions that are not in the workbook
 
 All are off or inert unless a caller asks, so the golden comparison (299 typfall) and every other
 test are untouched.
@@ -816,6 +817,17 @@ test are untouched.
   (0, 1, 2) is as it was. `test/privateSaving.test.ts` and `test/mcalcDrawdown.test.ts` pin it: the
   arithmetic, no refund, no dependence on the year or on what the two wrappers' tax functions carry
   between calls, the routing to `pps`, and that its payout is no part of the gross income.
+- **`formogenhetPerAge`** (`ModelContext`, absent by default): the wealth beyond the home at the start
+  of each age, nominal kronor, for the housing supplement's wealth test. `formogenhet` is one amount for
+  the whole run, which cannot follow savings that are being spent, and `BTP` adds an amount up to the
+  100 000 kr threshold to income in full (the quirk under "Benefits" above). When the array is given,
+  `btpWealth(context, age)` (`taxAndBenefits.ts`) hands `BTP` and `SBTP` -- in `benefits()` and in the
+  retirement-age pass (`atRetirement.ts`) -- that age's amount, and 0 for one up to 100 000 kr, so it is
+  disregarded as the rules say; an age past the array's end is 0. Absent, `btpWealth` returns
+  `formogenhet` and the quirk stands. "Uttagsstrategi" passes the private savings' balance from a run of
+  its own. `test/btpWealth.test.ts` pins it: 100 000 kr per age is no wealth, the static 100 000 lowers
+  the supplement, 400 000 per age is the static 400 000, a falling balance is followed year by year,
+  and leaving it out changes nothing.
 
 ### Quirks kept on purpose
 
