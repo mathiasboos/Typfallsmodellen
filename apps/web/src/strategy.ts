@@ -43,7 +43,7 @@ import { retirementAge } from "./kpis.js";
 import { LAST_AGE, referenceAge } from "./pensionAge.js";
 import { BUDGETS } from "./pensionLasts.js";
 import { defaultSavings, savingSettings, savingYear, taxFreeSaving, taxedSaving } from "./privateSavings.js";
-import type { SavingPart, SavingsInput } from "./privateSavings.js";
+import type { SavingPart, SavingsInput, SavingsKind } from "./privateSavings.js";
 import { csvLine, delimiterFor } from "./tables.js";
 import { kronorCell } from "./xlsx.js";
 import type { SheetData } from "./xlsx.js";
@@ -72,6 +72,8 @@ export const WEALTH_DISREGARDED = 100_000;
 export const ISK_TAX_FREE = 300_000;
 /** The tax on capital income: what an ISK's schablonintäkt is taxed at. */
 export const CAPITAL_TAX = 0.3;
+/** The most occupational pensions, and the most private savings, that can be added beside the first. */
+export const MAX_EXTRA = 5;
 
 /**
  * Skatteverket's amounts the tax rules quote, by income year. They change every year and are updated by hand
@@ -122,6 +124,23 @@ export interface StrategyInput extends SavingsInput {
   readonly frontYears: number;
   /** The age the person expects to live to: what the totals, insights and checklist are read up to. 0 is the model's own. */
   readonly lifespan: number;
+  /** More occupational pensions, from earlier employers or other agreements, beside the agreement's own: taxed as income. */
+  readonly extraPensions: readonly ExtraPension[];
+  /** More private savings beside the first, each held in one of the two kinds. */
+  readonly extraSavings: readonly ExtraSaving[];
+}
+
+/** An occupational pension of its own: capital already saved, and what is still paid in a month until retirement. */
+export interface ExtraPension {
+  readonly capital: number;
+  readonly monthly: number;
+}
+
+/** A private saving of its own, held in one of the two kinds. */
+export interface ExtraSaving {
+  readonly kind: SavingsKind;
+  readonly capital: number;
+  readonly monthly: number;
 }
 
 /**
@@ -149,8 +168,14 @@ export function defaultStrategyInput(): StrategyInput {
     floor: BUDGETS[0].amount,
     frontYears: 10,
     lifespan: 0,
+    extraPensions: [],
+    extraSavings: [],
   };
 }
+
+/** What an added pension's or saving's capital and monthly saving may be: as the first one's fields. */
+const CAPITAL_BOUNDS = { min: 0, max: 20_000_000 } as const;
+const SAVING_BOUNDS = { min: 0, max: 100_000 } as const;
 
 const clamp = (value: number, bounds: { readonly min: number; readonly max: number }): number =>
   Math.min(Math.max(Number.isFinite(value) ? value : bounds.min, bounds.min), bounds.max);
@@ -167,7 +192,52 @@ export function normaliseStrategy(input: StrategyInput): StrategyInput {
       input.lifespan > 0
         ? Math.round(Math.max(clamp(input.lifespan, LIFESPAN_BOUNDS), referenceAge(input.born, input.retirementAge) + 1))
         : 0,
+    extraPensions: (input.extraPensions ?? []).slice(0, MAX_EXTRA).map((p) => ({ capital: clamp(p.capital, CAPITAL_BOUNDS), monthly: clamp(p.monthly, SAVING_BOUNDS) })),
+    extraSavings: (input.extraSavings ?? []).slice(0, MAX_EXTRA).map((p) => ({
+      kind: p.kind === "depot" ? "depot" : "isk",
+      capital: clamp(p.capital, CAPITAL_BOUNDS),
+      monthly: clamp(p.monthly, SAVING_BOUNDS),
+    })),
   };
+}
+
+/**
+ * What is paid out as taxed income, as the model's private pension pot carries it: the individual occupational
+ * pension, the private pension and every occupational pension added, summed. The model's pot for them is one --
+ * the same return, payout period and tax -- so the added pensions are paid over the private pension's period.
+ */
+export function pooledPension(input: StrategyInput): SavingsInput {
+  const extras = input.extraPensions ?? [];
+  return {
+    ...input,
+    individualCapital: input.individualCapital + extras.reduce((sum, p) => sum + Math.max(p.capital, 0), 0),
+    individualMonthly: input.individualMonthly + extras.reduce((sum, p) => sum + Math.max(p.monthly, 0), 0),
+  };
+}
+
+/**
+ * The private savings by kind, summed: the first saving and every one added. The model carries one kind of private
+ * saving per run, so each kind with anything in it is a run of its own; within a kind the savings are one pot.
+ */
+export function savingsByKind(input: StrategyInput): readonly SavingsInput[] {
+  const all = [{ kind: input.savingsKind, capital: input.savingsCapital, monthly: input.savingsMonthly }, ...(input.extraSavings ?? [])];
+  const kinds: SavingsKind[] = ["isk", "depot"];
+  return kinds
+    .map((kind) => {
+      const of = all.filter((s) => s.kind === kind);
+      return {
+        ...input,
+        savingsKind: kind,
+        savingsCapital: of.reduce((sum, s) => sum + Math.max(s.capital, 0), 0),
+        savingsMonthly: of.reduce((sum, s) => sum + Math.max(s.monthly, 0), 0),
+      };
+    })
+    .filter((s) => taxFreeSaving(s) !== null);
+}
+
+/** Whether there is a private saving of `kind` in the plan. */
+export function hasSavingsOf(input: StrategyInput, kind: SavingsKind): boolean {
+  return savingsByKind(input).some((s) => s.savingsKind === kind);
 }
 
 export function strategyTypfall(input: StrategyInput): TypfallInput {
@@ -198,7 +268,8 @@ export interface Combo {
 
 /**
  * The context of one run: the payout periods, the start, fixed prices, the housing, and the model's private
- * saving carrying one of the two parts (`savingSettings`). The taxed part's run also gets the wealth the
+ * saving carrying one of the two parts (`savingSettings`): every taxed pension pooled (`pooledPension`), or one
+ * kind of private saving, `savings` (the first in the plan unless given). The taxed part's run also gets the wealth the
  * housing supplement is tested against, year by year.
  */
 export function strategyContext(
@@ -207,6 +278,7 @@ export function strategyContext(
   combo: Combo,
   part: SavingPart,
   wealth?: readonly number[],
+  savings: SavingsInput = savingsByKind(input)[0] ?? { ...input, savingsCapital: 0, savingsMonthly: 0 },
 ): ModelContext {
   return {
     ...shared,
@@ -216,7 +288,7 @@ export function strategyContext(
     tempIpsUttag: part === "pension" ? combo.pension : combo.savings,
     hyra: input.rent,
     ansokt: input.housingSupplement ? 1 : 0,
-    ...savingSettings(shared, input, input, part),
+    ...savingSettings(shared, input, part === "pension" ? pooledPension(input) : savings, part),
     ...(wealth === undefined ? {} : { formogenhetPerAge: wealth }),
   };
 }
@@ -228,40 +300,54 @@ function annual(rows: readonly MvaluesRow[], par: number, pick: (row: MvaluesRow
   return out;
 }
 
-/** The private savings run: what they pay, their balance and their tax, and the wealth they make by age. */
+/** The private savings runs, summed: what they pay, their balance and their tax, and the wealth they make by age. */
 interface SavingsRun {
   readonly savings: readonly number[];
   /** Fixed prices, at the end of each age. */
   readonly balance: readonly number[];
   readonly tax: readonly number[];
+  /** The part of `balance` and `tax` held in the ISK kind: what the ISK's schablonintäkt is read from. */
+  readonly iskBalance: readonly number[];
+  readonly iskTax: readonly number[];
   /** Nominal kronor at the start of each age, `0..105`, other wealth included: the housing supplement's test. */
   readonly wealth: readonly number[];
 }
 
+/** One run per kind of private saving in the plan (`savingsByKind`), the two added up. */
 function savingsRun(typfall: TypfallInput, input: StrategyInput, shared: ModelContext, deaths: DeathProbabilities, payout: number): SavingsRun {
   const zero = () => new Array<number>(LAST_AGE + 1).fill(0);
   const other = Math.max(shared.formogenhet, 0);
-  if (taxFreeSaving(input) === null) {
-    return { savings: zero(), balance: zero(), tax: zero(), wealth: new Array<number>(106).fill(other) };
-  }
-  const combo: Combo = { occupational: LIFELONG, pension: LIFELONG, savings: payout, delay: 0 };
-  const result = run(typfall, strategyContext(shared, input, combo, "savings"), { deaths });
-  const par = retirementAge(typfall, result);
-  const savings = annual(result.rows, par, (r) => r.pps);
-  // The first year is Table 1's, as "Hur länge räcker pensionen?" takes it.
-  const line = result.table1.find((r) => r.key === Table1Key.PrivateSavingAfterTax);
-  if (line !== undefined && par <= LAST_AGE) savings[par] = line.monthly * 12;
+  const savings = zero();
   const balance = zero();
   const tax = zero();
+  const iskBalance = zero();
+  const iskTax = zero();
   const wealth = new Array<number>(106).fill(other);
-  for (const row of result.ledger) {
-    if (row.age <= LAST_AGE) {
-      balance[row.age] = row.pots.pps.close * row.priceFactor;
-      tax[row.age] = row.pots.pps.yieldTax * row.priceFactor;
+  const combo: Combo = { occupational: LIFELONG, pension: LIFELONG, savings: payout, delay: 0 };
+  for (const kind of savingsByKind(input)) {
+    const result = run(typfall, strategyContext(shared, input, combo, "savings", undefined, kind), { deaths });
+    const par = retirementAge(typfall, result);
+    const paid = annual(result.rows, par, (r) => r.pps);
+    // The first year is Table 1's, as "Hur länge räcker pensionen?" takes it.
+    const line = result.table1.find((r) => r.key === Table1Key.PrivateSavingAfterTax);
+    if (line !== undefined && par <= LAST_AGE) paid[par] = line.monthly * 12;
+    paid.forEach((v, age) => (savings[age] = savings[age]! + v));
+    const isk = kind.savingsKind === "isk";
+    for (const row of result.ledger) {
+      if (row.age >= 0 && row.age <= LAST_AGE) {
+        const close = row.pots.pps.close * row.priceFactor;
+        const yieldTax = row.pots.pps.yieldTax * row.priceFactor;
+        balance[row.age] = balance[row.age]! + close;
+        tax[row.age] = tax[row.age]! + yieldTax;
+        if (isk) {
+          iskBalance[row.age] = iskBalance[row.age]! + close;
+          iskTax[row.age] = iskTax[row.age]! + yieldTax;
+        }
+      }
+      if (row.age >= 0 && row.age < wealth.length) wealth[row.age] = wealth[row.age]! + Math.max(row.pots.pps.open, 0);
     }
-    if (row.age < wealth.length) wealth[row.age] = other + Math.max(row.pots.pps.open, 0);
   }
-  return { savings, balance, tax, wealth };
+  return { savings, balance, tax, iskBalance, iskTax, wealth };
 }
 
 /** One way of drawing the pots, run: kronor a year by age, fixed prices. */
@@ -286,9 +372,12 @@ export interface ComboRun {
   /** What there is to live on: `net + benefits + savings`. */
   readonly disposable: readonly number[];
   readonly stateTax: readonly number[];
-  /** The private savings' balance at the end of each age and the tax on them. */
+  /** The private savings' balance at the end of each age and the tax on them, all kinds. */
   readonly savingsBalance: readonly number[];
   readonly savingsTax: readonly number[];
+  /** The same, for what is held in the ISK kind only. */
+  readonly iskBalance: readonly number[];
+  readonly iskTax: readonly number[];
   /** What is left of `gross` kronor a year at `age` after the model's tax. */
   readonly netAt: (age: number, gross: number) => number;
   /** What a nominal amount at each age is multiplied by to be in this run's fixed prices, `0..LAST_AGE`. */
@@ -352,6 +441,8 @@ function pensionRun(
     stateTax,
     savingsBalance: own.balance,
     savingsTax: own.tax,
+    iskBalance: own.iskBalance,
+    iskTax: own.iskTax,
     netAt: probe.netAt,
     kpiFactor,
     expectedDeath: probe.result.lifeIncome.throughAge,
@@ -540,7 +631,7 @@ export function taxPicture(scenario: Scenario, input: StrategyInput, today: Date
     if (tax(a) < taxLow.amount - 0.5) taxLow = { age: a, amount: tax(a) };
   }
   const raised = Math.min(Math.max(par, riktalderFor(input.born)) + 1, LAST_AGE);
-  const hasIsk = input.savingsKind === "isk" && taxFreeSaving(input) !== null;
+  const hasIsk = hasSavingsOf(input, "isk");
   return {
     ...amounts,
     taxFreeFixed,
@@ -553,7 +644,7 @@ export function taxPicture(scenario: Scenario, input: StrategyInput, today: Date
     taxLow,
     untaxed,
     hasIsk,
-    iskIncome: hasIsk ? Math.max(run.savingsTax[par] ?? 0, 0) / CAPITAL_TAX : 0,
+    iskIncome: hasIsk ? Math.max(run.iskTax[par] ?? 0, 0) / CAPITAL_TAX : 0,
   };
 }
 
@@ -719,8 +810,8 @@ export function strategyRunsKey(input: StrategyInput): string {
 export function runStrategy(input: StrategyInput, shared: ModelContext, deaths: DeathProbabilities): StrategyRuns {
   const typfall = strategyTypfall(input);
   const n = input.frontYears;
-  const hasTaxFree = taxFreeSaving(input) !== null;
-  const taxed = taxedSaving(input);
+  const hasTaxFree = savingsByKind(input).length > 0;
+  const taxed = taxedSaving(pooledPension(input));
   const hasTaxed = taxed.capital > 0 || taxed.monthly > 1;
   const life: Combo = { occupational: LIFELONG, pension: LIFELONG, savings: LIFELONG, delay: 0 };
 
@@ -870,15 +961,15 @@ function findInsights(runs: StrategyRuns, input: StrategyInput, lifespan: number
   }
 
   // The ISK tax, where the savings are an ISK, a KF or a depot insurance.
-  if (input.savingsKind === "isk" && taxFreeSaving(input) !== null) {
-    const total = sumBetween(balanced.savingsTax, 0, lifespan);
+  if (hasSavingsOf(input, "isk")) {
+    const total = sumBetween(balanced.iskTax, 0, lifespan);
     if (total >= NOTEWORTHY) {
       found.push({
         kind: "iskTax",
-        perYear: balanced.savingsTax[par] ?? 0,
+        perYear: balanced.iskTax[par] ?? 0,
         total,
         lifespan,
-        capital: balanced.savingsBalance[par - 1] ?? 0,
+        capital: balanced.iskBalance[par - 1] ?? 0,
       });
     }
   }
@@ -1364,7 +1455,7 @@ export function taxRuleText(
           `Ditt sparande ger nästan ingen schablonintäkt, eftersom de första ${kr(ISK_TAX_FREE, l)} är skattefria. Därför minskar räntan i stället skatten på pensionen.`,
           `Your savings give almost no notional income, as the first ${kr(ISK_TAX_FREE, l)} are tax-free, so interest takes tax off the pension instead.`,
         );
-      } else if (input.savingsKind === "depot" && taxFreeSaving(input) !== null) {
+      } else if (hasSavingsOf(input, "depot")) {
         mine = say(
           l,
           "Utdelningar och vinster i din depå är också inkomst av kapital, och räntan kvittas först mot dem. Bara resten minskar skatten på pensionen.",
@@ -1450,7 +1541,15 @@ export function payoutPhases(run: ComboRun): PayoutPhase[] {
   return phases;
 }
 
-export function payoutKindName(kind: PayoutKind, lang: Lang, savingsKind: StrategyInput["savingsKind"] = "isk"): string {
+/** What the savings' row is named by: the one kind in the plan, or `"mixed"` for both. */
+export type SavingsLabel = SavingsKind | "mixed";
+
+export function savingsLabel(input: StrategyInput): SavingsLabel {
+  const kinds = savingsByKind(input);
+  return kinds.length > 1 ? "mixed" : (kinds[0]?.savingsKind ?? input.savingsKind);
+}
+
+export function payoutKindName(kind: PayoutKind, lang: Lang, savingsKind: SavingsLabel = "isk"): string {
   switch (kind) {
     case "income":
       return say(lang, "Inkomstpension", "Income pension");
@@ -1463,6 +1562,7 @@ export function payoutKindName(kind: PayoutKind, lang: Lang, savingsKind: Strate
     case "individual":
       return say(lang, "Privat pension", "Private pension");
     case "savings":
+      if (savingsKind === "mixed") return say(lang, "Privat sparande", "Private savings");
       return savingsKind === "depot" ? say(lang, "Depå / fondkonto", "Securities account") : say(lang, "ISK / kapitalförsäkring", "ISK / endowment insurance");
     case "benefits":
       return say(lang, "Bostadstillägg", "Housing supplement");

@@ -25,12 +25,14 @@ import { niceTicks, renderLineChart } from "./pensionAgeChart.js";
 import type { ChartSeries } from "./pensionAgeChart.js";
 import { decimals, h, panel, row, say, tableOf } from "./pensionAgeUi.js";
 import { BUDGETS } from "./pensionLasts.js";
-import { savingYear, savingsNotes } from "./privateSavings.js";
+import { SAVINGS_KINDS, savingYear, savingsNotes } from "./privateSavings.js";
+import type { SavingsKind } from "./privateSavings.js";
 import { createSavingsInputs } from "./savingsInputs.js";
 import {
   FLOOR_BOUNDS,
   FRONT_BOUNDS,
   LIFESPAN_BOUNDS,
+  MAX_EXTRA,
   PAYOUT_KINDS,
   LIFELONG,
   LONG_LIFE,
@@ -45,6 +47,7 @@ import {
   overtakenAt,
   payoutText,
   planAges,
+  savingsLabel,
   runStrategy,
   scenarioDescription,
   scenarioName,
@@ -57,13 +60,16 @@ import {
   taxRuleText,
   totalTo,
 } from "./strategy.js";
-import type { PayoutKind, ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
+import type { ExtraPension, ExtraSaving, PayoutKind, ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
 import { cell, headCell } from "./tables.js";
 
 const BORN: Bounds = { ...span(BIRTH_YEARS), step: 1 };
 const START_WORK: Bounds = { min: 15, max: 40, step: 1 };
 const RETIREMENT: Bounds = { ...span(RETIREMENT_AGES), step: 1 };
 const SALARY: Bounds = { min: 0, max: 1_000_000, step: 100 };
+/** An added pension's or saving's two fields: as the first one's (`savingsInputs.ts`). */
+const CAPITAL: Bounds = { min: 0, max: 20_000_000, step: 10_000 };
+const SAVING: Bounds = { min: 0, max: 100_000, step: 100 };
 
 const clampTo = (value: number, bounds: Bounds): number => Math.min(Math.max(value, bounds.min), bounds.max);
 
@@ -161,6 +167,111 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     group,
   });
 
+  /**
+   * A list of added occupational pensions or private savings: a row each -- for a saving, what it is held in --
+   * with its capital and monthly saving side by side, a button to take it away, and one to add another, up to
+   * `MAX_EXTRA`. The rows are rebuilt only when one is added or taken away (or the input is replaced), so a field
+   * being typed in keeps its focus; a typed value only updates the input.
+   */
+  function extrasList<T extends ExtraPension>(options: {
+    readonly name: string;
+    readonly items: () => readonly T[];
+    readonly set: (items: readonly T[]) => void;
+    readonly blank: () => T;
+    readonly title: (index: number, l: Lang) => string;
+    readonly add: (l: Lang) => string;
+    readonly note: (l: Lang) => string;
+    readonly capitalHint?: (item: T, l: Lang) => string;
+    /** A row's own fields before its capital and monthly saving (a saving's kind), with what its captions depend on. */
+    readonly head?: (row: HTMLElement, item: () => T, change: (patch: Partial<T>) => void, rowRelabels: Relabel[]) => void;
+  }): { sync(): void } {
+    const box = h("div", "st-extras");
+    box.dataset.role = `st-${options.name}`;
+    const rows = h("div", "st-extra-rows");
+    const note = h("p", "saving-note");
+    const addButton = h("button", "export-btn st-extra-add");
+    addButton.type = "button";
+    addButton.dataset.action = `st-add-${options.name}`;
+    box.append(rows, addButton, note);
+    grid.append(box);
+    let rowRelabels: Relabel[] = [];
+    let shown: readonly T[] = [];
+
+    const relabel = (l: Lang): void => {
+      addButton.textContent = `+ ${options.add(l)}`;
+      note.textContent = options.note(l);
+      for (const r of rowRelabels) r(l);
+    };
+    relabels.push((l) => relabel(l));
+
+    /** A typed value: the rows already show it, so they are not rebuilt. */
+    const change = (index: number, patch: Partial<T>): void => {
+      const items = options.items().map((item, i) => (i === index ? { ...item, ...patch } : item));
+      shown = items;
+      options.set(items);
+    };
+
+    function build(): void {
+      rows.replaceChildren();
+      rowRelabels = [];
+      shown = options.items();
+      shown.forEach((item, index) => {
+        const row = h("div", "st-extra");
+        row.dataset.index = String(index);
+        const top = h("div", "st-extra-head");
+        const title = h("h4", "st-extra-title");
+        const remove = h("button", "panel-btn st-extra-remove");
+        remove.type = "button";
+        remove.dataset.action = `st-remove-${options.name}`;
+        remove.addEventListener("click", () => options.set(options.items().filter((_, i) => i !== index)));
+        top.append(title, remove);
+        row.append(top);
+        rowRelabels.push((l) => {
+          title.textContent = options.title(index, l);
+          remove.textContent = say(l, "Ta bort", "Remove");
+          remove.setAttribute("aria-label", `${say(l, "Ta bort", "Remove")} ${options.title(index, l).toLowerCase()}`);
+        });
+        const current = () => options.items()[index] ?? item;
+        options.head?.(row, current, (patch) => change(index, patch), rowRelabels);
+        const pair = h("div", "field-pair");
+        row.append(pair);
+        const inPair = fieldSet(pair, rowRelabels, currentLang);
+        const capital = inPair.number(item.capital, CAPITAL, (v) => change(index, { capital: v } as Partial<T>));
+        capital.element.dataset.setting = `st-${options.name}-capital`;
+        inPair.field(
+          capital.element,
+          (l) => ({
+            label: say(l, "Kapital", "Capital"),
+            hint: options.capitalHint?.(current(), l) ?? say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
+          }),
+          "field field-stack",
+        );
+        const monthly = inPair.number(item.monthly, SAVING, (v) => change(index, { monthly: v } as Partial<T>));
+        monthly.element.dataset.setting = `st-${options.name}-monthly`;
+        inPair.field(
+          monthly.element,
+          (l) => ({ label: say(l, "Månadssparande", "Monthly saving"), hint: say(l, "kr/mån fram till pensionen", "SEK/month until retirement") }),
+          "field field-stack",
+        );
+        rows.append(row);
+      });
+      addButton.disabled = shown.length >= MAX_EXTRA;
+      relabel(currentLang);
+    }
+
+    addButton.addEventListener("click", () => {
+      if (options.items().length < MAX_EXTRA) options.set([...options.items(), options.blank()]);
+    });
+    build();
+    return {
+      /** Rebuilds the rows when the list is not the one they show: one added or taken away, a reset. */
+      sync() {
+        if (JSON.stringify(options.items()) === JSON.stringify(shown)) relabel(currentLang);
+        else build();
+      },
+    };
+  }
+
   // Person
   group("Person", "Person");
   const bornField = number(input.born, BORN, (born) => update({ born }));
@@ -215,7 +326,53 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   relabels.push(schemeSelect.relabel);
   field(schemeSelect.element, (l) => ({ label: t("occupational", l) }), "field field-wide");
   savingsUi.appendPension();
+  const extraPensions = extrasList<ExtraPension>({
+    name: "pension",
+    items: () => input.extraPensions,
+    set: (extraPensions) => update({ extraPensions }),
+    blank: () => ({ capital: 0, monthly: 0 }),
+    title: (index, l) => say(l, `Tjänstepension ${index + 2}`, `Occupational pension ${index + 2}`),
+    add: (l) => say(l, "Lägg till tjänstepension", "Add an occupational pension"),
+    note: (l) =>
+      say(
+        l,
+        "Har du tjänstepension från fler arbetsgivare eller avtal, till exempel ett fribrev från ett tidigare jobb? Lägg till dem här. De beskattas som inkomst och betalas ut som den privata pensionen: livsvarigt eller på den kortare tiden.",
+        "Do you have occupational pension from more employers or agreements, such as a paid-up policy from an earlier job? Add them here. They are taxed as income and paid out like the private pension: for life or over the shorter period.",
+      ),
+  });
   savingsUi.appendPrivateSavings();
+  const extraSavings = extrasList<ExtraSaving>({
+    name: "saving",
+    items: () => input.extraSavings,
+    set: (extraSavings) => update({ extraSavings }),
+    blank: () => ({ kind: "isk", capital: 0, monthly: 0 }),
+    title: (index, l) => say(l, `Sparande ${index + 2}`, `Saving ${index + 2}`),
+    add: (l) => say(l, "Lägg till sparande", "Add a saving"),
+    note: (l) =>
+      say(
+        l,
+        "Till exempel ett ISK och en depå, eller sparande i flera banker. Sparanden av samma typ räknas ihop.",
+        "For example an ISK and a securities account, or savings at more than one bank. Savings of the same type are added together.",
+      ),
+    capitalHint: (item, l) =>
+      item.kind === "depot"
+        ? say(l, `kr · efter reavinstskatt, värde vid ${savingStart()} års början`, `SEK · after capital gains tax, value at the start of ${savingStart()}`)
+        : say(l, `kr · värde vid ${savingStart()} års början`, `SEK · value at the start of ${savingStart()}`),
+    head: (row, item, change, rowRelabels) => {
+      const inRow = fieldSet(row, rowRelabels, currentLang);
+      const kind = inRow.select(
+        SAVINGS_KINDS.map((k, index) => ({ value: index, label: (l: Lang) => say(l, k.sv, k.en) })),
+        SAVINGS_KINDS.findIndex((k) => k.id === item().kind),
+        (index) => {
+          change({ kind: SAVINGS_KINDS[index]!.id as SavingsKind });
+          for (const r of rowRelabels) r(currentLang);
+        },
+      );
+      kind.element.dataset.setting = "st-saving-kind";
+      rowRelabels.push(kind.relabel);
+      inRow.field(kind.element, (l) => ({ label: say(l, "Typ av sparande", "Type of saving") }), "field field-wide");
+    },
+  });
 
   // Housing: what the housing supplement is worked out from.
   group("Boende", "Housing");
@@ -294,6 +451,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     salaryField.setValue(input.monthlySalary);
     schemeSelect.element.value = String(input.scheme);
     savingsUi.sync(currentLang);
+    extraPensions.sync();
+    extraSavings.sync();
     rentField.setValue(input.rent);
     housingBox.checked = input.housingSupplement;
     floorField.setValue(input.floor);
@@ -532,7 +691,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     svg.setAttribute(
       "aria-label",
       phases
-        .map((p) => `${payoutKindName(p.kind, l, strategy.input.savingsKind)}: ${p.from}–${p.lifelong ? say(l, "livsvarigt", "for life") : p.to}`)
+        .map((p) => `${payoutKindName(p.kind, l, savingsLabel(strategy.input))}: ${p.from}–${p.lifelong ? say(l, "livsvarigt", "for life") : p.to}`)
         .join("; "),
     );
     // The grid: every fifth age, with its year.
@@ -556,7 +715,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     }
     kinds.forEach((kind, row) => {
       const y = top + row * rowH;
-      svg.append(el("text", { x: 0, y: y + 13, class: "st-tl-label" }, payoutKindName(kind, l, strategy.input.savingsKind)));
+      svg.append(el("text", { x: 0, y: y + 13, class: "st-tl-label" }, payoutKindName(kind, l, savingsLabel(strategy.input))));
       for (const p of phases.filter((q) => q.kind === kind)) {
         const x0 = x(p.from);
         const x1 = x(p.to + 1);
@@ -566,7 +725,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
           ? say(l, `från ${p.from} år, livsvarigt`, `from ${p.from}, for life`)
           : say(l, `${p.from}–${p.to} år (${p.to - p.from + 1} år)`, `${p.from}–${p.to} (${p.to - p.from + 1} years)`);
         const text = `${span} · ${say(l, "ca", "about")} ${kronor(Math.round(p.monthly / 10) * 10, l)} ${say(l, "kr/mån", "SEK/month")}`;
-        bar.append(el("title", {}, `${payoutKindName(kind, l, strategy.input.savingsKind)}: ${text}`));
+        bar.append(el("title", {}, `${payoutKindName(kind, l, savingsLabel(strategy.input))}: ${text}`));
         svg.append(bar);
         if (p.lifelong) svg.append(el("path", { d: `M${x1 - 1} ${y + 1} l7 8 l-7 8 z`, fill: `var(${KIND_COLOUR[kind]})` }));
         const tx = Math.min(x0, W - right - 230);

@@ -16,6 +16,7 @@ import { LIFELONG as LASTS_LIFELONG, defaultLastsInput, normaliseLasts, runPayou
 import {
   CAPITAL_TAX,
   JAMKNING_DEADLINES,
+  MAX_EXTRA,
   SKATTEVERKET,
   TAX_RULES,
   checklistText,
@@ -30,6 +31,9 @@ import {
   scenarioDescription,
   payoutKindName,
   payoutPhases,
+  pooledPension,
+  savingsByKind,
+  savingsLabel,
   scenariosToCsv,
   scenariosToXlsxRows,
   seriesToCsv,
@@ -436,5 +440,61 @@ describe("the payout timeline", () => {
     for (let a = 67; a <= 76; a += 1) sum += front.run.occupational[a]!;
     expect(occ.monthly).toBeCloseTo(sum / 10 / 12, 6);
     expect(payoutKindName("savings", "sv", "depot")).toBe("Depå / fondkonto");
+  });
+});
+
+describe("more occupational pensions and private savings", () => {
+  const same = (a: ComboRun, b: ComboRun) => {
+    expect(a.disposable).toEqual(b.disposable);
+    expect(a.individual).toEqual(b.individual);
+    expect(a.savings).toEqual(b.savings);
+  };
+
+  it("pool the occupational pensions added with the private pension: one pot, taxed as income", () => {
+    const added = strategy({ individualCapital: 100_000, extraPensions: [{ capital: 300_000, monthly: 500 }, { capital: 200_000, monthly: 0 }] });
+    const inOne = strategy({ individualCapital: 600_000, individualMonthly: 500 });
+    expect(pooledPension(added.input)).toMatchObject({ individualCapital: 600_000, individualMonthly: 500 });
+    added.scenarios.forEach((s, i) => same(s.run, inOne.scenarios[i]!.run));
+    expect(added.scenarios[0]!.run.individual[70]!).toBeGreaterThan(plain.scenarios[0]!.run.individual[70]!);
+  });
+
+  it("add savings of the same kind together", () => {
+    const added = strategy({ extraSavings: [{ kind: "isk", capital: 250_000, monthly: 1_000 }] });
+    const inOne = strategy({ savingsCapital: 750_000, savingsMonthly: 1_000 });
+    expect(savingsByKind(added.input)).toHaveLength(1);
+    added.scenarios.forEach((s, i) => same(s.run, inOne.scenarios[i]!.run));
+    expect(savingsLabel(added.input)).toBe("isk");
+  });
+
+  it("run an ISK and a depot each on its own, and add what they pay", () => {
+    const both = strategy({ extraSavings: [{ kind: "depot", capital: 400_000, monthly: 0 }] });
+    const depot = strategy({ savingsKind: "depot", savingsCapital: 400_000 });
+    const [run, iskRun, depotRun] = [both, plain, depot].map((s) => s.scenarios.find((x) => x.id === "hybrid")!.run);
+    expect(savingsByKind(both.input).map((s) => s.savingsKind)).toEqual(["isk", "depot"]);
+    for (const age of [67, 70, 76]) {
+      expect(run!.savings[age]!).toBeCloseTo(iskRun!.savings[age]! + depotRun!.savings[age]!, 6);
+      expect(run!.savingsBalance[age]!).toBeCloseTo(iskRun!.savingsBalance[age]! + depotRun!.savingsBalance[age]!, 6);
+    }
+    // The ISK's tax and balance alone are what the ISK's insight and schablonintäkt are read from.
+    expect(run!.iskTax).toEqual(iskRun!.iskTax);
+    expect(run!.savingsTax[67]!).toBeGreaterThan(run!.iskTax[67]!);
+    expect(insight(both.insights, "iskTax").capital).toBeCloseTo(insight(plain.insights, "iskTax").capital, 6);
+    expect(savingsLabel(both.input)).toBe("mixed");
+    expect(payoutKindName("savings", "sv", "mixed")).toBe("Privat sparande");
+  });
+
+  it("are kept inside the fields' bounds, at most five of each", () => {
+    const many = normaliseStrategy({
+      ...defaultStrategyInput(),
+      extraPensions: Array.from({ length: 8 }, () => ({ capital: -5, monthly: 1e9 })),
+      extraSavings: [{ kind: "other" as never, capital: 1e12, monthly: 0 }],
+    });
+    expect(many.extraPensions).toHaveLength(MAX_EXTRA);
+    expect(many.extraPensions[0]).toEqual({ capital: 0, monthly: 100_000 });
+    expect(many.extraSavings[0]).toEqual({ kind: "isk", capital: 20_000_000, monthly: 0 });
+  });
+
+  it("change the runs' key, so that the runs are redone", () => {
+    expect(strategyRunsKey({ ...plain.input, extraSavings: [{ kind: "isk", capital: 1, monthly: 0 }] })).not.toBe(strategyRunsKey(plain.input));
   });
 });

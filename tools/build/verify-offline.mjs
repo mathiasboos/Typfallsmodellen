@@ -3994,6 +3994,38 @@ const stLifeReset = await stSetting("stLifespan").inputValue();
 console.log(`strategy life   : ${stLifeStart} -> 92 (${stLifeHead.includes("Till 92 år") ? "totals to 92" : "no total to 92"}), reset ${stLifeReset}`);
 if (stLifeStart !== "87" || !stLifeHead.includes("Till 92 år") || stLifeReset !== "87") problems.push(`the expected lifespan field reads ${stLifeStart}, gives the headers ${stLifeHead}, and resets to ${stLifeReset}`);
 
+// More occupational pensions and private savings: a row each, added and taken away; a typed value keeps the
+// focus, raises what there is to live on, and an ISK beside a depot names the timeline's row "Privat sparande".
+const stBalancedFirst = async () => (await st.locator('[data-role="st-scenario-table"] tbody tr').first().locator("td").nth(1).textContent()) ?? "";
+const stXStart = await stBalancedFirst();
+await st.locator('[data-action="st-add-pension"]').click();
+const stXCap = stSetting("st-pension-capital").first();
+await stXCap.fill("600000");
+await stXCap.press("Tab");
+await tab.waitForTimeout(150);
+const stXFocus = await tab.evaluate(() => document.activeElement?.dataset?.setting ?? "");
+const stXPension = await stBalancedFirst();
+await st.locator('[data-action="st-add-saving"]').click();
+await stSetting("st-saving-kind").first().selectOption("1");
+await stType("st-saving-capital", 400000);
+const stXSaving = await stBalancedFirst();
+const stXLabels = await st.locator('[data-role="st-fig-timeline"] .st-tl-label').allTextContents();
+const stXRows = await st.locator(".st-extra").count();
+await st.locator('[data-action="st-remove-pension"]').click();
+await tab.waitForTimeout(150);
+const stXAfterRemove = await st.locator(".st-extra").count();
+await st.locator('[data-action="st-reset"]').click();
+await tab.waitForTimeout(150);
+const stXAfterReset = [await st.locator(".st-extra").count(), await stBalancedFirst()];
+const kr = (text) => Number(text.replace(/\D/g, ""));
+console.log(`strategy extras : ${stXStart} -> +pension ${stXPension} -> +depot ${stXSaving}; ${stXRows} rows, ${stXAfterRemove} after remove, ${stXAfterReset[0]} after reset; focus ${stXFocus}`);
+if (!(kr(stXPension) > kr(stXStart)) || !(kr(stXSaving) > kr(stXPension)) || stXFocus !== "st-pension-monthly") {
+  problems.push(`an added pension and saving give ${stXStart} -> ${stXPension} -> ${stXSaving} kr/mån, focus on "${stXFocus}"`);
+}
+if (!stXLabels.includes("Privat sparande") || stXRows !== 2 || stXAfterRemove !== 1 || stXAfterReset[0] !== 0 || stXAfterReset[1] !== stXStart) {
+  problems.push(`the added rows: timeline ${stXLabels.join("/")}, ${stXRows} rows, ${stXAfterRemove} after remove, ${stXAfterReset.join(" / ")} after reset`);
+}
+
 // A floor only the pensions for life keep: the hybrid is suggested, and the front-loaded row's lowest
 // month is marked below it. The runs are kept, so only the evaluation changes.
 await stType("stFloor", 19000);

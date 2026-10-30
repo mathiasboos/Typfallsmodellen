@@ -1640,6 +1640,18 @@ lowest level a month to live on, a shorter payout period, an expected lifespan (
 `tempIpsUttag`), on `tjpPar` for a later start of the taxed pots, and on one addition to the engine,
 `formogenhetPerAge` (VBA-MAPPING.md).
 
+**More occupational pensions and private savings.** Below the first of each, the tab lists more, up to five
+(`MAX_EXTRA`), a row each with its capital and monthly saving, added and taken away with a button (the rows are rebuilt
+only then, so a field being typed in keeps its focus). An added occupational pension -- from an earlier employer or
+another agreement, a paid-up policy say -- is taxed as income: it is pooled with the individual occupational and the
+private pension in the model's IPS pot (`pooledPension`), which has the same return, payout period and tax, so it is
+paid out as the private pension is (for life, or over the shorter period). The agreement's own pension is still the
+model's TJP, the only pot the payout table varies. An added saving is an ISK or a depot: savings of one kind are summed
+into one pot (`savingsByKind`), and each kind with anything in it is a savings run of its own -- the model carries one
+kind per run -- whose payouts, balances, yield tax and wealth add up. What is held in the ISK kind alone (`iskBalance`,
+`iskTax`) is what the ISK's insight and its schablonintäkt are read from; the timeline's row is named "Privat
+sparande" when both kinds are in the plan.
+
 **Two runs for each way of drawing the pots.** `strategy.ts` (no DOM) runs the private savings on their own, as the
 fifth tab does -- the kind of saving, its payout period as `tempIpsUttag`, the taxed pots off -- for what they pay, their
 balance and yield tax by age, and their nominal balance at the start of each age. Then it runs the pensions

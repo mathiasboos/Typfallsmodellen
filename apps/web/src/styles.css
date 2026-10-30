@@ -1252,6 +1252,16 @@ body {
 .saving-note { grid-column: 1 / -1; margin: -4px 0 0; max-width: 60ch; font-size: 0.74rem; color: var(--text-muted); }
 .saving-note-prompt { color: var(--text-primary); font-weight: 600; }
 .field-stack { grid-template-columns: minmax(0, 1fr); align-content: start; }
+/* "Uttagsstrategi": the occupational pensions and private savings added beside the first, a framed row each,
+   and the button that adds one. */
+.st-extras { grid-column: 1 / -1; display: grid; gap: 8px; justify-items: start; }
+.st-extra-rows { display: grid; gap: 8px; width: 100%; max-width: 34rem; }
+.st-extra-rows:empty { display: none; }
+.st-extra { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.st-extra-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-extra-title { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
+.st-extra .field-pair { max-width: none; }
+.st-extras > .saving-note { margin: 0; }
 .field-stack > .field-label { grid-column: 1; grid-row: 1; align-self: end; }
 .field-stack > input { grid-column: 1; grid-row: 2; }
 .field-stack > .field-hint { grid-column: 1; grid-row: 3; align-self: start; }
