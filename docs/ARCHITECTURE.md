@@ -1635,7 +1635,7 @@ The eighth entry of the main menu, after "Hur mycket får jag?", on request: *ho
 order, when and from which pot -- where the two tabs before it ask how much it pays and for how long. It has a typfall
 of its own, as they do: the person, the salary, the agreement, the individual and private pension and the private
 savings (`savingsInputs.ts`, the same sections), the housing cost and whether the housing supplement is counted, a
-lowest level a month to live on, a shorter payout period, and the three assumptions, with "Hämta från Prognos" and
+lowest level a month to live on, a shorter payout period, an expected lifespan (filled in with the model's own, `lifeIncome.throughAge`, until another is typed; 0 in the input stands for the model's, and like the floor it only changes how the runs are read), and the three assumptions, with "Hämta från Prognos" and
 Återställ. There is no such sheet in the workbook. It is built on the settings the fifth tab uses (`tempTjpUttag`,
 `tempIpsUttag`), on `tjpPar` for a later start of the taxed pots, and on one addition to the engine,
 `formogenhetPerAge` (VBA-MAPPING.md).
@@ -1660,7 +1660,7 @@ pensions for life, the private savings over the shorter period; only when there 
 has its average a month in three stretches (the first ten years, the next ten, then to 95), its total to 80, the
 expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the lifespan
 from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come back). The
-expected lifespan is the model's own (`lifeIncome.throughAge`). The suggestion (`recommend`) is the scenario that pays
+expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is always for life; only the occupational and private pension and the savings change payout period between the scenarios, and the descriptions say so. The suggestion (`recommend`) is the scenario that pays
 the most in the first ten years among those whose lowest month stays at or above the floor; if none does, the one whose
 lowest month is highest; a tie goes to the simpler way (balanced, then hybrid, then front-loaded). A second table draws
 the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same lifespans
@@ -1715,13 +1715,13 @@ run's price factor for that year.
 suggestion in words, the scenario table (the suggested row marked "★ Förslag", a lowest month below the floor marked in
 its cell), the line chart (each scenario a month by age, the suggested one heavy, and the floor dashed, drawn by
 `renderLineChart` with its legend switches; the colours are the comparison tab's `--fig-scenario-*` steps), the payout
-table, the tax rules (the same cards, two to a row, without a number and ending in a link), the checklist, the notes,
+table, a payout timeline (a Gantt chart, `payoutPhases`: one row per part -- income, premium and guarantee pension, occupational and private pension, the savings, the housing supplement -- a bar per stretch of years from the retirement age, its span and average a month under it, the expected lifespan dashed, the colours the Portföljvärde tab's account tokens, and a switch between the scenarios, the suggested one first), the tax rules (the same cards, two to a row, without a number and ending in a link), the checklist, the notes,
 and four downloads (the scenarios and what there is to live on by age, CSV and Excel, whole kronor).
 
 **Left out on purpose:** a couple (the housing supplement is a single person's), other orders of the pots than the three
 scenarios, taking the public pension later or in part ("När ta ut pensionen?" and Avancerat do that), and discounting.
 
-**Checked** by `apps/web/test/strategy.test.ts` (26 tests: the inputs and their bounds, what each run asks the model, that
+**Checked** by `apps/web/test/strategy.test.ts` (30 tests: the inputs and their bounds, what each run asks the model, that
 the balanced scenario without the housing supplement is the fifth tab's lifelong run to the krona, the scenarios adding
 up, the suggestion with a floor that each scenario does or does not keep, the housing supplement following the savings,
 each rule's trigger and order, the checklist with and without a jämkning deadline near, `overtakenAt` and `recommend` on

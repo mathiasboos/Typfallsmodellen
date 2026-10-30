@@ -30,10 +30,14 @@ import { createSavingsInputs } from "./savingsInputs.js";
 import {
   FLOOR_BOUNDS,
   FRONT_BOUNDS,
+  LIFESPAN_BOUNDS,
+  PAYOUT_KINDS,
   LIFELONG,
   LONG_LIFE,
   RENT_BOUNDS,
   checklistText,
+  payoutKindName,
+  payoutPhases,
   defaultStrategyInput,
   evaluateStrategy,
   insightText,
@@ -53,7 +57,7 @@ import {
   taxRuleText,
   totalTo,
 } from "./strategy.js";
-import type { ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
+import type { PayoutKind, ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
 import { cell, headCell } from "./tables.js";
 
 const BORN: Bounds = { ...span(BIRTH_YEARS), step: 1 };
@@ -62,6 +66,17 @@ const RETIREMENT: Bounds = { ...span(RETIREMENT_AGES), step: 1 };
 const SALARY: Bounds = { min: 0, max: 1_000_000, step: 100 };
 
 const clampTo = (value: number, bounds: Bounds): number => Math.min(Math.max(value, bounds.min), bounds.max);
+
+/** Each kind of money's colour in the timeline: the Portföljvärde tab's account colours, validated there. */
+const KIND_COLOUR: Readonly<Record<PayoutKind, string>> = {
+  income: "--fig-pv-ip",
+  premium: "--fig-pv-pp",
+  guarantee: "--fig-pv-fee",
+  occupational: "--fig-pv-tjp",
+  individual: "--fig-pv-ips",
+  savings: "--fig-pv-pps",
+  benefits: "--fig-pv-tax",
+};
 
 /** The settings the saving year is read from until the shared context arrives: the workbook's own. */
 const DEFAULT_CONTEXT = defaultContext();
@@ -219,6 +234,19 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     label: say(l, "Uttag på kortare tid", "Shorter payout"),
     hint: say(l, `år, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · i scenarierna Framtung och Hybrid`, `years, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · in the Front-loaded and Hybrid scenarios`),
   }));
+  /** The model's expected lifespan for the person, from the last results: what the field shows until one is typed. */
+  let modelLifespan = 0;
+  /** The scenario the payout timeline shows; the suggested one until another is picked. */
+  let timelineScenario: ScenarioId | undefined;
+  const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
+  lifespanField.element.dataset.setting = "stLifespan";
+  const relabelLifespan = field(lifespanField.element, (l) => ({
+    label: say(l, "Förväntad livslängd (ålder)", "Expected lifespan (age)"),
+    hint:
+      modelLifespan > 0
+        ? say(l, `år · förifyllt med modellens antagande, ${decimals(modelLifespan, 1, l)} år`, `years · filled in with the model's assumption, ${decimals(modelLifespan, 1, l)}`)
+        : say(l, "år · förifyllt med modellens antagande", "years · filled in with the model's assumption"),
+  }));
 
   // Assumptions
   group("Antaganden", "Assumptions");
@@ -270,6 +298,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     housingBox.checked = input.housingSupplement;
     floorField.setValue(input.floor);
     frontField.setValue(input.frontYears);
+    if (input.lifespan > 0 || modelLifespan > 0) lifespanField.setValue(input.lifespan > 0 ? input.lifespan : Math.round(modelLifespan));
     inflationField.setValue(input.yearlyInflation);
     growthField.setValue(input.realGrowth);
     returnField.setValue(input.realReturn);
@@ -393,7 +422,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
           say(l, `Till ${t.lifespan} år`, `To ${t.lifespan}`),
           say(l, "Mkr totalt", "MSEK in all"),
           t.lifespan === Math.round(strategy.expectedDeath)
-            ? say(l, "Till din förväntade livslängd enligt modellen", "To your expected lifespan in the model")
+            ? say(l, "Till din förväntade livslängd", "To your expected lifespan")
             : undefined,
         ),
       ),
@@ -424,7 +453,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         { scenario: s.id },
       );
     });
-    body.append(tableOf("st-scenario-table", "st-table", head, rows), scenarioFigure(strategy, l), payoutTable(strategy, l));
+    body.append(tableOf("st-scenario-table", "st-table", head, rows), scenarioFigure(strategy, l), timeline(strategy, l), payoutTable(strategy, l));
     const downloads = h("div", "panel-actions st-downloads");
     downloads.append(
       csvExportButton(l, say(l, "att-leva-pa-per-ar.csv", "to-live-on-per-age.csv"), () => seriesToCsv(strategy, l)),
@@ -432,6 +461,119 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     );
     body.append(downloads);
     return section;
+  }
+
+  /**
+   * When each kind of money is paid, from the retirement year, as a Gantt chart: one row per kind, a bar per stretch
+   * of years, the expected lifespan marked. A switch picks the scenario; the suggested one is shown first.
+   */
+  function timeline(strategy: Strategy, l: Lang): HTMLElement {
+    const figure = h("figure", "figure st-timeline");
+    figure.dataset.role = "st-fig-timeline";
+    const ids = strategy.scenarios.map((s) => s.id);
+    if (timelineScenario === undefined || !ids.includes(timelineScenario)) timelineScenario = strategy.recommended;
+    const head = h("div", "st-timeline-head");
+    head.append(h("h3", "st-subhead", say(l, "Utbetalningarnas tidslinje", "When each payout is paid")));
+    const toggle = h("div", "panel-toggle pa-toggle");
+    toggle.setAttribute("role", "group");
+    const draw = h("div", "scroll");
+    const note = h("p", "pa-lead");
+    const render = (): void => {
+      const s = strategy.scenarios.find((x) => x.id === timelineScenario)!;
+      for (const button of toggle.querySelectorAll<HTMLButtonElement>("button")) {
+        const on = button.dataset.scenario === s.id;
+        button.classList.toggle("active", on);
+        button.setAttribute("aria-pressed", String(on));
+      }
+      draw.replaceChildren(timelineSvg(strategy, s.id, l));
+      note.textContent = say(
+        l,
+        `${scenarioName(s.id, l)}: ${scenarioDescription(s.id, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad före skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.`,
+        `${scenarioName(s.id, l)}: ${scenarioDescription(s.id, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month before tax. Where bars lie above one another, the parts are paid at the same time.`,
+      );
+    };
+    for (const id of ids) {
+      const button = h("button", "panel-btn", scenarioName(id, l));
+      button.type = "button";
+      button.dataset.scenario = id;
+      button.addEventListener("click", () => {
+        timelineScenario = id;
+        render();
+      });
+      toggle.append(button);
+    }
+    head.append(toggle);
+    figure.append(head, note, draw);
+    render();
+    return figure;
+  }
+
+  function timelineSvg(strategy: Strategy, id: ScenarioId, l: Lang): SVGSVGElement {
+    const NS = "http://www.w3.org/2000/svg";
+    const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, text?: string) => {
+      const node = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const s = strategy.scenarios.find((x) => x.id === id)!;
+    const phases = payoutPhases(s.run);
+    const kinds = PAYOUT_KINDS.filter((k) => phases.some((p) => p.kind === k));
+    const par = strategy.par;
+    const end = LONG_LIFE + 1;
+    const W = 760;
+    const left = 175;
+    const right = 24;
+    const rowH = 44;
+    const top = 26;
+    const H = top + kinds.length * rowH + 34;
+    const x = (age: number) => left + ((age - par) / (end - par)) * (W - left - right);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "st-timeline-svg", role: "img" });
+    svg.setAttribute(
+      "aria-label",
+      phases
+        .map((p) => `${payoutKindName(p.kind, l, strategy.input.savingsKind)}: ${p.from}–${p.lifelong ? say(l, "livsvarigt", "for life") : p.to}`)
+        .join("; "),
+    );
+    // The grid: every fifth age, with its year.
+    for (let age = par; age <= end; age += 1) {
+      if ((age - par) % 5 !== 0 && age !== end) continue;
+      const gx = x(age);
+      svg.append(el("line", { x1: gx, x2: gx, y1: top - 6, y2: H - 30, class: "st-tl-grid" }));
+      if (age < end) {
+        svg.append(el("text", { x: gx, y: H - 16, class: "st-tl-tick", "text-anchor": "middle" }, say(l, `${age} år`, `${age}`)));
+        svg.append(el("text", { x: gx, y: H - 3, class: "st-tl-tick st-tl-year", "text-anchor": "middle" }, String(strategy.input.born + age)));
+      }
+    }
+    // The expected lifespan.
+    const life = strategy.expectedDeath;
+    if (life > par && life < end) {
+      const lx = x(life);
+      svg.append(el("line", { x1: lx, x2: lx, y1: 12, y2: H - 30, class: "st-tl-life" }));
+      svg.append(
+        el("text", { x: lx, y: 10, class: "st-tl-tick", "text-anchor": lx > W - 140 ? "end" : "middle" }, say(l, `Förväntad livslängd ${decimals(life, 1, l)} år`, `Expected lifespan ${decimals(life, 1, l)}`)),
+      );
+    }
+    kinds.forEach((kind, row) => {
+      const y = top + row * rowH;
+      svg.append(el("text", { x: 0, y: y + 13, class: "st-tl-label" }, payoutKindName(kind, l, strategy.input.savingsKind)));
+      for (const p of phases.filter((q) => q.kind === kind)) {
+        const x0 = x(p.from);
+        const x1 = x(p.to + 1);
+        const bar = el("rect", { x: x0, y: y + 1, width: Math.max(x1 - x0, 3), height: 16, rx: 4, fill: `var(${KIND_COLOUR[kind]})`, class: "st-tl-bar" });
+        bar.dataset.kind = kind;
+        const span = p.lifelong
+          ? say(l, `från ${p.from} år, livsvarigt`, `from ${p.from}, for life`)
+          : say(l, `${p.from}–${p.to} år (${p.to - p.from + 1} år)`, `${p.from}–${p.to} (${p.to - p.from + 1} years)`);
+        const text = `${span} · ${say(l, "ca", "about")} ${kronor(Math.round(p.monthly / 10) * 10, l)} ${say(l, "kr/mån", "SEK/month")}`;
+        bar.append(el("title", {}, `${payoutKindName(kind, l, strategy.input.savingsKind)}: ${text}`));
+        svg.append(bar);
+        if (p.lifelong) svg.append(el("path", { d: `M${x1 - 1} ${y + 1} l7 8 l-7 8 z`, fill: `var(${KIND_COLOUR[kind]})` }));
+        const tx = Math.min(x0, W - right - 230);
+        svg.append(el("text", { x: tx, y: y + 32, class: "st-tl-text" }, text));
+      }
+    });
+    return svg;
   }
 
   function scenarioFigure(strategy: Strategy, l: Lang): HTMLElement {
@@ -464,8 +606,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       title: say(l, "Att leva på per månad", "To live on per month"),
       subtitle: say(
         l,
-        `Pension efter skatt, bostadstillägg och sparpengar, i fasta priser. Den streckade linjen är din lägsta nivå. Modellens förväntade livslängd för dig är ${decimals(strategy.expectedDeath, 1, l)} år.`,
-        `Pension after tax, housing supplement and savings, in constant prices. The dashed line is your lowest level. The model's expected lifespan for you is ${decimals(strategy.expectedDeath, 1, l)}.`,
+        `Pension efter skatt, bostadstillägg och sparpengar, i fasta priser. Den streckade linjen är din lägsta nivå. ${strategy.input.lifespan > 0 ? `Du räknar med att leva till ${strategy.input.lifespan} år (modellen: ${decimals(strategy.modelExpectedDeath, 1, l)} år).` : `Modellens förväntade livslängd för dig är ${decimals(strategy.modelExpectedDeath, 1, l)} år.`}`,
+        `Pension after tax, housing supplement and savings, in constant prices. The dashed line is your lowest level. ${strategy.input.lifespan > 0 ? `You count on living to ${strategy.input.lifespan} (the model: ${decimals(strategy.modelExpectedDeath, 1, l)}).` : `The model's expected lifespan for you is ${decimals(strategy.modelExpectedDeath, 1, l)}.`}`,
       ),
       xMin: from,
       xMax: to,
@@ -485,7 +627,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const box = h("div", "st-payouts");
     if (strategy.payouts.length < 2) return box;
     const life = strategy.payouts[strategy.payouts.length - 1]!;
-    const lifespans = planAges(life);
+    const lifespans = planAges(life, strategy.expectedDeath);
     const expected = Math.round(strategy.expectedDeath);
     const best = strategy.payouts.reduce((a, b) => (totalTo(b, expected) > totalTo(a, expected) + 0.5 ? b : a));
     box.append(
@@ -618,6 +760,9 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   function redraw(): void {
     if (context === undefined || deaths === undefined) return;
     const strategy = evaluateStrategy(runsFor(context, deaths), input, context, new Date());
+    modelLifespan = strategy.modelExpectedDeath;
+    if (input.lifespan === 0) lifespanField.setValue(Math.round(modelLifespan));
+    relabelLifespan(currentLang);
     savingsUi.relabel(currentLang);
     const l = currentLang;
     const out: HTMLElement[] = [];
