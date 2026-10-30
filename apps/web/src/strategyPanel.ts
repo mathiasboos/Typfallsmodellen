@@ -51,6 +51,7 @@ import {
   planAges,
   savingsLabel,
   runStrategy,
+  strategySalaryForFinal,
   scenarioSummary,
   scenarioName,
   scenariosToCsv,
@@ -117,6 +118,13 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   let currentLang = lang;
   let input: StrategyInput = normaliseStrategy(defaultStrategyInput());
   let riktalderLocked = true;
+  let salaryAs: "monthly" | "final" = "monthly";
+  /** The typed final salary, per month; read only while `salaryAs` is "final". */
+  let finalTarget = 0;
+  /** What the last run worked out, for the salary field's hint. */
+  let derived = { finalSalary: 0, monthlySalary: input.monthlySalary };
+  /** The monthly salary found for a typed final salary, kept while nothing it depends on changes. */
+  let salaryCache: { key: string; context: ModelContext; value: number } | undefined;
   let context: ModelContext | undefined;
   let deaths: DeathProbabilities | undefined;
   /** The engine runs, kept while only the floor changes. */
@@ -313,9 +321,42 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
 
   // Salary
   group("Lön", "Salary");
-  const salaryField = number(input.monthlySalary, SALARY, (monthlySalary) => update({ monthlySalary }));
+  // Monthly or final salary, as in "Hur länge räcker pensionen?": a typed final salary is turned into the
+  // monthly salary that gives it (`strategySalaryForFinal`) before the runs.
+  const salaryAsSelect = select(
+    [
+      { value: 0, label: (l) => say(l, "Månadslön", "Monthly salary") },
+      { value: 1, label: (l) => say(l, "Slutlön (vid pensionsåldern)", "Final salary (at the retirement age)") },
+    ],
+    0,
+    (value) => {
+      if (value === 1 && salaryAs === "monthly") finalTarget = Math.round(derived.finalSalary);
+      if (value === 0 && salaryAs === "final") input = { ...input, monthlySalary: derived.monthlySalary };
+      salaryAs = value === 1 ? "final" : "monthly";
+      sync();
+      redraw();
+    },
+  );
+  salaryAsSelect.element.dataset.setting = "stSalaryAs";
+  relabels.push(salaryAsSelect.relabel);
+  field(salaryAsSelect.element, (l) => ({ label: say(l, "Ange lön som", "Enter salary as") }), "field field-wide");
+  const salaryField = number(input.monthlySalary, SALARY, (value) => {
+    if (salaryAs === "monthly") update({ monthlySalary: value });
+    else {
+      finalTarget = value;
+      redraw();
+    }
+  });
   salaryField.element.dataset.setting = "stSalary";
-  field(salaryField.element, (l) => ({ label: t("monthlySalary", l), hint: say(l, "kr/mån", "SEK/month") }));
+  const relabelSalary = field(salaryField.element, (l) => ({
+    label: salaryAs === "monthly" ? t("monthlySalary", l) : t("finalSalary", l),
+    hint:
+      derived.finalSalary <= 0
+        ? say(l, "kr/mån", "SEK/month")
+        : salaryAs === "monthly"
+          ? say(l, `kr/mån · slutlön ${kronor(derived.finalSalary, l)} kr/mån`, `SEK/month · final salary ${kronor(derived.finalSalary, l)} SEK/month`)
+          : say(l, `kr/mån · månadslön ${kronor(derived.monthlySalary, l)} kr`, `SEK/month · monthly salary ${kronor(derived.monthlySalary, l)} SEK`),
+  }));
 
   // Pension
   group("Pension", "Pension");
@@ -450,7 +491,9 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     retirementField.setValue(input.retirementAge);
     retirementField.element.disabled = riktalderLocked;
     riktalderBox.checked = riktalderLocked;
-    salaryField.setValue(input.monthlySalary);
+    salaryAsSelect.element.value = salaryAs === "final" ? "1" : "0";
+    salaryField.setValue(salaryAs === "final" ? finalTarget : input.monthlySalary);
+    relabelSalary(currentLang);
     schemeSelect.element.value = String(input.scheme);
     savingsUi.sync(currentLang);
     extraPensions.sync();
@@ -481,6 +524,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   importButton.addEventListener("click", () => {
     const forecast = getForecastInput();
     riktalderLocked = false;
+    salaryAs = "monthly";
+    finalTarget = 0;
     update({
       born: clampTo(forecast.born, BORN),
       startWorkAge: clampTo(forecast.startWorkAge, START_WORK),
@@ -495,6 +540,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   resetButton.addEventListener("click", () => {
     input = defaultStrategyInput();
     riktalderLocked = true;
+    salaryAs = "monthly";
+    finalTarget = 0;
     normalise();
     sync();
     redraw();
@@ -922,17 +969,28 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     return section;
   }
 
-  function runsFor(shared: ModelContext, shownDeaths: DeathProbabilities): StrategyRuns {
-    const key = strategyRunsKey(input);
+  function runsFor(effective: StrategyInput, shared: ModelContext, shownDeaths: DeathProbabilities): StrategyRuns {
+    const key = strategyRunsKey(effective);
     if (cache !== undefined && cache.key === key && cache.context === shared && cache.deaths === shownDeaths) return cache.runs;
-    const runs = runStrategy(input, shared, shownDeaths);
+    const runs = runStrategy(effective, shared, shownDeaths);
     cache = { key, context: shared, deaths: shownDeaths, runs };
     return runs;
   }
 
   function redraw(): void {
     if (context === undefined || deaths === undefined) return;
-    const strategy = evaluateStrategy(runsFor(context, deaths), input, context, new Date());
+    let effective = input;
+    if (salaryAs === "final") {
+      const key = `${strategyRunsKey({ ...input, monthlySalary: 0 })}|${finalTarget}`;
+      if (salaryCache === undefined || salaryCache.key !== key || salaryCache.context !== context) {
+        salaryCache = { key, context, value: strategySalaryForFinal(input, finalTarget, context, deaths) };
+      }
+      effective = { ...input, monthlySalary: salaryCache.value };
+    }
+    const runs = runsFor(effective, context, deaths);
+    const strategy = evaluateStrategy(runs, effective, context, new Date());
+    derived = { finalSalary: runs.balanced.finalSalary, monthlySalary: effective.monthlySalary };
+    relabelSalary(currentLang);
     modelLifespan = strategy.modelExpectedDeath;
     if (input.lifespan === 0) lifespanField.setValue(Math.round(modelLifespan));
     relabelLifespan(currentLang);

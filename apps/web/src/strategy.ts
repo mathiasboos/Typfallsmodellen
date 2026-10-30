@@ -41,7 +41,7 @@ import type { DeathProbabilities, ModelContext, MvaluesRow, SchemeId, TypfallInp
 import { kronor, percent } from "./format.js";
 import type { Lang } from "./i18n.js";
 import { retirementAge } from "./kpis.js";
-import { LAST_AGE, referenceAge } from "./pensionAge.js";
+import { LAST_AGE, monthlySalaryForFinalSalary, referenceAge } from "./pensionAge.js";
 import { BUDGETS } from "./pensionLasts.js";
 import { defaultSavings, savingSettings, savingYear, taxFreeSaving, taxedSaving } from "./privateSavings.js";
 import type { SavingPart, SavingsInput, SavingsKind } from "./privateSavings.js";
@@ -385,6 +385,8 @@ export interface ComboRun {
   readonly kpiFactor: readonly number[];
   /** The model's expected age at death for the person at retirement. */
   readonly expectedDeath: number;
+  /** Table 1's "Slutlön" per month: what a typed final salary is matched against. */
+  readonly finalSalary: number;
   readonly warnings: readonly string[];
 }
 
@@ -447,6 +449,7 @@ function pensionRun(
     netAt: probe.netAt,
     kpiFactor,
     expectedDeath: probe.result.lifeIncome.throughAge,
+    finalSalary: yearly(Table1Key.FinalSalary) / 12,
     warnings: probe.result.warnings.map((w) => w.message),
   };
 }
@@ -917,6 +920,18 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
     savingYear: savingYear(input, shared),
     warnings,
   };
+}
+
+/** Table 1's "Slutlön" per month for the input: one run, everything for life. */
+export function strategyFinalSalary(input: StrategyInput, shared: ModelContext, deaths: DeathProbabilities): number {
+  const life: Combo = { occupational: LIFELONG, pension: LIFELONG, savings: LIFELONG, delay: 0 };
+  const result = run(strategyTypfall(input), strategyContext(shared, input, life, "pension"), { deaths });
+  return result.table1.find((r) => r.key === Table1Key.FinalSalary)?.monthly ?? 0;
+}
+
+/** The monthly salary, in the reference year's money, whose final salary is `target` (`monthlySalaryForFinalSalary`). */
+export function strategySalaryForFinal(input: StrategyInput, target: number, shared: ModelContext, deaths: DeathProbabilities): number {
+  return monthlySalaryForFinalSalary(target, (monthlySalary) => strategyFinalSalary({ ...input, monthlySalary }, shared, deaths));
 }
 
 export function computeStrategy(input: StrategyInput, shared: ModelContext, deaths: DeathProbabilities, today: Date): Strategy {

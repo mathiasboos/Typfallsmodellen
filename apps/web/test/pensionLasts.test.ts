@@ -969,3 +969,31 @@ describe("the first year", () => {
     }
   });
 });
+
+describe("the housing supplement", () => {
+  /** A low income with an ISK, so that the housing supplement is paid and is tested against the savings. */
+  const low = normaliseLasts({ ...base, monthlySalary: 24_000, savingsKind: "isk", savingsCapital: 300_000 });
+  const off = runPayouts(low, context, deaths);
+  const on = runPayouts({ ...low, housingSupplement: true, rent: 7_000 }, context, deaths);
+
+  it("is off unless asked for, and then adds to what is left after tax, the pension itself unchanged", () => {
+    expect(defaultLastsInput().housingSupplement).toBe(false);
+    expect(off.runs.every((r) => r.benefits.every((b) => b === 0))).toBe(true);
+    on.runs.forEach((r, i) => {
+      expect(r.gross).toEqual(off.runs[i]!.gross);
+      expect(r.savings).toEqual(off.runs[i]!.savings);
+      for (let age = 0; age <= LAST_AGE; age += 1) expect(r.net[age]!).toBeCloseTo(off.runs[i]!.net[age]! + r.benefits[age]!, 6);
+    });
+    const life = on.runs.find((r) => r.payout === LIFELONG)!;
+    expect(life.benefits[90]!).toBeGreaterThan(0);
+  });
+
+  it("is a different set of runs, and keeps before tax and after covering the same years", () => {
+    expect(runsKey({ ...low, housingSupplement: true })).not.toBe(runsKey(low));
+    const input = { ...low, housingSupplement: true, rent: 7_000, budget: 17_000 };
+    const a = computeLasts(input, context, deaths);
+    const b = computeLasts({ ...input, afterTax: false }, context, deaths);
+    a.options.forEach((option, i) => expect(b.options[i]!.view.covered, `${option.payout}`).toEqual(option.view.covered));
+    expect(normaliseLasts({ ...low, rent: 1e9 }).rent).toBe(50_000);
+  });
+});

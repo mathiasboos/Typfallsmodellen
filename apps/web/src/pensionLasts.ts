@@ -53,9 +53,12 @@
  *   age from the retirement age up to the lifespan (`lifespan - retirement`
  *   whole years: the lifespan is the age at which the person is gone, as in
  *   `pensionAge.ts`). Everything is in fixed prices (`priceBasis: 1`) whatever
- *   Avancerat says, since a budget is an amount of purchasing power. Benefits
- *   such as housing supplement are not counted; the pension after tax is the
- *   model's `netto`.
+ *   Avancerat says, since a budget is an amount of purchasing power. The pension
+ *   after tax is the model's `netto`. The housing supplement and the model's other
+ *   benefits (`bidrag`) are counted only when the person asks for it (`housingSupplement`,
+ *   with a housing cost of their own, as "Uttagsstrategi" asks): they are paid tax-free
+ *   on top, and are tested against the private savings as they are spent
+ *   (`formogenhetPerAge`, from the savings run), so the two tabs leave the same.
  * - **Before tax** the budget is what it takes to leave the budget after tax. That
  *   is not a rate applied to the budget: tax is progressive and the model's rules
  *   change with age, so it is the gross income the model's own tax section turns
@@ -90,7 +93,7 @@
  * for that reason is reported as short. Reported as a stretch, though --
  * "från 69 år" -- not as a failure of the whole.
  */
-import { Scheme, Table1Key, defaultInput, riktalderFor, run, runWithTaxProbe } from "@typfallsmodellen/engine";
+import { Scheme, Table1Key, defaultContext, defaultInput, riktalderFor, run, runWithTaxProbe } from "@typfallsmodellen/engine";
 import type { DeathProbabilities, ModelContext, MvaluesRow, SchemeId, TypfallInput } from "@typfallsmodellen/engine";
 
 import type { Lang } from "./i18n.js";
@@ -192,7 +195,14 @@ export interface LastsInput extends SavingsInput {
   readonly realReturn: number;
   /** Show the pension and the budget after tax instead of before. */
   readonly afterTax: boolean;
+  /** Count the housing supplement and the model's other benefits, tax-free on top of the pension. */
+  readonly housingSupplement: boolean;
+  /** The housing cost a month, kronor: what the housing supplement is worked out from. */
+  readonly rent: number;
 }
+
+/** What a housing cost a month can be typed as, kronor: as in "Uttagsstrategi". */
+export const RENT_BOUNDS = { min: 0, max: 50_000, step: 100 } as const;
 
 /**
  * A typfall born 1980 who started working at 25, earns the model's normal salary,
@@ -216,6 +226,8 @@ export function defaultLastsInput(): LastsInput {
     realGrowth: base.realGrowth,
     realReturn: base.realReturn,
     afterTax: true,
+    housingSupplement: false,
+    rent: defaultContext().hyra,
   };
 }
 
@@ -226,7 +238,8 @@ export function normaliseLasts(input: LastsInput): LastsInput {
     Math.max(Math.round(input.lifespan), LIFESPAN_BOUNDS.min, retirement + 1),
     LIFESPAN_BOUNDS.max,
   );
-  return { ...input, retirementAge: retirement, lifespan };
+  const rent = Number.isFinite(input.rent) ? Math.min(Math.max(input.rent, RENT_BOUNDS.min), RENT_BOUNDS.max) : defaultContext().hyra;
+  return { ...input, retirementAge: retirement, lifespan, housingSupplement: input.housingSupplement === true, rent };
 }
 
 export function lastsTypfall(input: LastsInput): TypfallInput {
@@ -254,6 +267,7 @@ export function lastsContext(
   input: LastsInput,
   payout: number,
   part: SavingPart = "pension",
+  wealth?: readonly number[],
 ): ModelContext {
   return {
     ...shared,
@@ -262,6 +276,9 @@ export function lastsContext(
     tempTjpUttag: payout,
     tempIpsUttag: payout,
     ...savingSettings(shared, input, input, part),
+    // The housing supplement, when counted: the person's housing cost, applied for, tested against the savings by age.
+    ...(input.housingSupplement ? { hyra: input.rent, ansokt: 1 } : {}),
+    ...(input.housingSupplement && wealth !== undefined ? { formogenhetPerAge: wealth } : {}),
   };
 }
 
@@ -279,7 +296,9 @@ export interface PayoutRun {
   readonly gross: readonly number[];
   /** The private savings paid out. Not taxed as income, so the same before and after tax. */
   readonly savings: readonly number[];
-  /** What is left of `gross` after the model's tax, with the tax-free `savings` on top. */
+  /** The housing supplement and the model's other benefits, tax-free; zero unless `housingSupplement`. */
+  readonly benefits: readonly number[];
+  /** What is left of `gross` after the model's tax, with the tax-free `savings` and `benefits` on top. */
   readonly net: readonly number[];
 }
 
@@ -331,7 +350,24 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
   };
 
   for (const payout of PAYOUTS) {
-    const probe = runWithTaxProbe(typfall, lastsContext(shared, input, payout), { deaths });
+    // The private savings are a second run, done first: the model carries one kind of private saving at a time,
+    // and their balance by age is the wealth the housing supplement is tested against.
+    let savings: number[] = new Array<number>(LAST_AGE + 1).fill(0);
+    const other = Math.max(shared.formogenhet, 0);
+    const wealth: number[] | undefined = input.housingSupplement ? new Array<number>(106).fill(other) : undefined;
+    if (taxFree !== null) {
+      const own = run(typfall, lastsContext(shared, input, payout, "savings"), { deaths });
+      const ownPar = retirementAge(typfall, own);
+      savings = annual(own.rows, ownPar, (r) => r.pps);
+      const line = own.table1.find((r) => r.key === Table1Key.PrivateSavingAfterTax);
+      if (line !== undefined && ownPar <= LAST_AGE) savings[ownPar] = line.monthly * 12;
+      remember(own.warnings);
+      if (wealth !== undefined) {
+        for (const row of own.ledger) if (row.age >= 0 && row.age < wealth.length) wealth[row.age] = other + Math.max(row.pots.pps.open, 0);
+      }
+    }
+
+    const probe = runWithTaxProbe(typfall, lastsContext(shared, input, payout, "pension", wealth), { deaths });
     const { rows } = probe.result;
     const par = retirementAge(typfall, probe.result);
 
@@ -339,6 +375,7 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
     const occupational = annual(rows, par, (r) => r.tjp);
     const individual = annual(rows, par, (r) => r.ips);
     const net = annual(rows, par, (r) => r.netto);
+    const benefits = input.housingSupplement ? annual(rows, par, (r) => r.bidrag) : new Array<number>(LAST_AGE + 1).fill(0);
     remember(probe.result.warnings);
 
     // The first year is Table 1's -- what Prognos shows. The model draws Table 1 in a second pass at the retirement
@@ -352,17 +389,7 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
       individual[par] = monthly(Table1Key.PrivateSaving);
       const after = publicPension[par]! + occupational[par]! + individual[par]!;
       net[par] = net[par]! + probe.netAt(par, after) - probe.netAt(par, before);
-    }
-
-    // The private savings are a second run: the model carries one kind of private saving at a time.
-    let savings: number[] = new Array<number>(LAST_AGE + 1).fill(0);
-    if (taxFree !== null) {
-      const own = run(typfall, lastsContext(shared, input, payout, "savings"), { deaths });
-      const ownPar = retirementAge(typfall, own);
-      savings = annual(own.rows, ownPar, (r) => r.pps);
-      const line = own.table1.find((r) => r.key === Table1Key.PrivateSavingAfterTax);
-      if (line !== undefined && ownPar <= LAST_AGE) savings[ownPar] = line.monthly * 12;
-      remember(own.warnings);
+      if (input.housingSupplement) benefits[par] = monthly(Table1Key.BenefitsAtRetirement);
     }
 
     runs.push({
@@ -372,7 +399,8 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
       individual,
       gross: publicPension.map((p, age) => p + occupational[age]! + individual[age]!),
       savings,
-      net: net.map((n, age) => n + savings[age]!),
+      benefits,
+      net: net.map((n, age) => n + savings[age]! + benefits[age]!),
     });
     // The tax section and the salary are the same whatever the payout, so the last run's are kept.
     netAt = probe.netAt;
@@ -644,7 +672,9 @@ export function evaluate(runs: PayoutRuns, input: LastsInput): Lasts {
     // added at face value, an untaxed krona would count for no more than a taxed one.
     const grossIncome = input.afterTax
       ? run.net
-      : run.gross.map((g, age) => (age >= from && age < to && run.savings[age]! > 0 ? runs.grossFor(age, run.net[age]!) : g));
+      : run.gross.map((g, age) =>
+          age >= from && age < to && run.savings[age]! + run.benefits[age]! > 0 ? runs.grossFor(age, run.net[age]!) : g,
+        );
     return {
       payout: run.payout,
       run,
@@ -652,7 +682,11 @@ export function evaluate(runs: PayoutRuns, input: LastsInput): Lasts {
       net,
       savings: input.afterTax
         ? run.savings
-        : grossIncome.map((g, age) => (run.savings[age]! > 0 ? Math.max(g - run.gross[age]!, 0) : 0)),
+        : // The tax-free part grossed up, the savings' share of it (the housing supplement's is in the total).
+          grossIncome.map((g, age) => {
+            const free = run.savings[age]! + run.benefits[age]!;
+            return run.savings[age]! > 0 ? (Math.max(g - run.gross[age]!, 0) * run.savings[age]!) / free : 0;
+          }),
     };
   });
 
