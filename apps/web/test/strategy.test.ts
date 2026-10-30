@@ -12,7 +12,7 @@ import { Scheme, defaultContext, riktalderFor } from "@typfallsmodellen/engine";
 import type { ModelContext } from "@typfallsmodellen/engine";
 
 import { loadDeathProbabilities } from "../src/deaths.js";
-import { LIFELONG as LASTS_LIFELONG, defaultLastsInput, monthlySalaryForTarget, normaliseLasts, runPayouts } from "../src/pensionLasts.js";
+import { LIFELONG as LASTS_LIFELONG, computeLasts, defaultLastsInput, monthlySalaryForTarget, normaliseLasts, runPayouts } from "../src/pensionLasts.js";
 import {
   CAPITAL_TAX,
   JAMKNING_DEADLINES,
@@ -160,27 +160,27 @@ describe("the scenarios", () => {
     const total = (s: Scenario) => s.totals.find((t) => t.lifespan === 87)!.total;
     const [balanced, front, optimal] = plain.scenarios;
     expect(plain.recommended).toBe("optimal");
-    expect(optimal!.run.combo).toMatchObject({ occupational: 5, savings: 5 });
-    expect(comboText(optimal!.run.combo, comboKinds(optimal!.run), "sv")).toBe("tjänstepension 5 år, sparande 5 år");
+    expect(optimal!.run.combo).toMatchObject({ occupational: 6, savings: 6 });
+    expect(comboText(optimal!.run.combo, comboKinds(optimal!.run), "sv")).toBe("tjänstepension 6 år, sparande 6 år");
     expect(total(optimal!)).toBeGreaterThanOrEqual(total(front!));
     expect(total(optimal!)).toBeGreaterThanOrEqual(total(balanced!));
     // A floor the shorter ways go under: the most of those that keep it.
     const kept = strategy({ floor: 19_000 });
     const keptOptimal = kept.scenarios[2]!;
     expect(keptOptimal.meetsFloor).toBe(true);
-    expect(keptOptimal.run.combo).toMatchObject({ occupational: 0, savings: 20 });
+    expect(keptOptimal.run.combo).toMatchObject({ occupational: 10, savings: 20 });
     expect(total(keptOptimal)).toBeGreaterThanOrEqual(total(kept.scenarios[0]!));
-    // A floor nothing keeps: the highest lowest month, and the tie goes to everything for life.
+    // A floor nothing keeps in any year: the most in all, as with no floor.
     const above = strategy({ floor: 60_000 });
     expect(above.scenarios.every((s) => !s.meetsFloor)).toBe(true);
-    expect(above.scenarios[2]!.run.combo).toMatchObject({ occupational: 0, pension: 0, savings: 0 });
+    expect(above.scenarios[2]!.run.combo).toEqual(optimal!.run.combo);
   });
 
   it("choose among every pot's periods, and only the pots there are", () => {
     const input = normaliseStrategy({ ...defaultStrategyInput(), individualCapital: 400_000 });
     const runs = runStrategy(input, shared, deaths);
-    // Occupational, private pension and savings, five periods each, and the own plan's 10 years among them.
-    expect(runs.candidates).toHaveLength(125);
+    // Occupational, private pension and savings, five periods each, and all three over every whole year from 5 to 20.
+    expect(runs.candidates).toHaveLength(125 + 12);
     const bare = runStrategy(normaliseStrategy({ ...defaultStrategyInput(), scheme: Scheme.None, savingsCapital: 0 }), shared, deaths);
     expect(bare.candidates.map((r) => r.combo)).toEqual([
       { occupational: 0, pension: 0, savings: 0, delay: 0 },
@@ -274,8 +274,8 @@ describe("the checklist", () => {
     expect(plain.checklist.length).toBeLessThanOrEqual(5);
     expect(plain.checklist.map((c) => c.kind)).toEqual(["minpension", "payout", "start", "btp", "isk"]);
     const housing = plain.checklist.find((c) => c.kind === "btp")!;
-    // Read off the optimal scenario: the occupational pension and the savings over five years.
-    expect(checklistText(housing, "sv")).toContain("från 72 år");
+    // Read off the optimal scenario: the occupational pension and the savings over six years.
+    expect(checklistText(housing, "sv")).toContain("från 73 år");
   });
 
   it("puts jämkning first in the autumn before the first pension year, with the day it must be in by", () => {
@@ -327,7 +327,7 @@ describe("the downloads", () => {
     expect(csv).toHaveLength(4);
     expect(csv[0]).toContain("Totalt till 87 år");
     expect(csv[2]!.startsWith("Din plan")).toBe(true);
-    expect(csv[3]!.startsWith("Optimalt (Tjänstepension 5 år, sparande 5 år:")).toBe(true);
+    expect(csv[3]!.startsWith("Optimalt (Tjänstepension 6 år, sparande 6 år:")).toBe(true);
     // Whole kronor without a thousands separator, as in the other tabs' downloads, and the lifespan from
     // which the balanced way has paid more in all: at 100 for the own plan, and not before 100 for the optimal one.
     expect(csv[1]).toMatch(/^Balanserad \(.*\);\d+;\d+;\d+;\d+;\d+;\d+;\d+;\d+;$/);
@@ -556,5 +556,23 @@ describe("the same person in Hur länge räcker pensionen?", () => {
     const lastsInput = normaliseLasts({ ...defaultLastsInput(), ...person });
     expect(monthly).toBe(monthlySalaryForTarget(lastsInput, 40_000, shared, deaths));
     expect(runStrategy({ ...input, monthlySalary: monthly }, shared, deaths).balanced.finalSalary).toBeCloseTo(40_000, -1);
+  });
+});
+
+describe("the optimal payout and Hur länge räcker pensionen?'s best", () => {
+  it("are the same for the same person, budget and lifespan", () => {
+    const born = 1981;
+    for (const lifespan of [90, 95])
+      for (const housingSupplement of [true, false])
+        for (const floor of [17_600, 22_000]) {
+          const person = { born, retirementAge: riktalderFor(born), monthlySalary: 40_000, scheme: Scheme.Itp1, lifespan, housingSupplement };
+          const ours = strategy({ ...person, savingsCapital: 0, floor });
+          const lasts = computeLasts(normaliseLasts({ ...defaultLastsInput(), ...person, budget: floor }), shared, deaths);
+          const optimal = ours.scenarios.find((s) => s.id === "optimal")!;
+          expect(optimal.run.combo.occupational, `${lifespan} ${housingSupplement} ${floor}`).toBe(lasts.best?.payout);
+        }
+    // The person in question: born 1981, ITP 1, 40 000 a month, the housing supplement counted, to 90 -- eight years in both.
+    const person = { born, retirementAge: riktalderFor(born), monthlySalary: 40_000, scheme: Scheme.Itp1, lifespan: 90, housingSupplement: true };
+    expect(strategy({ ...person, savingsCapital: 0 }).scenarios[2]!.run.combo.occupational).toBe(8);
   });
 });

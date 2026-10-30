@@ -3677,7 +3677,11 @@ await plType("plLifespan", 80);
 const plL80 = await plRibbon();
 const plL80Five = await plCells(5);
 console.log(`pension lasts   : living to 80 -> ${plL80.map((item) => item.text).join(",")}, 5 years ${plL80Five[5]}`);
-if (!sameList(plL80.map((item) => item.text), ["Till73år", "Till78år", "Helavägen", "Helavägen", "Helavägen"]) || plL80Five[5] !== "5/12") {
+// The boxes of the five drawn periods; the best payout, which now leaves the most in all of those that last, may add one.
+const plL80Drawn = plL80.filter((item) => [5, 10, 15, 20, 0].includes(item.payout));
+const plL80Best = plL80.find((item) => item.best);
+console.log(`pension lasts   : living to 80, best ${plL80Best?.payout} (${plL80Best?.text})`);
+if (!sameList(plL80Drawn.map((item) => item.text), ["Till73år", "Till78år", "Helavägen", "Helavägen", "Helavägen"]) || plL80Five[5] !== "5/12" || plL80Best?.text !== "Helavägen") {
   problems.push(`living to 80 the boxes read ${plL80.map((item) => item.text).join(",")} and 5 years ${plL80Five[5]}, expected Till73år,Till78år then all the way x3 and 5/12`);
 }
 await plType("plLifespan", 60);
@@ -3964,7 +3968,7 @@ if (!sameList(stStart.insights, ["payout", "firstYear", "iskTax"])) problems.pus
 if (!stStart.insightText.includes("219 769") || !stStart.insightText.includes("29,5")) problems.push(`the insights do not carry the default's numbers: "${stStart.insightText.slice(0, 300)}"`);
 if (!sameList(stStart.scenarios, ["balanced", "front", "optimal"])) problems.push(`the scenario table's rows are ${stStart.scenarios.join("/")}, expected balanced/front/optimal`);
 const stSuggestion = ((await st.locator(".st-recommendation").textContent()) ?? "").replace(/\s+/g, " ");
-if (stStart.recommended !== "optimal" || !sameList(stStart.chip, ["optimal"]) || stStart.below !== 0 || !stSuggestion.startsWith("Förslag: Optimalt (tjänstepension 5 år, sparande 5 år).")) {
+if (stStart.recommended !== "optimal" || !sameList(stStart.chip, ["optimal"]) || stStart.below !== 0 || !stSuggestion.startsWith("Förslag: Optimalt (tjänstepension 6 år, sparande 6 år).")) {
   problems.push(`the default suggests ${stStart.recommended} (chip on ${stStart.chip.join("/")}, ${stStart.below} below the floor, "${stSuggestion}"), expected the optimal one, its row marked and none below`);
 }
 if (!sameList(stStart.payouts, ["5", "10", "15", "20", "0"]) || !sameList(stStart.best, ["10"])) problems.push(`the payout table has ${stStart.payouts.join("/")} with the best ${stStart.best.join("/")}, expected 5/10/15/20/life with 10 years best`);
