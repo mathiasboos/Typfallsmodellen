@@ -680,8 +680,8 @@ export function createPensionLastsPanel(
       bullet(
         say(
           l,
-          `Livsvarig utbetalning täcker budgeten hela vägen till ${to} år: pensionen är i snitt ${amount(best.view.during!.income, l)} ${tax}, ${againstBudget(best.view.during!.difference, l)}. Det är också det tryggaste valet – det tar inte slut om du lever längre än ${to} år.`,
-          `A lifelong payout covers the budget all the way to ${to}: the pension averages ${amount(best.view.during!.income, l)} ${tax}, ${againstBudget(best.view.during!.difference, l)}. It is also the safest choice – it does not run out if you live past ${to}.`,
+          `Livsvarig utbetalning täcker budgeten hela vägen till ${to} år och ger mest att leva på totalt: pensionen är i snitt ${amount(best.view.during!.income, l)} ${tax}, ${againstBudget(best.view.during!.difference, l)}. Det är också det tryggaste valet – det tar inte slut om du lever längre än ${to} år.`,
+          `A lifelong payout covers the budget all the way to ${to} and leaves the most to live on in all: the pension averages ${amount(best.view.during!.income, l)} ${tax}, ${againstBudget(best.view.during!.difference, l)}. It is also the safest choice – it does not run out if you live past ${to}.`,
         ),
       );
     } else if (best.payout === LIFELONG) {
@@ -706,12 +706,16 @@ export function createPensionLastsPanel(
       bullet(
         say(
           l,
-          `Längst täcks budgeten med ${best.payout} års utbetalning: ${best.view.coveredYears} av ${years} år (${coverageText(best.view, l)}). Under utbetalningen är pensionen i snitt ${amount(during.income, l)} ${tax}, ${againstBudget(during.difference, l)}.` +
+          (best.view.lasts
+            ? `${best.payout} års utbetalning täcker budgeten hela vägen till ${to} år och ger mest att leva på totalt: ${kronor(best.total, l)} kr efter skatt, ${kronor(best.total - life.total, l)} kr mer än livsvarigt. Under utbetalningen är pensionen i snitt ${amount(during.income, l)} ${tax}, ${againstBudget(during.difference, l)}.`
+            : `Längst täcks budgeten med ${best.payout} års utbetalning: ${best.view.coveredYears} av ${years} år (${coverageText(best.view, l)}), och av dem som täcker lika länge ger den mest totalt. Under utbetalningen är pensionen i snitt ${amount(during.income, l)} ${tax}, ${againstBudget(during.difference, l)}.`) +
             (after === null
               ? ""
               : ` Därefter är det bara allmän pension kvar: ${amount(after.income, l)}, ${againstBudget(after.difference, l)} i ${after.years} år till ${to} år.`) +
             lifeNote,
-          `The budget lasts longest with the ${best.payout}-year payout: ${best.view.coveredYears} of ${years} years (${coverageText(best.view, l)}). During the payout the pension averages ${amount(during.income, l)} ${tax}, ${againstBudget(during.difference, l)}.` +
+          (best.view.lasts
+            ? `The ${best.payout}-year payout covers the budget all the way to ${to} and leaves the most to live on in all: ${kronor(best.total, l)} SEK after tax, ${kronor(best.total - life.total, l)} SEK more than for life. During the payout the pension averages ${amount(during.income, l)} ${tax}, ${againstBudget(during.difference, l)}.`
+            : `The budget lasts longest with the ${best.payout}-year payout: ${best.view.coveredYears} of ${years} years (${coverageText(best.view, l)}), and of those that last as long it pays the most in all. During the payout the pension averages ${amount(during.income, l)} ${tax}, ${againstBudget(during.difference, l)}.`) +
             (after === null
               ? ""
               : ` After that only the public pension is left: ${amount(after.income, l)}, ${againstBudget(after.difference, l)} for ${after.years} years to ${to}.`) +

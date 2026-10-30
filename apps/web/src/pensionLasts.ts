@@ -80,10 +80,11 @@
  * running total is always after tax -- only that is left to save -- whichever
  * basis the rest is shown in.
  *
- * **The recommended payout** is the one that covers the budget in the most years;
- * a tie goes to the longer payout, lifelong being the longest. Shorter and
- * shorter payouts pay more and more for fewer years, so the count rises up to the
- * longest payout that still reaches the budget and then falls. When no payout
+ * **The recommended payout** is the one that covers the budget in the most years
+ * and, of those that cover that many, leaves the most to live on in all up to the
+ * lifespan, after tax; a tie (within a krona) goes to the longer payout, lifelong
+ * being the longest. That is the rule "Uttagsstrategi"'s optimal scenario follows,
+ * so the two tabs suggest the same payout for the same person. When no payout
  * reaches the budget in any year there is none to recommend.
  *
  * **The model's tax steps.** The higher grundavdrag for the old begins at an age
@@ -617,6 +618,8 @@ export interface PayoutOption {
    * pension still add up to `view.income` -- see `evaluate`. All zero without one.
    */
   readonly savings: readonly number[];
+  /** What is left to live on in all, after tax, from the retirement age up to the lifespan: what a tie is settled on. */
+  readonly total: number;
 }
 
 export interface Lasts {
@@ -687,13 +690,17 @@ export function evaluate(runs: PayoutRuns, input: LastsInput): Lasts {
             const free = run.savings[age]! + run.benefits[age]!;
             return run.savings[age]! > 0 ? (Math.max(g - run.gross[age]!, 0) * run.savings[age]!) / free : 0;
           }),
+      total: run.net.slice(from, to).reduce((sum, v) => sum + v, 0),
     };
   });
 
+  // The most years covered; of the payouts that cover that many, the one that leaves the most in all up to the
+  // lifespan -- the rule "Uttagsstrategi"'s optimal scenario follows (`optimalCombo`). Shortest first, so `>=`
+  // lets a longer payout win a tie (within a krona); lifelong comes last.
+  const most = Math.max(0, ...options.map((o) => o.view.coveredYears));
   let best: PayoutOption | null = null;
   for (const option of options) {
-    // Shortest first, so `>=` lets a longer payout win a tie; lifelong comes last.
-    if (option.view.coveredYears > 0 && (best === null || option.view.coveredYears >= best.view.coveredYears)) best = option;
+    if (most > 0 && option.view.coveredYears === most && (best === null || option.total >= best.total - 1)) best = option;
   }
 
   const publicIncome = publicGross.map((v, age) => (input.afterTax ? runs.netAt(age, v) : v));

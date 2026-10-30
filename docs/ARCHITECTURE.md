@@ -1564,8 +1564,12 @@ each month"; the second says whether a short payout, saved with discipline, stil
 through. The default person shows the difference: a 5-year payout covers the budget to 73 month by
 month, and all the way to 95 -- what the tab opens on -- if the surplus is saved.
 
-**The recommended payout** is the one that covers the budget in the most years, the longer payout on a
-tie (lifelong being the longest in time), and none when no payout covers it in any year. Payouts pay more
+**The recommended payout** is the one that covers the budget in the most years and, of those that cover
+that many, leaves the most to live on in all after tax up to the lifespan (`PayoutOption.total`); the longer
+payout on a tie within a krona (lifelong being the longest in time), and none when no payout covers it in any
+year. It is the rule "Uttagsstrategi"'s Optimalt follows, so for the same person, budget (= lowest level) and
+lifespan the two tabs suggest the same payout (a unit test holds them together); before, a tie in years went
+to the longest payout, so every payout lasting all the way meant "lifelong" here and a shorter one there. Payouts pay more
 and more for fewer years as they shorten, so the count rises up to the longest payout that still reaches
 the budget and then falls -- for a Pluspensionär it is 11 years, the first year apart (see below).
 Lifelong is not always the *smallest* amount: at a late retirement age the remaining life expectancy is
@@ -1677,9 +1681,13 @@ say. Without it nothing changes.
 under "Din plan") and Optimalt (`optimalCombo`): every pot that has anything in it -- the agreement's occupational
 pension, the taxed private pots, the private savings -- is run over 5, 10, 15 and 20 years and for life
 (`OPTIMAL_PERIODS`, at most 125 runs, each savings and pension run done once however many lists it is in), and the
-optimal one is the way that leaves the most to live on in all up to the expected lifespan among those whose lowest
-month up to 95 stays at or above the floor; if none does, the one whose lowest month is highest; a tie (within a
-krona) goes to more pots for life, then to longer periods. The own plan and the hybrid (pensions for life, savings
+optimal one is the way that leaves at least the floor in the most years up to the expected lifespan
+(`yearsAtFloor`) and, of those, the most to live on in all up to it -- "Hur länge räcker pensionen?"'s rule for its
+best payout, the floor being its budget; a tie (within a krona) goes to more pots for life, then to longer
+periods. Besides the 5/10/15/20-and-life grid per pot, every pot together is also run over every whole year from 5
+to 20 (`ALL_PERIODS`), the payouts that tab compares, so with one pot the two pick the same; with more, the
+optimal one may draw them over different periods and leave more. The lowest month, and whether a scenario keeps
+the floor, are read up to the expected lifespan too. The own plan and the hybrid (pensions for life, savings
 over the shorter period) are among the candidates, so the optimal one is never worse by that measure than either.
 It is always the one suggested, and its description and the suggestion name the periods it chose. The candidates
 are run once and kept (`StrategyRuns.candidates`), so a new floor or lifespan only reads them again. Each scenario

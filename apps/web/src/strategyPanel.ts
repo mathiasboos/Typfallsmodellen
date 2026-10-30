@@ -62,6 +62,7 @@ import {
   TAX_RULES,
   taxRuleText,
   totalTo,
+  yearsAtFloor,
 } from "./strategy.js";
 import type { ExtraPension, ExtraSaving, PayoutKind, ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
 import { cell, headCell } from "./tables.js";
@@ -437,8 +438,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     label: say(l, "Lägsta nivå per månad", "Lowest level per month"),
     hint: say(
       l,
-      `kr/mån efter skatt, hela livet · minPension: ${BUDGETS.map((b) => `${b.sv.replace("pensionär", "").toLowerCase()} ${kronor(b.amount, "sv")}`).join(", ")}`,
-      `SEK/month after tax, for life · minPension: ${BUDGETS.map((b) => `${b.en.replace(" pensioner", "").toLowerCase()} ${kronor(b.amount, "en")}`).join(", ")}`,
+      `kr/mån efter skatt, fram till din livslängd · minPension: ${BUDGETS.map((b) => `${b.sv.replace("pensionär", "").toLowerCase()} ${kronor(b.amount, "sv")}`).join(", ")}`,
+      `SEK/month after tax, up to your lifespan · minPension: ${BUDGETS.map((b) => `${b.en.replace(" pensioner", "").toLowerCase()} ${kronor(b.amount, "en")}`).join(", ")}`,
     ),
   }));
   const frontField = number(input.frontYears, FRONT_BOUNDS, (frontYears) => update({ frontYears }));
@@ -594,8 +595,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     if (!chosen.meetsFloor) {
       return say(
         l,
-        `Inget sätt att ta ut håller ${floor} ${perMonth(l)} hela livet. ${scenarioName(chosen.id, l)}${plan} kommer närmast: lägst ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
-        `No way of drawing keeps ${floor} ${perMonth(l)} for life. ${scenarioName(chosen.id, l)}${plan} comes closest: at least ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
+        `Inget sätt att ta ut håller ${floor} ${perMonth(l)} fram till ${lifespan} år. ${scenarioName(chosen.id, l)}${plan} håller nivån flest år, ${yearsAtFloor(chosen.run, strategy.input.floor, lifespan)} av ${lifespan - chosen.run.par}, och ger av dem mest totalt: lägst ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
+        `No way of drawing keeps ${floor} ${perMonth(l)} up to ${lifespan}. ${scenarioName(chosen.id, l)}${plan} keeps it the most years, ${yearsAtFloor(chosen.run, strategy.input.floor, lifespan)} of ${lifespan - chosen.run.par}, and of those pays the most in all: at least ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
       );
     }
     const total = (s: typeof chosen) => s.totals.find((t) => t.lifespan === lifespan)?.total ?? totalTo(s.run, lifespan);
@@ -608,8 +609,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         : say(l, " Det är ungefär detsamma som Balanserad.", " That is about the same as Balanced.");
     return say(
       l,
-      `Förslag: ${scenarioName(chosen.id, l)}${plan}. Det ger mest att leva på totalt fram till ${lifespan} år, ${mkr(total(chosen), l)} mnkr, och blir aldrig lägre än ${money(chosen.lowest.monthly, l)} ${perMonth(l)} – över din lägsta nivå på ${floor} ${perMonth(l)}.${versus}`,
-      `Suggestion: ${scenarioName(chosen.id, l)}${plan}. It leaves the most to live on in all up to ${lifespan}, ${mkr(total(chosen), l)} million SEK, and never falls below ${money(chosen.lowest.monthly, l)} ${perMonth(l)} – above your lowest level of ${floor} ${perMonth(l)}.${versus}`,
+      `Förslag: ${scenarioName(chosen.id, l)}${plan}. Det ger mest att leva på totalt fram till ${lifespan} år, ${mkr(total(chosen), l)} mnkr, och blir aldrig lägre än ${money(chosen.lowest.monthly, l)} ${perMonth(l)} fram till dess – över din lägsta nivå på ${floor} ${perMonth(l)}.${versus}`,
+      `Suggestion: ${scenarioName(chosen.id, l)}${plan}. It leaves the most to live on in all up to ${lifespan}, ${mkr(total(chosen), l)} million SEK, and never falls below ${money(chosen.lowest.monthly, l)} ${perMonth(l)} until then – above your lowest level of ${floor} ${perMonth(l)}.${versus}`,
     );
   }
 
@@ -646,7 +647,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
             : undefined,
         ),
       ),
-      unitCell(say(l, "Lägsta månad", "Lowest month"), perMonth(l), say(l, `Fram till ${LONG_LIFE} år`, `Up to ${LONG_LIFE}`)),
+      unitCell(say(l, "Lägsta månad", "Lowest month"), perMonth(l), say(l, `Fram till ${Math.round(strategy.expectedDeath)} år`, `Up to ${Math.round(strategy.expectedDeath)}`)),
       unitCell(
         say(l, "Balanserad går om", "Balanced catches up"),
         say(l, "vid livslängd", "at lifespan"),

@@ -15,10 +15,10 @@
  *   state tax from a short payout, and how little it costs to spend the savings early.
  * - **Three scenarios**: balanced (everything for life), the person's own plan (everything over the
  *   shorter period they give) and the optimal one (`optimalCombo`: of every way of setting each pot's
- *   payout period, the one that leaves the most to live on in all up to the expected lifespan while the
- *   lowest month stays at or above the floor), each with what it leaves to live on a month after tax,
- *   housing supplement included, in three stretches of life; the total at four lifespans; the lowest
- *   month up to 95; and the lifespan from which the balanced way has paid more. The optimal one is the
+ *   payout period, the one that leaves at least the floor in the most years up to the expected lifespan
+ *   and, of those, the most to live on in all -- "Hur länge räcker pensionen?"'s rule for its best payout),
+ *   each with what it leaves to live on a month after tax, housing supplement included, in three
+ *   stretches of life; the total at four lifespans; the lowest month up to the expected lifespan; and the lifespan from which the balanced way has paid more. The optimal one is the
  *   one suggested.
  * - **Tax and tax reductions** (`taxPicture`): the rules on what of the pension is kept -- always draw at least the
  *   tax-free annual income, ROT and RUT and the other tax reductions only take off tax actually paid, interest is set
@@ -465,7 +465,7 @@ export interface Scenario {
   readonly phases: readonly { readonly from: number; readonly to: number; readonly monthly: number }[];
   /** In all, from retirement up to each lifespan (the age the person is gone at). */
   readonly totals: readonly { readonly lifespan: number; readonly total: number }[];
-  /** The least a month up to `LONG_LIFE`, and the age it falls at. */
+  /** The least a month up to the expected lifespan, and the age it falls at. */
   readonly lowest: { readonly age: number; readonly monthly: number };
   /** A month on average over the first `EARLY_YEARS`. */
   readonly early: number;
@@ -527,8 +527,10 @@ function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined,
   ]
     .filter((phase) => phase.from <= Math.min(phase.to, LONG_LIFE))
     .map((phase) => ({ ...phase, to: Math.min(phase.to, LONG_LIFE), monthly: average(run.disposable, phase.from, phase.to) / 12 }));
+  // The lowest month up to the expected lifespan: what the floor is held against, as the optimal one is chosen.
+  const until = Math.max(Math.round(expectedDeath), par + 1);
   let lowest = { age: par, monthly: Number.POSITIVE_INFINITY };
-  for (let age = par; age <= Math.min(LONG_LIFE, LAST_AGE); age += 1) {
+  for (let age = par; age < Math.min(until, LAST_AGE + 1); age += 1) {
     const monthly = run.disposable[age]! / 12;
     if (monthly < lowest.monthly) lowest = { age, monthly };
   }
@@ -540,37 +542,41 @@ function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined,
     lowest,
     early: average(run.disposable, par, par + EARLY_YEARS - 1) / 12,
     breakEven: balanced === undefined || id === "balanced" ? undefined : overtakenAt(run, balanced),
-    meetsFloor: lowest.monthly + 0.5 >= floor,
+    meetsFloor: yearsAtFloor(run, floor, until) === Math.min(until, LAST_AGE + 1) - par,
   };
 }
 
-/** The payout periods the optimal scenario chooses among for each pot: the agreements' fixed ones, and life. */
+/** The payout periods the optimal scenario chooses among for each pot on its own: the agreements' usual ones, and life. */
 export const OPTIMAL_PERIODS: readonly number[] = [...PAYOUT_OPTIONS, LIFELONG];
+/** Every whole year from the shortest payout to the longest, and life: what every pot together is also tried over. */
+export const ALL_PERIODS: readonly number[] = [...Array.from({ length: 16 }, (_, i) => 5 + i), LIFELONG];
 
 /** How many of a combo's three periods are for life: the simpler way, which a tie goes to. */
 const lifelongCount = (c: Combo) => [c.occupational, c.pension, c.savings].filter((p) => p === LIFELONG).length;
 /** The total length of a combo's fixed periods: a tie between as many lifelong pots goes to the longer periods. */
 const spread = (c: Combo) => [c.occupational, c.pension, c.savings].reduce((sum, p) => sum + (p === LIFELONG ? 0 : p), 0);
 
+/** A shortfall this small, kronor a year, is rounding: half a krona a month (`pensionLasts.ts`'s `TOLERANCE`). */
+const TOLERANCE = 6;
+
+/** The years from the retirement age up to `lifespan` that leave at least `floor` a month to live on. */
+export function yearsAtFloor(run: ComboRun, floor: number, lifespan: number): number {
+  let years = 0;
+  for (let age = run.par; age < Math.min(lifespan, LAST_AGE + 1); age += 1) if (run.disposable[age]! - floor * 12 >= -TOLERANCE) years += 1;
+  return years;
+}
+
 /**
- * The optimal way of drawing the pots, of the runs given: the one that leaves the most to live on in all up to
- * `lifespan` among those whose lowest month up to `LONG_LIFE` stays at or above the floor, or -- if none does --
- * the one whose lowest month is highest. A tie (within a krona) goes to the one with more pots for life, then to
- * the longer periods: the simpler, safer way.
+ * The optimal way of drawing the pots, of the runs given: the one that leaves at least the floor in the most years
+ * up to `lifespan` and, of those, the most to live on in all up to it. A tie (within a krona) goes to the one with
+ * more pots for life, then to the longer periods: the simpler, safer way. It is "Hur länge räcker pensionen?"'s
+ * rule for its best payout, the floor being its budget, so the two tabs suggest the same for the same person.
  */
 export function optimalCombo(runs: readonly ComboRun[], floor: number, lifespan: number): ComboRun {
-  const lowest = (r: ComboRun) => {
-    let low = Number.POSITIVE_INFINITY;
-    for (let age = r.par; age <= Math.min(LONG_LIFE, LAST_AGE); age += 1) low = Math.min(low, r.disposable[age]! / 12);
-    return low;
-  };
-  const scored = runs.map((run) => ({ run, low: lowest(run), total: totalTo(run, lifespan) }));
-  const safe = scored.filter((s) => s.low + 0.5 >= floor);
-  const pool = safe.length > 0 ? safe : scored;
-  const score = (s: (typeof scored)[number]) => (safe.length > 0 ? s.total : s.low * 12);
-  let best = pool[0]!;
-  for (const s of pool) {
-    const diff = score(s) - score(best);
+  const scored = runs.map((run) => ({ run, years: yearsAtFloor(run, floor, lifespan), total: totalTo(run, lifespan) }));
+  let best = scored[0]!;
+  for (const s of scored) {
+    const diff = s.years !== best.years ? (s.years - best.years) * Number.POSITIVE_INFINITY : s.total - best.total;
     if (diff > 1) best = s;
     else if (diff >= -1) {
       const simpler = lifelongCount(s.run.combo) - lifelongCount(best.run.combo) || spread(s.run.combo) - spread(best.run.combo);
@@ -869,6 +875,12 @@ export function runStrategy(input: StrategyInput, shared: ModelContext, deaths: 
   for (const occupational of periods(hasOccupational))
     for (const pension of periods(hasTaxed))
       for (const savings of periods(hasTaxFree)) runFor({ occupational, pension, savings, delay: 0 });
+  // Every pot over the same period, every whole year from 5 to 20: the payouts "Hur länge räcker pensionen?" compares.
+  if (hasOccupational || hasTaxed || hasTaxFree) {
+    for (const p of ALL_PERIODS) {
+      runFor({ occupational: hasOccupational ? p : LIFELONG, pension: hasTaxed ? p : LIFELONG, savings: hasTaxFree ? p : LIFELONG, delay: 0 });
+    }
+  }
   const candidates = [...pensionRuns.values()];
 
   // The housing supplement against the savings: none at all, and two amounts above the disregarded one.
@@ -1213,8 +1225,8 @@ export function scenarioDescription(
       const chosen = combo === undefined || kinds === undefined ? "" : comboText(combo, kinds, lang);
       const how = say(
         lang,
-        "det sätt som ger mest att leva på totalt fram till din förväntade livslängd, utan att någon månad hamnar under din lägsta nivå. Den allmänna pensionen är alltid livsvarig.",
-        "the way that leaves the most to live on in all up to your expected lifespan, with no month below your lowest level. The public pension is always for life.",
+        "det sätt som ger mest att leva på totalt fram till din förväntade livslängd, utan att någon månad dessförinnan hamnar under din lägsta nivå – samma regel som Hur länge räcker pensionen? använder. Den allmänna pensionen är alltid livsvarig.",
+        "the way that leaves the most to live on in all up to your expected lifespan, with no month before it below your lowest level – the same rule How long does the pension last? uses. The public pension is always for life.",
       );
       return chosen === ""
         ? capitalise(how)
