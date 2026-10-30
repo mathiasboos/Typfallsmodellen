@@ -4077,6 +4077,22 @@ if (stLow.insights[0] !== "btpWealth" || !sameList(stLow.best, ["5"]) || !stLow.
 }
 if (stLowOff.insights.includes("btpWealth")) problems.push("with the housing supplement switched off the insights still tell of it");
 
+// Before tax and after, as in "Hur länge räcker pensionen?": the same scenarios in larger amounts, said so in a
+// note over the table, and back.
+const stNetFirst = await stBalancedFirst();
+await st.locator('button[data-basis="gross"]').click();
+await tab.waitForTimeout(150);
+const stGrossFirst = await stBalancedFirst();
+const stGrossHead = (await st.locator('.st-basis').textContent()) ?? "";
+const stGrossActive = await st.locator('button[data-basis="gross"]').evaluate((b) => b.classList.contains("active"));
+await st.locator('button[data-basis="net"]').click();
+await tab.waitForTimeout(150);
+const stNetAgain = await stBalancedFirst();
+console.log(`strategy basis  : after tax ${stNetFirst} -> before tax ${stGrossFirst} -> after tax ${stNetAgain}`);
+if (!(kr(stGrossFirst) > kr(stNetFirst)) || !stGrossHead.includes("före skatt") || !stGrossActive || stNetAgain !== stNetFirst) {
+  problems.push(`before tax in the strategy tab: ${stNetFirst} -> ${stGrossFirst} -> ${stNetAgain}, head "${stGrossHead.slice(0, 120)}", active ${stGrossActive}`);
+}
+
 // A final salary as the input, as in "Hur länge räcker pensionen?": the model's final salary is shown, and a
 // typed one is turned into the monthly salary behind it, which the hint quotes.
 const stBeforeFinal = await stBalancedFirst();

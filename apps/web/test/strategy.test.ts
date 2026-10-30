@@ -30,6 +30,7 @@ import {
   comboText,
   runStrategy,
   evaluateStrategy,
+  floorAt,
   scenarioDescription,
   payoutKindName,
   payoutPhases,
@@ -574,5 +575,38 @@ describe("the optimal payout and Hur länge räcker pensionen?'s best", () => {
     // The person in question: born 1981, ITP 1, 40 000 a month, the housing supplement counted, to 90 -- eight years in both.
     const person = { born, retirementAge: riktalderFor(born), monthlySalary: 40_000, scheme: Scheme.Itp1, lifespan: 90, housingSupplement: true };
     expect(strategy({ ...person, savingsCapital: 0 }).scenarios[2]!.run.combo.occupational).toBe(8);
+  });
+});
+
+describe("before tax and after", () => {
+  const gross = strategy({ afterTax: false });
+
+  it("shows the same scenarios, chosen after tax, in amounts before tax", () => {
+    expect(normaliseStrategy(defaultStrategyInput()).afterTax).toBe(true);
+    expect(strategyRunsKey({ ...plain.input, afterTax: false })).toBe(strategyRunsKey(plain.input));
+    expect(gross.scenarios.map((s) => s.run.combo)).toEqual(plain.scenarios.map((s) => s.run.combo));
+    gross.scenarios.forEach((s, i) => {
+      const net = plain.scenarios[i]!;
+      expect(s.meetsFloor).toBe(net.meetsFloor);
+      s.phases.forEach((p, j) => expect(p.monthly).toBeGreaterThan(net.phases[j]!.monthly));
+      s.totals.forEach((t, j) => expect(t.total).toBeGreaterThan(net.totals[j]!.total));
+    });
+  });
+
+  it("grosses the tax-free parts up to the income that leaves as much, and the floor with them", () => {
+    const run = low.scenarios[0]!.run;
+    for (let age = run.par; age <= 95; age += 1) {
+      expect(run.netAt(age, run.beforeTax[age]!)).toBeCloseTo(run.disposable[age]!, -1);
+      expect(run.beforeTax[age]!).toBeGreaterThanOrEqual(run.gross[age]! - 0.5);
+      // Before tax meets the floor before tax exactly when after tax meets it after.
+      const floor = 17_600;
+      expect(run.beforeTax[age]! / 12 >= floorAt(run, floor, age, false) - 1).toBe(run.disposable[age]! / 12 >= floor - 1);
+    }
+    expect(floorAt(run, 17_600, 80, true)).toBe(17_600);
+  });
+
+  it("says so in the downloads", () => {
+    expect(scenariosToCsv(gross, "sv").split("\r\n")[0]).toContain("Totalt till 87 år (före skatt)");
+    expect(seriesToCsv(gross, "en").split("\r\n")[0]).toBe("Age,Balanced (before tax),Your plan (before tax),Optimal (before tax)");
   });
 });

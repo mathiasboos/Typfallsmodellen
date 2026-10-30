@@ -1689,7 +1689,11 @@ to 20 (`ALL_PERIODS`), the payouts that tab compares, so with one pot the two pi
 optimal one may draw them over different periods and leave more. The lowest month, and whether a scenario keeps
 the floor, are read up to the expected lifespan too. The own plan and the hybrid (pensions for life, savings
 over the shorter period) are among the candidates, so the optimal one is never worse by that measure than either.
-It is always the one suggested, and its description and the suggestion name the periods it chose. The candidates
+It is always the one suggested, and its description and the suggestion name the periods it chose. Under "Visa" the amounts are shown after tax (the default) or before
+(`input.afterTax`, outside the runs' key): before tax is the taxed income with the tax-free parts -- the housing
+supplement and the savings -- grossed up to the income the model's tax leaves as much of (`ComboRun.beforeTax`,
+`grossFor`), and the floor with them (`floorAt`), as "Hur länge räcker pensionen?" does; the scenarios and the
+suggestion are chosen after tax either way. The candidates
 are run once and kept (`StrategyRuns.candidates`), so a new floor or lifespan only reads them again. Each scenario
 has its average a month in three stretches (the first ten years, the next ten, then to 95), its total to 80, the
 expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the

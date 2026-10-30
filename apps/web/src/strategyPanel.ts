@@ -63,8 +63,10 @@ import {
   taxRuleText,
   totalTo,
   yearsAtFloor,
+  floorAt,
+  incomeOf,
 } from "./strategy.js";
-import type { ExtraPension, ExtraSaving, PayoutKind, ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
+import type { ExtraPension, ExtraSaving, PayoutKind, Scenario, ScenarioId, Strategy, StrategyInput, StrategyRuns } from "./strategy.js";
 import { cell, headCell } from "./tables.js";
 
 const BORN: Bounds = { ...span(BIRTH_YEARS), step: 1 };
@@ -475,6 +477,23 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   field(returnField.element, (l) => ({ label: t("realReturn", l), hint: "%" }));
   relabels.push(returnField.relabel);
 
+  // Show: the amounts after tax or before, as in "Hur länge räcker pensionen?".
+  group("Visa", "Show");
+  const basisBox = h("div", "panel-toggle pa-toggle");
+  basisBox.setAttribute("role", "group");
+  const basisButtons = [
+    { afterTax: false, sv: "Före skatt", en: "Before tax", id: "gross" },
+    { afterTax: true, sv: "Efter skatt", en: "After tax", id: "net" },
+  ].map((choice) => {
+    const button = h("button", "panel-btn");
+    button.type = "button";
+    button.dataset.basis = choice.id;
+    button.addEventListener("click", () => update({ afterTax: choice.afterTax }));
+    basisBox.append(button);
+    return { choice, button };
+  });
+  grid.append(basisBox);
+
   // ---- state -> controls -------------------------------------------------------
 
   function savingStart(): number {
@@ -510,6 +529,10 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     for (const { preset, button } of presetButtons) {
       const active = input.yearlyInflation === preset.inflation && input.realGrowth === preset.growth && input.realReturn === preset.ret;
       button.classList.toggle("active", active);
+    }
+    for (const { choice, button } of basisButtons) {
+      button.classList.toggle("active", choice.afterTax === input.afterTax);
+      button.setAttribute("aria-pressed", String(choice.afterTax === input.afterTax));
     }
     relabelBorn(currentLang);
     relabelRetirement(currentLang);
@@ -590,27 +613,39 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const balanced = strategy.scenarios.find((s) => s.id === "balanced")!;
     const floor = money(strategy.input.floor, l);
     const lifespan = Math.round(strategy.expectedDeath);
+    const afterTax = strategy.input.afterTax;
+    /** The amounts' basis, said after the unit when they are before tax. */
+    const basis = afterTax ? "" : say(l, " före skatt", " before tax");
+    /** What the floor (after tax) takes before tax, at the age of the lowest month. */
+    const floorNote = (s: Scenario) =>
+      afterTax
+        ? ""
+        : say(
+            l,
+            ` (efter skatt; före skatt ungefär ${money(floorAt(s.run, strategy.input.floor, s.lowest.age, false), l)} ${perMonth(l)})`,
+            ` (after tax; before tax about ${money(floorAt(s.run, strategy.input.floor, s.lowest.age, false), l)} ${perMonth(l)})`,
+          );
     const what = comboText(chosen.run.combo, comboKinds(chosen.run), l);
     const plan = what === "" ? "" : say(l, ` (${what})`, ` (${what})`);
     if (!chosen.meetsFloor) {
       return say(
         l,
-        `Inget sätt att ta ut håller ${floor} ${perMonth(l)} fram till ${lifespan} år. ${scenarioName(chosen.id, l)}${plan} håller nivån flest år, ${yearsAtFloor(chosen.run, strategy.input.floor, lifespan)} av ${lifespan - chosen.run.par}, och ger av dem mest totalt: lägst ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
-        `No way of drawing keeps ${floor} ${perMonth(l)} up to ${lifespan}. ${scenarioName(chosen.id, l)}${plan} keeps it the most years, ${yearsAtFloor(chosen.run, strategy.input.floor, lifespan)} of ${lifespan - chosen.run.par}, and of those pays the most in all: at least ${money(chosen.lowest.monthly, l)} ${perMonth(l)}.`,
+        `Inget sätt att ta ut håller ${floor} ${perMonth(l)} fram till ${lifespan} år. ${scenarioName(chosen.id, l)}${plan} håller nivån flest år, ${yearsAtFloor(chosen.run, strategy.input.floor, lifespan)} av ${lifespan - chosen.run.par}, och ger av dem mest totalt: lägst ${money(chosen.lowest.monthly, l)} ${perMonth(l)}${basis}.`,
+        `No way of drawing keeps ${floor} ${perMonth(l)} up to ${lifespan}. ${scenarioName(chosen.id, l)}${plan} keeps it the most years, ${yearsAtFloor(chosen.run, strategy.input.floor, lifespan)} of ${lifespan - chosen.run.par}, and of those pays the most in all: at least ${money(chosen.lowest.monthly, l)} ${perMonth(l)}${basis}.`,
       );
     }
-    const total = (s: typeof chosen) => s.totals.find((t) => t.lifespan === lifespan)?.total ?? totalTo(s.run, lifespan);
+    const total = (s: typeof chosen) => s.totals.find((t) => t.lifespan === lifespan)?.total ?? totalTo(s.run, lifespan, afterTax);
     const gain = total(chosen) - total(balanced);
     const allLifelong = [chosen.run.combo.occupational, chosen.run.combo.pension, chosen.run.combo.savings].every((p) => p === LIFELONG);
     const versus = allLifelong
       ? say(l, " Det är detsamma som Balanserad: livsvarigt är bäst för dig.", " That is the same as Balanced: for life is best for you.")
       : gain >= 1_000
-        ? say(l, ` Det är ${money(gain, l)} kr mer än Balanserad.`, ` That is ${money(gain, l)} SEK more than Balanced.`)
+        ? say(l, ` Det är ${money(gain, l)} kr mer än Balanserad${basis}.`, ` That is ${money(gain, l)} SEK more than Balanced${basis}.`)
         : say(l, " Det är ungefär detsamma som Balanserad.", " That is about the same as Balanced.");
     return say(
       l,
-      `Förslag: ${scenarioName(chosen.id, l)}${plan}. Det ger mest att leva på totalt fram till ${lifespan} år, ${mkr(total(chosen), l)} mnkr, och blir aldrig lägre än ${money(chosen.lowest.monthly, l)} ${perMonth(l)} fram till dess – över din lägsta nivå på ${floor} ${perMonth(l)}.${versus}`,
-      `Suggestion: ${scenarioName(chosen.id, l)}${plan}. It leaves the most to live on in all up to ${lifespan}, ${mkr(total(chosen), l)} million SEK, and never falls below ${money(chosen.lowest.monthly, l)} ${perMonth(l)} until then – above your lowest level of ${floor} ${perMonth(l)}.${versus}`,
+      `Förslag: ${scenarioName(chosen.id, l)}${plan}. Det ger mest att leva på totalt fram till ${lifespan} år, ${mkr(total(chosen), l)} mnkr${basis}, och blir aldrig lägre än ${money(chosen.lowest.monthly, l)} ${perMonth(l)}${basis} fram till dess – över din lägsta nivå på ${floor} ${perMonth(l)}${floorNote(chosen)}.${versus}`,
+      `Suggestion: ${scenarioName(chosen.id, l)}${plan}. It leaves the most to live on in all up to ${lifespan}, ${mkr(total(chosen), l)} million SEK${basis}, and never falls below ${money(chosen.lowest.monthly, l)} ${perMonth(l)}${basis} until then – above your lowest level of ${floor} ${perMonth(l)}${floorNote(chosen)}.${versus}`,
     );
   }
 
@@ -623,6 +658,19 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const lead = h("p", "pa-lead st-recommendation", recommendationText(strategy, l));
     lead.dataset.recommended = strategy.recommended;
     body.append(lead);
+    if (!strategy.input.afterTax) {
+      const note = h(
+        "p",
+        "pa-lead st-basis",
+        say(
+          l,
+          "Beloppen visas före skatt: pensionen före skatt, med bostadstillägg och sparpengar räknade som den inkomst före skatt som ger lika mycket. Scenarierna och förslaget väljs efter skatt.",
+          "The amounts are shown before tax: the pension before tax, with the housing supplement and savings counted as the income before tax that leaves as much. The scenarios and the suggestion are chosen after tax.",
+        ),
+      );
+      note.dataset.basis = "gross";
+      body.append(note);
+    }
 
     const first = strategy.scenarios[0]!;
     /** A header with its unit on a line of its own, small. */
@@ -631,12 +679,14 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       th.append(h("small", undefined, unit));
       return th;
     };
+    const basisWord = strategy.input.afterTax ? say(l, "efter skatt", "after tax") : say(l, "före skatt", "before tax");
+    const unit = perMonth(l);
     // The totals at 80, at the expected lifespan and at a long life: 90 is in the payout table below.
     const shownTotals = first.totals.filter((t) => t.lifespan !== 90 || t.lifespan === Math.round(strategy.expectedDeath));
     const head = [
       headCell(say(l, "Scenario", "Scenario")),
       ...first.phases.map((p) =>
-        unitCell(say(l, `${p.from}–${p.to} år`, `Ages ${p.from}–${p.to}`), perMonth(l), say(l, "Att leva på per månad, i snitt", "To live on a month, on average")),
+        unitCell(say(l, `${p.from}–${p.to} år`, `Ages ${p.from}–${p.to}`), unit, say(l, `Att leva på per månad, i snitt, ${basisWord}`, `To live on a month, on average, ${basisWord}`)),
       ),
       ...shownTotals.map((t) =>
         unitCell(
@@ -647,7 +697,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
             : undefined,
         ),
       ),
-      unitCell(say(l, "Lägsta månad", "Lowest month"), perMonth(l), say(l, `Fram till ${Math.round(strategy.expectedDeath)} år`, `Up to ${Math.round(strategy.expectedDeath)}`)),
+      unitCell(say(l, "Lägsta månad", "Lowest month"), unit, say(l, `Fram till ${Math.round(strategy.expectedDeath)} år`, `Up to ${Math.round(strategy.expectedDeath)}`)),
       unitCell(
         say(l, "Balanserad går om", "Balanced catches up"),
         say(l, "vid livslängd", "at lifespan"),
@@ -808,7 +858,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       colour: COLOUR[s.id],
       emphasis: s.id === strategy.recommended,
       essential: true,
-      points: ages.map((age) => [age, s.run.disposable[age]! / 12] as const),
+      points: ages.map((age) => [age, incomeOf(s.run, strategy.input.afterTax)[age]! / 12] as const),
       format,
     }));
     series.push({
@@ -817,7 +867,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       colour: "--text-muted",
       dashed: true,
       essential: true,
-      points: ages.map((age) => [age, strategy.input.floor] as const),
+      points: ages.map((age) => [age, floorAt(strategy.scenarios[0]!.run, strategy.input.floor, age, strategy.input.afterTax)] as const),
       format,
     });
     const top = Math.max(1, ...series.flatMap((s) => s.points.map((p) => p[1])));
@@ -827,8 +877,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       title: say(l, "Att leva på per månad", "To live on per month"),
       subtitle: say(
         l,
-        `Pension efter skatt, bostadstillägg och sparpengar, i fasta priser. Den streckade linjen är din lägsta nivå. ${strategy.input.lifespan > 0 ? `Du räknar med att leva till ${strategy.input.lifespan} år (modellen: ${decimals(strategy.modelExpectedDeath, 1, l)} år).` : `Modellens förväntade livslängd för dig är ${decimals(strategy.modelExpectedDeath, 1, l)} år.`}`,
-        `Pension after tax, housing supplement and savings, in constant prices. The dashed line is your lowest level. ${strategy.input.lifespan > 0 ? `You count on living to ${strategy.input.lifespan} (the model: ${decimals(strategy.modelExpectedDeath, 1, l)}).` : `The model's expected lifespan for you is ${decimals(strategy.modelExpectedDeath, 1, l)}.`}`,
+        `${strategy.input.afterTax ? "Pension efter skatt, bostadstillägg och sparpengar" : "Före skatt: pensionen, med bostadstillägg och sparpengar räknade som den inkomst före skatt som ger lika mycket"}, i fasta priser. Den streckade linjen är din lägsta nivå${strategy.input.afterTax ? "" : ", omräknad till före skatt"}. ${strategy.input.lifespan > 0 ? `Du räknar med att leva till ${strategy.input.lifespan} år (modellen: ${decimals(strategy.modelExpectedDeath, 1, l)} år).` : `Modellens förväntade livslängd för dig är ${decimals(strategy.modelExpectedDeath, 1, l)} år.`}`,
+        `${strategy.input.afterTax ? "Pension after tax, housing supplement and savings" : "Before tax: the pension, with the housing supplement and savings counted as the income before tax that leaves as much"}, in constant prices. The dashed line is your lowest level${strategy.input.afterTax ? "" : ", as before tax"}. ${strategy.input.lifespan > 0 ? `You count on living to ${strategy.input.lifespan} (the model: ${decimals(strategy.modelExpectedDeath, 1, l)}).` : `The model's expected lifespan for you is ${decimals(strategy.modelExpectedDeath, 1, l)}.`}`,
       ),
       xMin: from,
       xMax: to,
@@ -850,7 +900,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const life = strategy.payouts[strategy.payouts.length - 1]!;
     const lifespans = planAges(life, strategy.expectedDeath);
     const expected = Math.round(strategy.expectedDeath);
-    const best = strategy.payouts.reduce((a, b) => (totalTo(b, expected) > totalTo(a, expected) + 0.5 ? b : a));
+    const afterTax = strategy.input.afterTax;
+    const best = strategy.payouts.reduce((a, b) => (totalTo(b, expected, afterTax) > totalTo(a, expected, afterTax) + 0.5 ? b : a));
     box.append(
       h("h3", "st-subhead", say(l, "Tjänstepensionens uttagstid", "The occupational pension's payout period")),
       h(
@@ -858,8 +909,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         "pa-lead",
         say(
           l,
-          "Allt att leva på totalt, i miljoner kronor, om tjänstepensionen tas ut på olika lång tid och resten livsvarigt.",
-          "All there is to live on in total, in millions of kronor, if the occupational pension is drawn over different periods and the rest for life.",
+          `Allt att leva på totalt, i miljoner kronor ${afterTax ? "efter" : "före"} skatt, om tjänstepensionen tas ut på olika lång tid och resten livsvarigt.`,
+          `All there is to live on in total, in millions of kronor ${afterTax ? "after" : "before"} tax, if the occupational pension is drawn over different periods and the rest for life.`,
         ),
       ),
     );
@@ -876,7 +927,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         return at === undefined ? say(l, "inte före 100 år", "not before 100") : say(l, `${at} år`, `${at}`);
       })();
       return row(
-        [name, ...lifespans.map((a) => cell(mkr(totalTo(r, a), l), `num${isBest && a === expected ? " st-best" : ""}`)), cell(caught, "num")],
+        [name, ...lifespans.map((a) => cell(mkr(totalTo(r, a, afterTax), l), `num${isBest && a === expected ? " st-best" : ""}`)), cell(caught, "num")],
         { payout: String(r.combo.occupational) },
       );
     });
@@ -1018,6 +1069,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     );
     importButton.textContent = say(l, "Hämta från Prognos", "Use the Forecast values");
     resetButton.textContent = say(l, "Återställ", "Reset");
+    for (const { choice, button } of basisButtons) button.textContent = say(l, choice.sv, choice.en);
     for (const { preset, button } of presetButtons) {
       button.textContent = say(l, preset.sv, preset.en);
       button.title = say(

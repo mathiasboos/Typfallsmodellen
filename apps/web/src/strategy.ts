@@ -125,6 +125,8 @@ export interface StrategyInput extends SavingsInput {
   readonly frontYears: number;
   /** The age the person expects to live to: what the totals, insights and checklist are read up to. 0 is the model's own. */
   readonly lifespan: number;
+  /** Show the amounts after tax (the default) or before: the tax-free parts grossed up to the income that leaves as much. */
+  readonly afterTax: boolean;
   /** More occupational pensions, from earlier employers or other agreements, beside the agreement's own: taxed as income. */
   readonly extraPensions: readonly ExtraPension[];
   /** More private savings beside the first, each held in one of the two kinds. */
@@ -169,6 +171,7 @@ export function defaultStrategyInput(): StrategyInput {
     floor: BUDGETS[0].amount,
     frontYears: 10,
     lifespan: 0,
+    afterTax: true,
     extraPensions: [],
     extraSavings: [],
   };
@@ -193,6 +196,7 @@ export function normaliseStrategy(input: StrategyInput): StrategyInput {
       input.lifespan > 0
         ? Math.round(Math.max(clamp(input.lifespan, LIFESPAN_BOUNDS), referenceAge(input.born, input.retirementAge) + 1))
         : 0,
+    afterTax: input.afterTax !== false,
     extraPensions: (input.extraPensions ?? []).slice(0, MAX_EXTRA).map((p) => ({ capital: clamp(p.capital, CAPITAL_BOUNDS), monthly: clamp(p.monthly, SAVING_BOUNDS) })),
     extraSavings: (input.extraSavings ?? []).slice(0, MAX_EXTRA).map((p) => ({
       kind: p.kind === "depot" ? "depot" : "isk",
@@ -381,6 +385,14 @@ export interface ComboRun {
   readonly iskTax: readonly number[];
   /** What is left of `gross` kronor a year at `age` after the model's tax. */
   readonly netAt: (age: number, gross: number) => number;
+  /** The gross income a year at `age` that the model's tax leaves `net` of. */
+  readonly grossFor: (age: number, net: number) => number;
+  /**
+   * What there is to live on before tax: the taxed income, with the tax-free parts (the housing supplement and the
+   * savings) grossed up to the income that would leave as much -- so it meets a floor before tax exactly when
+   * `disposable` meets it after.
+   */
+  readonly beforeTax: readonly number[];
   /** What a nominal amount at each age is multiplied by to be in this run's fixed prices, `0..LAST_AGE`. */
   readonly kpiFactor: readonly number[];
   /** The model's expected age at death for the person at retirement. */
@@ -447,6 +459,8 @@ function pensionRun(
     iskBalance: own.iskBalance,
     iskTax: own.iskTax,
     netAt: probe.netAt,
+    grossFor: probe.grossFor,
+    beforeTax: gross.map((g, age) => (benefits[age]! + own.savings[age]! > 0 ? probe.grossFor(age, net[age]! + benefits[age]! + own.savings[age]!) : g)),
     kpiFactor,
     expectedDeath: probe.result.lifeIncome.throughAge,
     finalSalary: yearly(Table1Key.FinalSalary) / 12,
@@ -475,10 +489,21 @@ export interface Scenario {
 }
 
 /** In all, from retirement up to the age the person is gone at (`lifespan` itself not counted). */
-export function totalTo(run: ComboRun, lifespan: number): number {
+export function totalTo(run: ComboRun, lifespan: number, afterTax = true): number {
+  const values = incomeOf(run, afterTax);
   let sum = 0;
-  for (let age = run.par; age < Math.min(lifespan, LAST_AGE + 1); age += 1) sum += run.disposable[age]!;
+  for (let age = run.par; age < Math.min(lifespan, LAST_AGE + 1); age += 1) sum += values[age]!;
   return sum;
+}
+
+/** What there is to live on a year by age, after tax or before (`ComboRun.beforeTax`). */
+export function incomeOf(run: ComboRun, afterTax: boolean): readonly number[] {
+  return afterTax ? run.disposable : run.beforeTax;
+}
+
+/** The floor a month at `age`, after tax or what it takes before tax to leave it. */
+export function floorAt(run: ComboRun, floor: number, age: number, afterTax: boolean): number {
+  return afterTax ? floor : run.grossFor(age, floor * 12) / 12;
 }
 
 const average = (values: readonly number[], from: number, to: number): number => {
@@ -518,29 +543,30 @@ export function planAges(run: ComboRun, expectedDeath: number): readonly number[
   return [...new Set([80, expected, 90, LONG_LIFE])].filter((age) => age > run.par).sort((a, b) => a - b);
 }
 
-function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined, floor: number, expectedDeath: number): Scenario {
+function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined, floor: number, expectedDeath: number, afterTax = true): Scenario {
   const par = run.par;
+  const values = incomeOf(run, afterTax);
   const phases = [
     { from: par, to: par + EARLY_YEARS - 1 },
     { from: par + EARLY_YEARS, to: par + 2 * EARLY_YEARS - 1 },
     { from: par + 2 * EARLY_YEARS, to: LONG_LIFE },
   ]
     .filter((phase) => phase.from <= Math.min(phase.to, LONG_LIFE))
-    .map((phase) => ({ ...phase, to: Math.min(phase.to, LONG_LIFE), monthly: average(run.disposable, phase.from, phase.to) / 12 }));
+    .map((phase) => ({ ...phase, to: Math.min(phase.to, LONG_LIFE), monthly: average(values, phase.from, phase.to) / 12 }));
   // The lowest month up to the expected lifespan: what the floor is held against, as the optimal one is chosen.
   const until = Math.max(Math.round(expectedDeath), par + 1);
   let lowest = { age: par, monthly: Number.POSITIVE_INFINITY };
   for (let age = par; age < Math.min(until, LAST_AGE + 1); age += 1) {
-    const monthly = run.disposable[age]! / 12;
+    const monthly = values[age]! / 12;
     if (monthly < lowest.monthly) lowest = { age, monthly };
   }
   return {
     id,
     run,
     phases,
-    totals: planAges(run, expectedDeath).map((lifespan) => ({ lifespan, total: totalTo(run, lifespan) })),
+    totals: planAges(run, expectedDeath).map((lifespan) => ({ lifespan, total: totalTo(run, lifespan, afterTax) })),
     lowest,
-    early: average(run.disposable, par, par + EARLY_YEARS - 1) / 12,
+    early: average(values, par, par + EARLY_YEARS - 1) / 12,
     breakEven: balanced === undefined || id === "balanced" ? undefined : overtakenAt(run, balanced),
     meetsFloor: yearsAtFloor(run, floor, until) === Math.min(until, LAST_AGE + 1) - par,
   };
@@ -833,9 +859,9 @@ export interface StrategyRuns {
   readonly extraWealth: readonly [ComboRun, ComboRun] | undefined;
 }
 
-/** What a set of runs is valid for: everything but the floor and the lifespan, which only the reading of them uses. */
+/** What a set of runs is valid for: everything but the floor, the lifespan and the tax view, which only the reading of them uses. */
 export function strategyRunsKey(input: StrategyInput): string {
-  const { floor: _floor, lifespan: _lifespan, ...rest } = input;
+  const { floor: _floor, lifespan: _lifespan, afterTax: _afterTax, ...rest } = input;
   return JSON.stringify(rest);
 }
 
@@ -907,9 +933,9 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
   const expectedDeath = input.lifespan > 0 ? input.lifespan : balanced.expectedDeath;
   const lifespan = Math.round(expectedDeath);
   const scenarios = [
-    scenario("balanced", balanced, undefined, input.floor, expectedDeath),
-    scenario("front", runs.front, balanced, input.floor, expectedDeath),
-    scenario("optimal", optimalCombo(runs.candidates, input.floor, lifespan), balanced, input.floor, expectedDeath),
+    scenario("balanced", balanced, undefined, input.floor, expectedDeath, input.afterTax),
+    scenario("front", runs.front, balanced, input.floor, expectedDeath, input.afterTax),
+    scenario("optimal", optimalCombo(runs.candidates, input.floor, lifespan), balanced, input.floor, expectedDeath, input.afterTax),
   ];
   const recommended: ScenarioId = "optimal";
   const insights = findInsights(runs, input, lifespan);
@@ -1676,13 +1702,17 @@ export function payoutKindName(kind: PayoutKind, lang: Lang, savingsKind: Saving
 
 // --------------------------------------------------------------- exports ---
 
+/** " (före skatt)" on the amounts' headers when they are shown before tax; nothing after tax, the default. */
+const basisNote = (strategy: Strategy, lang: Lang): string => (strategy.input.afterTax ? "" : say(lang, " (före skatt)", " (before tax)"));
+
 function scenarioHeader(strategy: Strategy, lang: Lang): string[] {
   const first = strategy.scenarios[0]!;
+  const b = basisNote(strategy, lang);
   return [
     say(lang, "Scenario", "Scenario"),
-    ...first.phases.map((p) => say(lang, `Per månad ${p.from}–${p.to} år`, `Per month ages ${p.from}–${p.to}`)),
-    ...first.totals.map((t) => say(lang, `Totalt till ${t.lifespan} år`, `Total to ${t.lifespan}`)),
-    say(lang, "Lägsta månad", "Lowest month"),
+    ...first.phases.map((p) => say(lang, `Per månad ${p.from}–${p.to} år${b}`, `Per month ages ${p.from}–${p.to}${b}`)),
+    ...first.totals.map((t) => say(lang, `Totalt till ${t.lifespan} år${b}`, `Total to ${t.lifespan}${b}`)),
+    say(lang, `Lägsta månad${b}`, `Lowest month${b}`),
     say(lang, "Balanserad går om vid", "Balanced catches up at"),
   ];
 }
@@ -1721,17 +1751,17 @@ export function scenariosToXlsxRows(strategy: Strategy, lang: Lang): SheetData {
 /** What there is to live on a month, by age, per scenario. */
 export function seriesToCsv(strategy: Strategy, lang: Lang): string {
   const d = delimiterFor(lang);
-  const lines = [csvLine([say(lang, "Ålder", "Age"), ...strategy.scenarios.map((s) => scenarioName(s.id, lang))], d)];
+  const lines = [csvLine([say(lang, "Ålder", "Age"), ...strategy.scenarios.map((s) => `${scenarioName(s.id, lang)}${basisNote(strategy, lang)}`)], d)];
   for (let a = strategy.par; a <= LONG_LIFE; a += 1) {
-    lines.push(csvLine([String(a), ...strategy.scenarios.map((s) => whole(s.run.disposable[a]! / 12))], d));
+    lines.push(csvLine([String(a), ...strategy.scenarios.map((s) => whole(incomeOf(s.run, strategy.input.afterTax)[a]! / 12))], d));
   }
   return lines.join("\r\n");
 }
 
 export function seriesToXlsxRows(strategy: Strategy, lang: Lang): SheetData {
-  const rows: SheetData = [[say(lang, "Ålder", "Age"), ...strategy.scenarios.map((s) => scenarioName(s.id, lang))]];
+  const rows: SheetData = [[say(lang, "Ålder", "Age"), ...strategy.scenarios.map((s) => `${scenarioName(s.id, lang)}${basisNote(strategy, lang)}`)]];
   for (let a = strategy.par; a <= LONG_LIFE; a += 1) {
-    rows.push([a, ...strategy.scenarios.map((s) => kronorCell(Math.round(s.run.disposable[a]! / 12)))]);
+    rows.push([a, ...strategy.scenarios.map((s) => kronorCell(Math.round(incomeOf(s.run, strategy.input.afterTax)[a]! / 12)))]);
   }
   return rows;
 }
