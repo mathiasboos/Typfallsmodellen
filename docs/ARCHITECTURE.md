@@ -1635,7 +1635,7 @@ The eighth entry of the main menu, after "Hur mycket får jag?", on request: *ho
 order, when and from which pot -- where the two tabs before it ask how much it pays and for how long. It has a typfall
 of its own, as they do: the person, the salary, the agreement, the individual and private pension and the private
 savings (`savingsInputs.ts`, the same sections), the housing cost and whether the housing supplement is counted, a
-lowest level a month to live on, a shorter payout period, an expected lifespan (filled in with the model's own, `lifeIncome.throughAge`, until another is typed; 0 in the input stands for the model's, and like the floor it only changes how the runs are read), and the three assumptions, with "Hämta från Prognos" and
+lowest level a month to live on, a shorter payout period, an expected lifespan (under Person, filled in with the model's own, `lifeIncome.throughAge`, until another is typed; 0 in the input stands for the model's, and like the floor it only changes how the runs are read), and the three assumptions, with "Hämta från Prognos" and
 Återställ. There is no such sheet in the workbook. It is built on the settings the fifth tab uses (`tempTjpUttag`,
 `tempIpsUttag`), on `tjpPar` for a later start of the taxed pots, and on one addition to the engine,
 `formogenhetPerAge` (VBA-MAPPING.md).

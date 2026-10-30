@@ -184,6 +184,19 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   });
   riktalderBox.dataset.setting = "stRiktalder";
   field(riktalderBox, (l) => ({ label: t("riktalderCheckbox", l) }), "field field-check");
+  /** The model's expected lifespan for the person, from the last results: what the field shows until one is typed. */
+  let modelLifespan = 0;
+  /** The scenario the payout timeline shows; the suggested one until another is picked. */
+  let timelineScenario: ScenarioId | undefined;
+  const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
+  lifespanField.element.dataset.setting = "stLifespan";
+  const relabelLifespan = field(lifespanField.element, (l) => ({
+    label: say(l, "Förväntad livslängd (ålder)", "Expected lifespan (age)"),
+    hint:
+      modelLifespan > 0
+        ? say(l, `år · förifyllt med modellens antagande, ${decimals(modelLifespan, 1, l)} år`, `years · filled in with the model's assumption, ${decimals(modelLifespan, 1, l)}`)
+        : say(l, "år · förifyllt med modellens antagande", "years · filled in with the model's assumption"),
+  }));
 
   // Salary
   group("Lön", "Salary");
@@ -233,19 +246,6 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   field(frontField.element, (l) => ({
     label: say(l, "Uttag på kortare tid", "Shorter payout"),
     hint: say(l, `år, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · i scenarierna Framtung och Hybrid`, `years, ${FRONT_BOUNDS.min}–${FRONT_BOUNDS.max} · in the Front-loaded and Hybrid scenarios`),
-  }));
-  /** The model's expected lifespan for the person, from the last results: what the field shows until one is typed. */
-  let modelLifespan = 0;
-  /** The scenario the payout timeline shows; the suggested one until another is picked. */
-  let timelineScenario: ScenarioId | undefined;
-  const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
-  lifespanField.element.dataset.setting = "stLifespan";
-  const relabelLifespan = field(lifespanField.element, (l) => ({
-    label: say(l, "Förväntad livslängd (ålder)", "Expected lifespan (age)"),
-    hint:
-      modelLifespan > 0
-        ? say(l, `år · förifyllt med modellens antagande, ${decimals(modelLifespan, 1, l)} år`, `years · filled in with the model's assumption, ${decimals(modelLifespan, 1, l)}`)
-        : say(l, "år · förifyllt med modellens antagande", "years · filled in with the model's assumption"),
   }));
 
   // Assumptions
