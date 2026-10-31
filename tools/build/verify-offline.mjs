@@ -4080,15 +4080,18 @@ if (stLowOff.insights.includes("btpWealth")) problems.push("with the housing sup
 // Before tax and after, as in "Hur länge räcker pensionen?": the same scenarios in larger amounts, said so in a
 // note over the table, and back.
 const stNetFirst = await stBalancedFirst();
+const stNetTimeline = (await st.locator('[data-role="st-fig-timeline"] svg').textContent()) ?? "";
 await st.locator('button[data-basis="gross"]').click();
 await tab.waitForTimeout(150);
 const stGrossFirst = await stBalancedFirst();
 const stGrossHead = (await st.locator('.st-basis').textContent()) ?? "";
 const stGrossActive = await st.locator('button[data-basis="gross"]').evaluate((b) => b.classList.contains("active"));
+const stGrossTimeline = (await st.locator('[data-role="st-fig-timeline"] svg').textContent()) ?? "";
 await st.locator('button[data-basis="net"]').click();
 await tab.waitForTimeout(150);
 const stNetAgain = await stBalancedFirst();
 console.log(`strategy basis  : after tax ${stNetFirst} -> before tax ${stGrossFirst} -> after tax ${stNetAgain}`);
+if (stGrossTimeline === stNetTimeline || stGrossTimeline === "") problems.push("the payout timeline's amounts did not change between after tax and before tax");
 if (!(kr(stGrossFirst) > kr(stNetFirst)) || !stGrossHead.includes("före skatt") || !stGrossActive || stNetAgain !== stNetFirst) {
   problems.push(`before tax in the strategy tab: ${stNetFirst} -> ${stGrossFirst} -> ${stNetAgain}, head "${stGrossHead.slice(0, 120)}", active ${stGrossActive}`);
 }

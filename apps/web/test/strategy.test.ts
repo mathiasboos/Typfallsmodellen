@@ -610,3 +610,20 @@ describe("before tax and after", () => {
     expect(seriesToCsv(gross, "en").split("\r\n")[0]).toBe("Age,Balanced (before tax),Your plan (before tax),Optimal (before tax)");
   });
 });
+
+describe("the payout timeline before tax and after", () => {
+  it("shows the taxed parts after tax, the tax-free ones as paid, and grosses those up before tax", () => {
+    const run = low.scenarios[0]!.run;
+    const of = (afterTax: boolean, kind: string) => payoutPhases(run, afterTax).find((p) => p.kind === kind)!;
+    expect(of(true, "occupational").monthly).toBeLessThan(of(false, "occupational").monthly);
+    expect(of(true, "income").monthly).toBeLessThan(of(false, "income").monthly);
+    expect(of(true, "benefits").monthly).toBeLessThan(of(false, "benefits").monthly);
+    // The stretches are the same either way: only the amounts change.
+    expect(payoutPhases(run, true).map((p) => [p.kind, p.from, p.to])).toEqual(payoutPhases(run, false).map((p) => [p.kind, p.from, p.to]));
+    // After tax, the savings and the housing supplement are what is paid.
+    const savings = of(true, "savings");
+    let sum = 0;
+    for (let a = savings.from; a <= savings.to; a += 1) sum += run.savings[a]!;
+    expect(savings.monthly).toBeCloseTo(sum / (savings.to - savings.from + 1) / 12, 6);
+  });
+});
