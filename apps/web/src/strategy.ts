@@ -1642,17 +1642,28 @@ export interface PayoutPhase {
 
 /**
  * When each kind of money is paid in a run, from the retirement age to `LONG_LIFE`: the stretches of years it is more
- * than a krona a month. Before tax for the pensions, as paid for the savings and the housing supplement.
+ * than a krona a month, and what it pays a month on average -- after tax or before, as the tab shows its amounts.
  */
-export function payoutPhases(run: ComboRun): PayoutPhase[] {
+export function payoutPhases(run: ComboRun, afterTax = false): PayoutPhase[] {
+  // After tax, each taxed part keeps the share the model's tax leaves of the whole (`net / gross` at that age);
+  // before tax, the tax-free parts are grossed up as `beforeTax` grosses them, each in proportion to what it pays.
+  const taxed = (values: readonly number[]) =>
+    afterTax ? values.map((v, age) => (run.gross[age]! > 0 ? (v * run.net[age]!) / run.gross[age]! : v)) : values;
+  const free = (values: readonly number[]) =>
+    afterTax
+      ? values
+      : values.map((v, age) => {
+          const paid = run.savings[age]! + run.benefits[age]!;
+          return paid > 0 ? (v * Math.max(run.beforeTax[age]! - run.gross[age]!, 0)) / paid : v;
+        });
   const series: Record<PayoutKind, readonly number[]> = {
-    income: run.incomePension,
-    premium: run.premiumPension,
-    guarantee: run.guaranteePension,
-    occupational: run.occupational,
-    individual: run.individual,
-    savings: run.savings,
-    benefits: run.benefits,
+    income: taxed(run.incomePension),
+    premium: taxed(run.premiumPension),
+    guarantee: taxed(run.guaranteePension),
+    occupational: taxed(run.occupational),
+    individual: taxed(run.individual),
+    savings: free(run.savings),
+    benefits: free(run.benefits),
   };
   const last = Math.min(LONG_LIFE, LAST_AGE);
   const phases: PayoutPhase[] = [];

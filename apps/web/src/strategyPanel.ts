@@ -782,8 +782,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       draw.replaceChildren(timelineSvg(strategy, s.id, l));
       note.textContent = say(
         l,
-        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad före skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.`,
-        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month before tax. Where bars lie above one another, the parts are paid at the same time.`,
+        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad ${strategy.input.afterTax ? "efter" : "före"} skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.`,
+        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month ${strategy.input.afterTax ? "after" : "before"} tax. Where bars lie above one another, the parts are paid at the same time.`,
       );
     };
     for (const id of ids) {
@@ -811,7 +811,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       return node;
     };
     const s = strategy.scenarios.find((x) => x.id === id)!;
-    const phases = payoutPhases(s.run);
+    const phases = payoutPhases(s.run, strategy.input.afterTax);
     const kinds = PAYOUT_KINDS.filter((k) => phases.some((p) => p.kind === k));
     const par = strategy.par;
     const end = LONG_LIFE + 1;
