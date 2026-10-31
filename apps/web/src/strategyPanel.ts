@@ -658,6 +658,22 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const lead = h("p", "pa-lead st-recommendation", recommendationText(strategy, l));
     lead.dataset.recommended = strategy.recommended;
     body.append(lead);
+    // Nothing to draw over a shorter time -- no occupational pension, private pension or savings -- and the three
+    // ways are one: say why, and what to fill in to compare.
+    const kinds = comboKinds(strategy.scenarios[0]!.run);
+    if (!kinds.occupational && !kinds.pension && !kinds.savings) {
+      const none = h(
+        "p",
+        "pa-lead st-none saving-note-prompt",
+        say(
+          l,
+          "Alla tre scenarierna blir lika: du har ingen tjänstepension, privat pension eller privat sparande som kan tas ut på kortare tid – den allmänna pensionen är alltid livsvarig. Välj ett avtalsområde under Pension, eller fyll i en privat pension eller ett sparande, för att jämföra uttagstider.",
+          "All three scenarios are the same: you have no occupational pension, private pension or private savings that can be drawn over a shorter time – the public pension is always for life. Pick an agreement under Pension, or fill in a private pension or savings, to compare payout periods.",
+        ),
+      );
+      none.dataset.role = "st-nothing-to-draw";
+      body.append(none);
+    }
     if (!strategy.input.afterTax) {
       const note = h(
         "p",
@@ -710,7 +726,14 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       key.style.background = `var(${COLOUR[s.id]})`;
       name.append(key, h("strong", undefined, scenarioName(s.id, l)));
       if (s.id === strategy.recommended) name.append(h("span", "st-chip", say(l, "★ Förslag", "★ Suggested")));
-      name.append(h("small", undefined, scenarioSummary(s, strategy.input.frontYears, l)));
+      // The payout periods the row stands for, in so many words, before the description.
+      const periods = comboText(s.run.combo, comboKinds(s.run), l);
+      const periodLine = h(
+        "span",
+        "st-periods",
+        periods === "" ? say(l, "Uttagstid: inget att välja", "Payout period: nothing to choose") : `${say(l, "Uttagstid", "Payout period")}: ${periods}`,
+      );
+      name.append(periodLine, h("small", undefined, scenarioSummary(s, strategy.input.frontYears, l)));
       const lowest = cell(money(s.lowest.monthly, l), `num${s.meetsFloor ? "" : " st-below"}`);
       if (!s.meetsFloor) lowest.title = say(l, "Under din lägsta nivå", "Below your lowest level");
       return row(

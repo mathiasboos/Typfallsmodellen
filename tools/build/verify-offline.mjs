@@ -4119,6 +4119,12 @@ await st.locator('[data-action="st-reset"]').click();
 await tab.waitForTimeout(150);
 const stReset = await stRead();
 console.log(`strategy        : from Prognos ${stImported.join("/")}; reset -> ${stReset.insights.join("/")}, ${stReset.recommended}`);
+const stPeriods = await st.locator(".st-periods").allTextContents();
+const stNoneDefault = await st.locator('[data-role="st-nothing-to-draw"]').count();
+console.log(`strategy periods: ${stPeriods.join(" / ")}`);
+if (stPeriods[1] !== "Uttagstid: tjänstepension 10 år, sparande 10 år" || stPeriods[2] !== "Uttagstid: tjänstepension 6 år, sparande 6 år" || stNoneDefault !== 0) {
+  problems.push(`the scenario rows' payout periods read ${stPeriods.join(" / ")}, the nothing-to-draw note ${stNoneDefault} times`);
+}
 if (stImported.join("/") !== "1959/23/38500/66/1") problems.push(`"Hämta från Prognos" gives ${stImported.join("/")}, expected 1959/23/38500/66/1`);
 if (!sameList(stReset.insights, stStart.insights) || stReset.recommended !== "optimal" || (await stSetting("stSalary").inputValue()) === "24000") problems.push("Återställ did not put the default strategy back");
 
@@ -4133,6 +4139,11 @@ await tab.waitForTimeout(150);
 await stType("stSavingsCapital", 0);
 const stEarly = await stRead();
 const stEarlyTax = await stTaxCards();
+// No occupational pension and no savings: nothing to draw over a shorter time, so the three are one, and the tab says so.
+const stNothing = await st.locator('[data-role="st-nothing-to-draw"]').count();
+const stNothingPeriods = await st.locator(".st-periods").allTextContents();
+console.log(`strategy none   : note ${stNothing}, periods ${stNothingPeriods.join(" / ")}`);
+if (stNothing !== 1 || !stNothingPeriods.every((t) => t === "Uttagstid: inget att välja")) problems.push(`with nothing to draw the note shows ${stNothing} times and the periods read ${stNothingPeriods.join(" / ")}`);
 console.log(`strategy early  : checklist ${stEarly.checklist.join("/")}`);
 if (!stEarly.checklist.includes("taxFree") || !(stEarlyTax[0]?.text ?? "").includes("under nivån vid 63–66 år") || !(stEarlyTax[1]?.text ?? "").includes("ingen skatt på pensionen vid 63–66 år")) {
   problems.push(`retiring at 63 on 6 000 a month gives the checklist ${stEarly.checklist.join("/")} and "${(stEarlyTax[0]?.text ?? "").slice(-220)}"`);
