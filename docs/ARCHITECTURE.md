@@ -1446,6 +1446,17 @@ lifespan, and the same notes. `amountsToCsv`/`amountSeriesToCsv` and their Excel
 unit tests under `"Hur mycket får jag?"` in `pensionLasts.test.ts` and a block in `verify-offline.mjs` (the boxes read the numbers the other
 tab's runs give, no budget field, a pension of one's own raising the 5-year payout most, the downloads, English, 375px).
 
+A year-by-year table (`yearlyTable`, `amountYearsPanel`) follows: every single age from the start to the assumed lifespan, each
+plan's pension a month and what it has paid out in all so far (`YearlyTable.plans[].monthly`/`.cumulative`), the leading plan at
+each age marked in its own column and coloured in the cumulative ones (`leaderByAge`, a strip above the table showing the same as
+coloured stretches of age, `leaderStrip`), and a line chart of each plan's running total against a lifelong payout
+(`behindFigure`). Each plan's total to the lifespan and its rank (`bestPlans`, 1 = most money, a tie going to the longer period)
+sit in their own box under the table (`totalsStrip`, the ribbon pattern the answer box above uses, the best one tagged "Bäst") --
+not two more rows in the table itself: a "Totalt till X år" and a "Rangordning" row there would put that long label in the
+table's own first column, which otherwise never holds more than a two-digit age, and stretch it wide (`table-layout: auto`
+sizes a column to its widest cell). `yearlyToCsv`/`yearlyToXlsxRows` are the download, one row a year without the totals or
+the rank (a reader sums or sorts the column itself).
+
 ### Hur länge räcker pensionen?
 
 A fifth top-level view, on request, for the question the other tabs leave open: *given a budget, how

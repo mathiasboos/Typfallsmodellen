@@ -3900,6 +3900,19 @@ console.log(`how much        : with an individual pension of 300 000 -> ${amWith
 if (!amWith.every((v, i) => v > amDuring(amStart)[i])) problems.push(`an individual pension of 300 000 did not raise every payout: ${amWith.join(",")} against ${amDuring(amStart).join(",")}`);
 if (amWith[0] - amDuring(amStart)[0] <= amWith[4] - amDuring(amStart)[4]) problems.push("the 5-year payout did not gain more a month than the lifelong one from the same capital");
 
+// The year-by-year table: the Ålder column holds nothing but a two-digit age, so it stays narrow -- the totals
+// and the ranking (1 = most money) are their own box under the table, not two more rows with long labels in
+// that same column.
+const amAgeColWidth = await am.locator('[data-role="pm-years"] thead th').first().evaluate((el) => el.getBoundingClientRect().width);
+const amYearsRows = await am.locator('[data-role="pm-years"] tbody tr').count();
+const amTotalsBox = am.locator('[data-role="pm-years-totals"]');
+const amTotalsItems = await amTotalsBox.locator('.pl-ribbon-item').evaluateAll((items) => items.map((li) => li.innerText.replace(/\s+/g, " ").trim()));
+const amBestCount = await amTotalsBox.locator('[data-best="1"]').count();
+console.log(`how much years  : age column ${Math.round(amAgeColWidth)}px, ${amYearsRows} table row(s), totals box ${amTotalsItems.length} item(s), best ${amBestCount}`);
+if (amAgeColWidth > 70 || amBestCount !== 1 || amTotalsItems.length !== 5 || amTotalsItems.some((t) => !/Rang \d av 5/.test(t))) {
+  problems.push(`the year-by-year table: age column ${amAgeColWidth}px (expected narrow), totals box ${JSON.stringify(amTotalsItems)}, best ${amBestCount}`);
+}
+
 // The downloads, and a phone.
 const amCsv = await download(am.locator('.export-btn[data-file="belopp-per-manad.csv"]'));
 const amSeries = await download(am.locator('.export-btn[data-file="pension-per-ar.csv"]'));

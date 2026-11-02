@@ -84,7 +84,7 @@ import {
   seriesToXlsxRows,
   slotOfPayout,
 } from "./pensionLasts.js";
-import type { Assessment, Lasts, LastsInput, PayoutOption, PayoutRuns, YearlyTable } from "./pensionLasts.js";
+import type { Assessment, BestPlans, Lasts, LastsInput, PayoutOption, PayoutRuns, YearlyTable } from "./pensionLasts.js";
 import { savingYear, savingsNotes } from "./privateSavings.js";
 import { createSavingsInputs } from "./savingsInputs.js";
 import { cell, headCell } from "./tables.js";
@@ -1415,6 +1415,34 @@ export function createPensionLastsPanel(
   }
 
   /** Year by year: each payout plan's pension a month and the total paid so far, and which plan pays the most up to the lifespan. */
+  /**
+   * Each plan's total to the assumed lifespan and its rank (1 = most money), as its own box under the table --
+   * not two more table rows, whose long labels ("Totalt till 95 år", "Rangordning (1 = mest pengar)") used to
+   * sit in the table's own first column and stretch it wide, when every other row there holds nothing but a
+   * two-digit age.
+   */
+  function totalsStrip(lasts: Lasts, table: YearlyTable, verdict: BestPlans, l: Lang): HTMLElement {
+    const box = h("div", "pa-ribbon-box");
+    box.dataset.role = "pm-years-totals";
+    box.append(h("div", "pa-ribbon-label", say(l, `Totalt utbetalt till ${lasts.to} år, och rangordning (1 = mest pengar)`, `Total paid out to ${lasts.to}, and rank (1 = most money)`)));
+    const ribbon = h("ol", "pa-ribbon pl-ribbon");
+    for (const plan of table.plans) {
+      const r = verdict.ranking.find((x) => x.payout === plan.payout)!;
+      const item = h("li", "pa-ribbon-item pl-ribbon-item");
+      item.dataset.payout = String(plan.payout);
+      item.dataset.best = plan.payout === verdict.best.payout ? "1" : "0";
+      if (plan.payout === verdict.best.payout) item.append(h("span", "pl-best-tag", say(l, "Bäst", "Best")));
+      item.append(
+        chip(plan.payout, payoutName(plan.payout, l)),
+        h("span", "pl-ribbon-d", `${kronor(Math.round(plan.total), l)} kr`),
+        h("span", "pa-ribbon-m", say(l, `Rang ${r.rank} av ${verdict.ranking.length}`, `Rank ${r.rank} of ${verdict.ranking.length}`)),
+      );
+      ribbon.append(item);
+    }
+    box.append(ribbon);
+    return box;
+  }
+
   function amountYearsPanel(lasts: Lasts, l: Lang): HTMLElement {
     const table = yearlyTable(lasts);
     const verdict = bestPlans(table);
@@ -1479,25 +1507,8 @@ export function createPensionLastsPanel(
       ];
       rows.push(row(cells, { age: String(age), leader: String(leaders[i]) }));
     });
-    const totals = [
-      cell(say(l, `Totalt till ${lasts.to} år`, `In all to ${lasts.to}`), "pl-floor-name"),
-      ...table.plans.map(() => cell("", "num")),
-      ...table.plans.map((plan) => cell(kronor(Math.round(plan.total), l), plan.payout === best.payout ? "num pm-best" : "num")),
-      payoutCell(best.payout, payoutName(best.payout, l)),
-    ];
-    rows.push(row(totals, { total: "1" }));
-    const rankRow = [
-      cell(say(l, "Rangordning (1 = mest pengar)", "Rank (1 = most money)"), "pl-floor-name"),
-      ...table.plans.map(() => cell("", "num")),
-      ...table.plans.map((plan) => {
-        const r = verdict.ranking.find((x) => x.payout === plan.payout)!;
-        return cell(String(r.rank), plan.payout === best.payout ? "num pm-best" : "num");
-      }),
-      cell(""),
-    ];
-    rows.push(row(rankRow, { rank: "1" }));
     body.append(leaderStrip(lasts, table, leaderRuns, l), behindFigure(lasts, table, l));
-    body.append(tableOf("pm-years", "pl-options", head1, rows));
+    body.append(tableOf("pm-years", "pl-options", head1, rows), totalsStrip(lasts, table, verdict, l));
     return section;
   }
 
