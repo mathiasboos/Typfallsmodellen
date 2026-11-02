@@ -4165,6 +4165,28 @@ if (!stPhasesDefault[1]?.includes("67–76") || !stPhasesFive[1]?.includes("67�
 await st.locator('[data-action="st-reset"]').click();
 await tab.waitForTimeout(150);
 
+// "Eget val": periods typed in by hand override "Din plan"'s own, in the table, the timeline and the download.
+await st.locator('[data-period-mode="custom"]').click();
+await tab.waitForTimeout(150);
+const stCustomStart = await st.locator('[data-role="st-scenario-table"] thead th').allTextContents();
+await stType("stCustomPeriod0", 5);
+const stCustomFive = await st.locator('[data-role="st-scenario-table"] thead th').allTextContents();
+await st.locator(".st-period-add").click();
+await tab.waitForTimeout(150);
+const stCustomAdded = await st.locator('[data-setting^="stCustomPeriod"]').count();
+const stCustomCsv = await download(st.locator('.export-btn[data-file="uttagsstrategi.csv"]'));
+const stCustomCsvHead = stCustomCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n")[0] ?? "";
+console.log(`strategy custom : "${stCustomStart[1]}" -> 5 år "${stCustomFive[1]}", +period -> ${stCustomAdded} fields, csv "${stCustomCsvHead.slice(0, 60)}…"`);
+if (!stCustomStart[1]?.includes("67–76") || !stCustomFive[1]?.includes("67–71") || stCustomAdded !== 3 || !stCustomCsvHead.includes("67–71")) {
+  problems.push(`"Eget val" reads "${stCustomStart[1]}" -> "${stCustomFive[1]}" at 5 years, ${stCustomAdded} fields after +, csv "${stCustomCsvHead}"`);
+}
+await st.locator('[data-period-mode="plan"]').click();
+await tab.waitForTimeout(150);
+const stCustomBackToPlan = await st.locator('[data-role="st-scenario-table"] thead th').allTextContents();
+if (!stCustomBackToPlan[1]?.includes("67–76")) problems.push(`"Din plan" after "Eget val" reads "${stCustomBackToPlan[1]}", expected 67–76 back`);
+await st.locator('[data-action="st-reset"]').click();
+await tab.waitForTimeout(150);
+
 // The timeline's own view toggle: "Totalt snitt" (one bar, one label) against "Per tidsperiod" (split at the
 // table's own periods, each its own average).
 const stBarsOf = (kind) => st.locator(`[data-role="st-fig-timeline"] .st-tl-bar[data-kind="${kind}"]`).count();

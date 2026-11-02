@@ -1699,6 +1699,19 @@ table row has its average a month in up to three stretches (`periodBounds`: `fro
 so the first matches "Din plan"'s own front-loaded period; a shorter or longer "Uttag på kortare tid" moves all three),
 a whole-retirement average over the lot (par to 95), its total to 80, the expected lifespan, 90 and 95 (the table shows
 80, the expected one and 95), its lowest month up to 95, and the lifespan from which Balanserad has paid more in all
+
+The table's own stretches can be typed in by hand too, "Eget val" against "Din plan" (`periodBoundsFor`, which
+`periodBounds(par, frontYears)` is now `periodBoundsFor(par, [frontYears, frontYears])` of; `scenarioPhases`, reading
+a scenario's average off its already-run `ComboRun` at any list of period lengths, so switching to "Eget val" costs no
+further runs). Up to `CUSTOM_PERIOD_COUNT` lengths are typed in (`CUSTOM_PERIOD_BOUNDS`), one period each, added and
+removed by hand; the one after them always runs to 95 -- as "Din plan"'s own third stretch does. The table's downloads
+(`scenariosToCsv`, `scenariosToXlsxRows`) take the same periods the table currently shows, an optional argument that is
+left out for "Din plan". The switch, the typed-in fields and their add/remove buttons are the panel's own state
+(`periodMode`, `customPeriods`), not part of `StrategyInput`, so they live beside `timelineView` and are not reset by
+"Återställ". A typed-in period field sits inside the very panel its own `change` event rebuilds (`results.replaceChildren`
+in `redraw()`) -- removing it mid-dispatch has Chromium fire `change` a second time (its value is still "dirty" to it)
+into a `replaceChildren` that is itself mid-call, which throws, so the panel's three period-editor handlers put `redraw()`
+off to a microtask (`scheduleRedraw`) instead of calling it straight from the event, same end result, one tick later.
 (`overtakenAt`: the lifespan from which the lead does not come back). The expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is
 always for life; only the occupational and private pension and the savings change payout period between the
 scenarios, and the descriptions say so. With nothing to draw any other way the three are the same. A second table
@@ -1779,7 +1792,8 @@ no wealth, the static amount keeps the workbook's quirk, a larger amount per age
 is followed year by year, and nothing changes without it), and by a block in `verify-offline.mjs` (the insights, the
 scenarios and the suggestion, the payout table, the checklist, the chart, the tax rules and their links, two floors, a
 low income with a higher rent, the housing supplement switched off, the import from Prognos and reset, a retirement at
-63 with years under the tax-free income, the downloads, English, 375px).
+63 with years under the tax-free income, "Eget val" against "Din plan" in the table, its download and back, the
+downloads, English, 375px).
 
 ### Table 2's own column tooltips, and Ordlista
 

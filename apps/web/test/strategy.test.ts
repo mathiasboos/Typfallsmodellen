@@ -32,6 +32,8 @@ import {
   evaluateStrategy,
   floorAt,
   periodBounds,
+  periodBoundsFor,
+  scenarioPhases,
   scenarioDescription,
   payoutKindName,
   payoutPhases,
@@ -686,6 +688,51 @@ describe("the table's periods", () => {
     for (let age = balanced.par; age <= 95; age += 1) sum += balanced.disposable[age]!;
     expect(plain.scenarios[0]!.average).toBeCloseTo(sum / (95 - balanced.par + 1) / 12, 6);
     expect(scenariosToCsv(plain, "sv").split("\r\n")[0]).toContain("Snitt per månad");
+  });
+});
+
+describe("the table's own periods (Eget val)", () => {
+  it("cuts a stretch at any list of lengths, the last always to LONG_LIFE", () => {
+    expect(periodBoundsFor(67, [10, 10])).toEqual([
+      { from: 67, to: 76 },
+      { from: 77, to: 86 },
+      { from: 87, to: 95 },
+    ]);
+    expect(periodBoundsFor(67, [10])).toEqual([
+      { from: 67, to: 76 },
+      { from: 77, to: 95 },
+    ]);
+    // Two lengths that already reach past LONG_LIFE: no catch-all period is added.
+    expect(periodBoundsFor(67, [15, 15])).toEqual([
+      { from: 67, to: 81 },
+      { from: 82, to: 95 },
+    ]);
+    // periodBounds(par, frontYears) is periodBoundsFor(par, [frontYears, frontYears]).
+    expect(periodBoundsFor(67, [10, 10])).toEqual(periodBounds(67, 10));
+  });
+
+  it("reads a scenario's own average a month in those periods, off the already-run scenario", () => {
+    const run = plain.scenarios[0]!.run;
+    const custom = scenarioPhases(run, true, [10, 10]);
+    expect(custom.map((p) => [p.from, p.to])).toEqual([
+      [67, 76],
+      [77, 86],
+      [87, 95],
+    ]);
+    // The same as the table's own 'Din plan' phases when the lengths match frontYears.
+    expect(custom).toEqual(scenarioPhases(run, true, [10, 10]));
+    expect(custom[0]!.monthly).toBeCloseTo(plain.scenarios[0]!.phases[0]!.monthly, 6);
+  });
+
+  it("drives the scenario table's download when given periods of its own", () => {
+    const header = scenariosToCsv(plain, "sv", [5, 5]).split("\r\n")[0]!;
+    expect(header).toContain("67–71 år");
+    expect(header).toContain("72–76 år");
+    expect(header).toContain("77–95 år");
+    // Omitted (or undefined), the download still follows "Din plan" (frontYears 10), not [5, 5].
+    expect(scenariosToCsv(plain, "sv").split("\r\n")[0]).not.toEqual(header);
+    const sheet = scenariosToXlsxRows(plain, "en", [5, 5]);
+    expect(sheet[0]).toContain("Per month ages 67–71");
   });
 });
 

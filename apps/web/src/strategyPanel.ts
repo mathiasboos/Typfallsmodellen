@@ -29,6 +29,8 @@ import { SAVINGS_KINDS, savingYear, savingsNotes } from "./privateSavings.js";
 import type { SavingsKind } from "./privateSavings.js";
 import { createSavingsInputs } from "./savingsInputs.js";
 import {
+  CUSTOM_PERIOD_BOUNDS,
+  CUSTOM_PERIOD_COUNT,
   FLOOR_BOUNDS,
   FRONT_BOUNDS,
   LIFESPAN_BOUNDS,
@@ -53,6 +55,7 @@ import {
   planAges,
   savingsLabel,
   runStrategy,
+  scenarioPhases,
   strategySalaryForFinal,
   scenarioSummary,
   scenarioName,
@@ -316,6 +319,21 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   let timelineScenario: ScenarioId | undefined;
   /** Whether the payout timeline shows one average for the whole bar, or one per period, as the scenario table splits it. */
   let timelineView: "average" | "period" = "average";
+  /** Whether "Strategiska scenarier" splits its stretches at "Din plan"'s own period, or at periods typed in by hand. */
+  let periodMode: "plan" | "custom" = "plan";
+  /** "Eget val"'s own periods, years, typed in by hand -- the one after them always runs to `LONG_LIFE`. */
+  let customPeriods: number[] = [10, 10];
+  /** Whether "Eget val" has been typed in by hand yet -- until then, switching to it starts from "Din plan"'s own. */
+  let customPeriodsTouched = false;
+  /**
+   * `redraw()`, put off to a microtask: a period field sits in the very panel its own `change` rebuilds, so
+   * redrawing straight from the event -- as every other field does -- would remove the field mid-dispatch, which
+   * Chromium answers by firing `change` a second time (the value is still "dirty" to it) into a `replaceChildren`
+   * that is itself mid-call, which throws. Off a microtask, that second firing still lands, but as its own turn.
+   */
+  const scheduleRedraw = (): void => {
+    queueMicrotask(() => redraw());
+  };
   const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
   lifespanField.element.dataset.setting = "stLifespan";
   const relabelLifespan = field(lifespanField.element, (l) => ({
@@ -654,9 +672,12 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   }
 
   function scenariosPanel(strategy: Strategy, l: Lang): HTMLElement {
+    /** `undefined` while the table splits its stretches at "Din plan"'s own period (`s.phases`); "Eget val"'s own periods otherwise. */
+    const activePeriods: readonly number[] | undefined = periodMode === "custom" ? customPeriods : undefined;
+    const phasesOf = (s: Scenario) => (activePeriods === undefined ? s.phases : scenarioPhases(s.run, strategy.input.afterTax, activePeriods));
     const { section, body } = panel(say(l, "Strategiska scenarier", "Strategic scenarios"), [
-      csvExportButton(l, say(l, "uttagsstrategi.csv", "withdrawal-strategy.csv"), () => scenariosToCsv(strategy, l)),
-      xlsxExportButton(l, say(l, "uttagsstrategi.xlsx", "withdrawal-strategy.xlsx"), () => scenariosToXlsxRows(strategy, l)),
+      csvExportButton(l, say(l, "uttagsstrategi.csv", "withdrawal-strategy.csv"), () => scenariosToCsv(strategy, l, activePeriods)),
+      xlsxExportButton(l, say(l, "uttagsstrategi.xlsx", "withdrawal-strategy.xlsx"), () => scenariosToXlsxRows(strategy, l, activePeriods)),
     ]);
     section.dataset.role = "st-scenarios";
     const lead = h("p", "pa-lead st-recommendation", recommendationText(strategy, l));
@@ -692,6 +713,69 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       body.append(note);
     }
 
+    // The table's stretches: "Din plan"'s own period, or periods typed in by hand ("Eget val").
+    const periodHead = h("div", "st-period-head");
+    const periodLabel = h("span", "st-period-label", say(l, "Perioder:", "Periods:"));
+    const periodToggle = h("div", "panel-toggle pa-toggle");
+    periodToggle.setAttribute("role", "group");
+    const periodButtons: { readonly mode: "plan" | "custom"; readonly button: HTMLButtonElement }[] = [
+      { mode: "plan", button: h("button", "panel-btn", say(l, "Din plan", "Your plan")) },
+      { mode: "custom", button: h("button", "panel-btn", say(l, "Eget val", "Custom")) },
+    ];
+    for (const { mode, button } of periodButtons) {
+      button.type = "button";
+      button.dataset.periodMode = mode;
+      const on = mode === periodMode;
+      button.classList.toggle("active", on);
+      button.setAttribute("aria-pressed", String(on));
+      button.addEventListener("click", () => {
+        if (periodMode === mode) return;
+        if (mode === "custom" && !customPeriodsTouched) customPeriods = [strategy.input.frontYears, strategy.input.frontYears];
+        periodMode = mode;
+        redraw();
+      });
+      periodToggle.append(button);
+    }
+    periodHead.append(periodLabel, periodToggle);
+    body.append(periodHead);
+    if (periodMode === "custom") {
+      const editor = h("div", "st-period-editor");
+      editor.dataset.role = "st-period-editor";
+      const editorFields = fieldSet(editor, [], l);
+      customPeriods.forEach((length, index) => {
+        const periodField = editorFields.number(length, CUSTOM_PERIOD_BOUNDS, (value) => {
+          customPeriodsTouched = true;
+          customPeriods[index] = value;
+          scheduleRedraw();
+        });
+        periodField.element.dataset.setting = `stCustomPeriod${index}`;
+        editorFields.field(periodField.element, () => ({ label: say(l, `Period ${index + 1}`, `Period ${index + 1}`), hint: say(l, "år", "years") }), "field field-stack st-period-field");
+        if (customPeriods.length > 1) {
+          const remove = h("button", "panel-btn st-period-remove", "×");
+          remove.type = "button";
+          remove.setAttribute("aria-label", say(l, `Ta bort period ${index + 1}`, `Remove period ${index + 1}`));
+          remove.addEventListener("click", () => {
+            customPeriodsTouched = true;
+            customPeriods = customPeriods.filter((_, i) => i !== index);
+            scheduleRedraw();
+          });
+          periodField.element.closest("label")?.append(remove);
+        }
+      });
+      if (customPeriods.length < CUSTOM_PERIOD_COUNT) {
+        const add = h("button", "panel-btn st-period-add", `+ ${say(l, "Lägg till period", "Add a period")}`);
+        add.type = "button";
+        add.addEventListener("click", () => {
+          customPeriodsTouched = true;
+          customPeriods = [...customPeriods, CUSTOM_PERIOD_BOUNDS.min + 9];
+          scheduleRedraw();
+        });
+        editor.append(add);
+      }
+      editor.append(h("p", "st-period-note", say(l, `Den sista perioden räknas alltid till ${LONG_LIFE} år.`, `The last period always runs to ${LONG_LIFE}.`)));
+      body.append(editor);
+    }
+
     const first = strategy.scenarios[0]!;
     /** A header with its unit on a line of its own, small. */
     const unitCell = (text: string, unit: string, info?: string): HTMLTableCellElement => {
@@ -705,7 +789,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const shownTotals = first.totals.filter((t) => t.lifespan !== 90 || t.lifespan === Math.round(strategy.expectedDeath));
     const head = [
       headCell(say(l, "Scenario", "Scenario")),
-      ...first.phases.map((p) =>
+      ...phasesOf(first).map((p) =>
         unitCell(say(l, `${p.from}–${p.to} år`, `Ages ${p.from}–${p.to}`), unit, say(l, `Att leva på per månad, i snitt, ${basisWord}`, `To live on a month, on average, ${basisWord}`)),
       ),
       unitCell(
@@ -748,7 +832,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       return row(
         [
           name,
-          ...s.phases.map((p) => cell(money(p.monthly, l), "num")),
+          ...phasesOf(s).map((p) => cell(money(p.monthly, l), "num")),
           cell(money(s.average, l), "num"),
           ...s.totals.filter((t) => shownTotals.some((shown) => shown.lifespan === t.lifespan)).map((t) => cell(mkr(t.total, l), "num")),
           lowest,

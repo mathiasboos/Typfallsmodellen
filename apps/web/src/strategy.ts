@@ -492,19 +492,35 @@ export interface Scenario {
   readonly meetsFloor: boolean;
 }
 
+/** How many of the table's own periods can be typed in by hand; the one after them always runs to `LONG_LIFE`. */
+export const CUSTOM_PERIOD_COUNT = 3;
+/** What one of the table's own typed-in periods may be, years. */
+export const CUSTOM_PERIOD_BOUNDS = { min: 1, max: 40, step: 1 } as const;
+
 /**
- * The up to three stretches "Strategiska scenarier" and the payout timeline split the retirement into: `frontYears`
- * years, another `frontYears`, then the rest to `LONG_LIFE` -- so the first stretch matches "Din plan"'s own
- * front-loaded period. Clamped to `LONG_LIFE`, and dropped where it would start past it.
+ * The stretches "Strategiska scenarier" and the payout timeline split the retirement into: `lengths[0]` years,
+ * then `lengths[1]`, and so on, with the rest to `LONG_LIFE` always the last one. Clamped to `LONG_LIFE`, and
+ * dropped where a stretch would start past it.
+ */
+export function periodBoundsFor(par: number, lengths: readonly number[]): readonly { readonly from: number; readonly to: number }[] {
+  const bounds: { from: number; to: number }[] = [];
+  let from = par;
+  for (const length of lengths) {
+    if (from > LONG_LIFE) break;
+    bounds.push({ from, to: Math.min(from + length - 1, LONG_LIFE) });
+    from += length;
+  }
+  if (from <= LONG_LIFE) bounds.push({ from, to: LONG_LIFE });
+  return bounds;
+}
+
+/**
+ * The up to three stretches "Strategiska scenarier" and the payout timeline split the retirement into by default:
+ * `frontYears` years, another `frontYears`, then the rest to `LONG_LIFE` -- so the first stretch matches "Din
+ * plan"'s own front-loaded period. Clamped to `LONG_LIFE`, and dropped where it would start past it.
  */
 export function periodBounds(par: number, frontYears: number): readonly { readonly from: number; readonly to: number }[] {
-  return [
-    { from: par, to: par + frontYears - 1 },
-    { from: par + frontYears, to: par + 2 * frontYears - 1 },
-    { from: par + 2 * frontYears, to: LONG_LIFE },
-  ]
-    .filter((phase) => phase.from <= Math.min(phase.to, LONG_LIFE))
-    .map((phase) => ({ from: phase.from, to: Math.min(phase.to, LONG_LIFE) }));
+  return periodBoundsFor(par, [frontYears, frontYears]);
 }
 
 /** In all, from retirement up to the age the person is gone at (`lifespan` itself not counted). */
@@ -525,7 +541,7 @@ export function floorAt(run: ComboRun, floor: number, age: number, afterTax: boo
   return afterTax ? floor : run.grossFor(age, floor * 12) / 12;
 }
 
-const average = (values: readonly number[], from: number, to: number): number => {
+export const average = (values: readonly number[], from: number, to: number): number => {
   let sum = 0;
   let count = 0;
   for (let age = from; age <= Math.min(to, LAST_AGE); age += 1) {
@@ -592,6 +608,15 @@ function scenario(
     breakEven: balanced === undefined || id === "balanced" ? undefined : overtakenAt(run, balanced),
     meetsFloor: yearsAtFloor(run, floor, until) === Math.min(until, LAST_AGE + 1) - par,
   };
+}
+
+/**
+ * A scenario's phases cut at `lengths`' own periods instead of "Din plan"'s -- "Strategiska scenarier"'s own choice
+ * ("Eget val"), read straight off the already-run scenario rather than running the model again.
+ */
+export function scenarioPhases(run: ComboRun, afterTax: boolean, lengths: readonly number[]): readonly { readonly from: number; readonly to: number; readonly monthly: number }[] {
+  const values = incomeOf(run, afterTax);
+  return periodBoundsFor(run.par, lengths).map((phase) => ({ ...phase, monthly: average(values, phase.from, phase.to) / 12 }));
 }
 
 /** The payout periods the optimal scenario chooses among for each pot on its own: the agreements' usual ones, and life. */
@@ -1753,12 +1778,18 @@ export function payoutKindName(kind: PayoutKind, lang: Lang, savingsKind: Saving
 /** " (före skatt)" on the amounts' headers when they are shown before tax; nothing after tax, the default. */
 const basisNote = (strategy: Strategy, lang: Lang): string => (strategy.input.afterTax ? "" : say(lang, " (före skatt)", " (before tax)"));
 
-function scenarioHeader(strategy: Strategy, lang: Lang): string[] {
+/** A scenario's phases: "Din plan"'s own (`s.phases`), or "Eget val"'s own periods when given. */
+function phasesOf(s: Scenario, afterTax: boolean, periodLengths: readonly number[] | undefined): readonly { readonly from: number; readonly to: number; readonly monthly: number }[] {
+  return periodLengths === undefined ? s.phases : scenarioPhases(s.run, afterTax, periodLengths);
+}
+
+function scenarioHeader(strategy: Strategy, lang: Lang, periodLengths?: readonly number[]): string[] {
   const first = strategy.scenarios[0]!;
+  const phases = phasesOf(first, strategy.input.afterTax, periodLengths);
   const b = basisNote(strategy, lang);
   return [
     say(lang, "Scenario", "Scenario"),
-    ...first.phases.map((p) => say(lang, `Per månad ${p.from}–${p.to} år${b}`, `Per month ages ${p.from}–${p.to}${b}`)),
+    ...phases.map((p) => say(lang, `Per månad ${p.from}–${p.to} år${b}`, `Per month ages ${p.from}–${p.to}${b}`)),
     say(lang, `Snitt per månad${b}`, `Average a month${b}`),
     ...first.totals.map((t) => say(lang, `Totalt till ${t.lifespan} år${b}`, `Total to ${t.lifespan}${b}`)),
     say(lang, `Lägsta månad${b}`, `Lowest month${b}`),
@@ -1766,10 +1797,10 @@ function scenarioHeader(strategy: Strategy, lang: Lang): string[] {
   ];
 }
 
-function scenarioCells(s: Scenario, lang: Lang, years: number): (string | number)[] {
+function scenarioCells(s: Scenario, lang: Lang, years: number, afterTax: boolean, periodLengths?: readonly number[]): (string | number)[] {
   return [
     `${scenarioName(s.id, lang)} (${scenarioSummary(s, years, lang)})`,
-    ...s.phases.map((p) => Math.round(p.monthly)),
+    ...phasesOf(s, afterTax, periodLengths).map((p) => Math.round(p.monthly)),
     Math.round(s.average),
     ...s.totals.map((t) => Math.round(t.total)),
     Math.round(s.lowest.monthly),
@@ -1780,20 +1811,22 @@ function scenarioCells(s: Scenario, lang: Lang, years: number): (string | number
 /** Whole kronor, no thousands separator, as in the other tabs' downloads. */
 const whole = (n: number): string => String(Math.round(n));
 
-export function scenariosToCsv(strategy: Strategy, lang: Lang): string {
+/** `periodLengths`: "Eget val"'s own periods, as the table shows them -- omitted for "Din plan"'s own. */
+export function scenariosToCsv(strategy: Strategy, lang: Lang, periodLengths?: readonly number[]): string {
   const d = delimiterFor(lang);
-  const lines = [csvLine(scenarioHeader(strategy, lang), d)];
+  const lines = [csvLine(scenarioHeader(strategy, lang, periodLengths), d)];
   for (const s of strategy.scenarios) {
-    lines.push(csvLine(scenarioCells(s, lang, strategy.input.frontYears).map((c) => (typeof c === "number" ? whole(c) : c)), d));
+    lines.push(csvLine(scenarioCells(s, lang, strategy.input.frontYears, strategy.input.afterTax, periodLengths).map((c) => (typeof c === "number" ? whole(c) : c)), d));
   }
   return lines.join("\r\n");
 }
 
-export function scenariosToXlsxRows(strategy: Strategy, lang: Lang): SheetData {
+export function scenariosToXlsxRows(strategy: Strategy, lang: Lang, periodLengths?: readonly number[]): SheetData {
+  const header = scenarioHeader(strategy, lang, periodLengths);
   return [
-    scenarioHeader(strategy, lang),
+    header,
     ...strategy.scenarios.map((s) =>
-      scenarioCells(s, lang, strategy.input.frontYears).map((c, i) => (typeof c === "number" && i < scenarioHeader(strategy, lang).length - 1 ? kronorCell(c) : c)),
+      scenarioCells(s, lang, strategy.input.frontYears, strategy.input.afterTax, periodLengths).map((c, i) => (typeof c === "number" && i < header.length - 1 ? kronorCell(c) : c)),
     ),
   ];
 }
