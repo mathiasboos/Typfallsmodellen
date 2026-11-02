@@ -1759,6 +1759,22 @@ td.pl-floor-name { font-style: italic; }
 .st-subhead-row .st-subhead { margin: 0; }
 .st-payouts { display: grid; gap: 8px; }
 .st-downloads { justify-content: flex-start; }
+/* "Din plan" / "Eget val": which periods "Strategiska scenarier" splits its stretches at. */
+.st-period-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; }
+.st-period-label { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); }
+.st-period-editor { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0 0 8px; }
+.st-period-field { position: relative; min-width: 110px; }
+.st-period-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  padding: 0;
+  font-size: 0.9rem;
+}
+.st-period-note { margin: 0; font-size: 0.78rem; color: var(--text-muted); flex: 1 0 100%; }
 /* The payout timeline (a Gantt chart): rows per kind of money, the expected lifespan dashed. */
 .st-timeline { margin: 4px 0 0; display: grid; gap: 6px; }
 .st-timeline-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
