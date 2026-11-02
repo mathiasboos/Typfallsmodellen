@@ -988,12 +988,16 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         bar.append(el("title", {}, `${payoutKindName(kind, l, savingsLabel(strategy.input))}: ${text}`));
         svg.append(bar);
         if (p.lifelong) svg.append(el("path", { d: `M${x1 - 1} ${y + 1} l7 8 l-7 8 z`, fill: `var(${KIND_COLOUR[kind]})` }));
-        // A split bar's own pieces show only their amount, under their own slice; the first piece keeps the full label.
-        const label = view === "period" && bars.length > 1 && i > 0 ? `${say(l, "ca", "about")} ${kronor(Math.round(p.monthly / 10) * 10, l)} ${say(l, "kr/mån", "SEK/month")}` : text;
-        // A piece too narrow for its own label beside the next one skips it (the tooltip still has it).
+        // A split bar's own pieces show only their amount, under their own slice -- the span is already the slice's
+        // own width, and the full span text would rarely fit next to a neighbour.
+        const label = view === "period" && bars.length > 1 ? `${say(l, "ca", "about")} ${kronor(Math.round(p.monthly / 10) * 10, l)} ${say(l, "kr/mån", "SEK/month")}` : text;
+        // A piece too narrow for its own label beside the next one skips it (the tooltip still has it). The start
+        // is clamped only far enough to keep the label's own width inside the chart, not a flat guess -- a clamp
+        // wider than that would drag a late piece's label back over its neighbour's.
         const nextX = i + 1 < bars.length ? x(bars[i + 1]!.from) - 4 : W - right;
-        const tx = Math.min(x0, W - right - 230);
-        if (tx + label.length * 6.3 <= nextX) svg.append(el("text", { x: tx, y: y + 32, class: "st-tl-text" }, label));
+        const labelWidth = label.length * 6.3;
+        const tx = Math.min(x0, W - right - labelWidth);
+        if (tx + labelWidth <= nextX) svg.append(el("text", { x: tx, y: y + 32, class: "st-tl-text" }, label));
       });
     });
     return svg;

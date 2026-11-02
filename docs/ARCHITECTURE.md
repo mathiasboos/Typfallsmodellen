@@ -1775,7 +1775,11 @@ per stretch of years from the retirement age, its span and average a month under
 colours the Portföljvärde tab's account tokens, and a switch between the scenarios, the suggested one first; a second
 switch, "Totalt snitt" against "Per tidsperiod", splits each bar at the scenario table's own period boundaries
 (`PayoutPhase.periods`, the same `periodBounds` the table's phases use) into its own small bars, each its own average,
-a 1px gap between pieces and the piece's label dropped where it would run into the next one's), the occupational
+a 1px gap between pieces, every piece's label the same short "about X a month" (not only the pieces after the first --
+the full span reads off the grid and the neighbouring piece already, and the longer span-and-amount text it used to
+carry on the first piece rarely fit); a label starts at its own piece's left edge and is clamped rightward only as far
+as its own width needs, so it never lands back over an earlier piece, and is dropped only where it still would not
+fit beside the next one's), the occupational
 pension's payout-period table (its own CSV/Excel downloads), the tax rules (the same cards, two to a row, without a
 number and ending in a link), the checklist, and the notes.
 

@@ -4203,6 +4203,23 @@ if (!(stPeriodBars > stAverageBars) || !stPeriodActive || stBackToAverage !== st
   problems.push(`the timeline's view toggle gives ${stAverageBars} -> ${stPeriodBars} (active ${stPeriodActive}) -> ${stBackToAverage} bars for income pension`);
 }
 
+// "Per tidsperiod": every piece wide enough for its own label gets one -- the first piece too, not only later ones --
+// and a later piece's label starts at its own bar's left edge, not dragged back over an earlier one.
+await st.locator('[data-role="st-fig-timeline"] button[data-view="period"]').click();
+await tab.waitForTimeout(150);
+const stIncomeBars = await st.locator('[data-role="st-fig-timeline"] svg rect.st-tl-bar[data-kind="income"]').evaluateAll((els) => els.map((e) => Number(e.getAttribute("x"))));
+const stIncomeLabels = await st.locator('[data-role="st-fig-timeline"] svg .st-tl-text').evaluateAll((els) =>
+  els.map((e) => ({ x: Number(e.getAttribute("x")), text: e.textContent ?? "" })),
+);
+const stFirstLabel = stIncomeLabels.find((t) => Math.abs(t.x - stIncomeBars[0]) < 3);
+const stThirdLabel = stIncomeLabels.find((t) => Math.abs(t.x - stIncomeBars[2]) < 3);
+console.log(`strategy timeline labels: income bars at ${stIncomeBars.map((x) => Math.round(x)).join("/")}, first "${stFirstLabel?.text}", third "${stThirdLabel?.text}"`);
+if (stIncomeBars.length !== 3 || !stFirstLabel || !stThirdLabel) {
+  problems.push(`income pension's period labels: bars at ${JSON.stringify(stIncomeBars)}, labels ${JSON.stringify(stIncomeLabels)}`);
+}
+await st.locator('[data-role="st-fig-timeline"] button[data-view="average"]').click();
+await tab.waitForTimeout(150);
+
 // The downloads, the English labels and a phone.
 const stCsv = await download(st.locator('.export-btn[data-file="uttagsstrategi.csv"]'));
 const stXlsx = await download(st.locator('.export-btn[data-file="uttagsstrategi.xlsx"]'));
