@@ -1013,6 +1013,32 @@ const TOTAL_TIE = 1;
 /** The payout period as a length for ordering: lifelong is the longest. */
 const lengthOf = (payout: number): number => (payout === LIFELONG ? Number.POSITIVE_INFINITY : payout);
 
+export interface LeaderRun {
+  readonly payout: number;
+  /** The first and last age (both included) at which this plan has paid out the most in all so far. */
+  readonly from: number;
+  readonly to: number;
+}
+
+/** The plan that has paid out the most in all by each age (the longer payout on a tie), as it runs through the ages. */
+export function leaderByAge(table: YearlyTable): { readonly leaders: readonly number[]; readonly runs: readonly LeaderRun[] } {
+  const leaders = table.ages.map((_, i) => {
+    let best = table.plans[0]!;
+    for (const plan of table.plans.slice(1)) {
+      const diff = plan.cumulative[i]! - best.cumulative[i]!;
+      if (diff > TOTAL_TIE || (Math.abs(diff) <= TOTAL_TIE && lengthOf(plan.payout) > lengthOf(best.payout))) best = plan;
+    }
+    return best.payout;
+  });
+  const runs: LeaderRun[] = [];
+  leaders.forEach((payout, i) => {
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.payout === payout) runs[runs.length - 1] = { ...last, to: table.ages[i]! };
+    else runs.push({ payout, from: table.ages[i]!, to: table.ages[i]! });
+  });
+  return { leaders, runs };
+}
+
 export interface PlanRank {
   readonly payout: number;
   readonly total: number;

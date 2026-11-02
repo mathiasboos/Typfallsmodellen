@@ -58,6 +58,7 @@ import {
   amountsToXlsxRows,
   totalPaid,
   bestPlans,
+  leaderByAge,
   yearlyTable,
   yearlyToCsv,
   yearlyToXlsxRows,
@@ -83,7 +84,7 @@ import {
   seriesToXlsxRows,
   slotOfPayout,
 } from "./pensionLasts.js";
-import type { Assessment, Lasts, LastsInput, PayoutOption, PayoutRuns } from "./pensionLasts.js";
+import type { Assessment, Lasts, LastsInput, PayoutOption, PayoutRuns, YearlyTable } from "./pensionLasts.js";
 import { savingYear, savingsNotes } from "./privateSavings.js";
 import { createSavingsInputs } from "./savingsInputs.js";
 import { cell, headCell } from "./tables.js";
@@ -1342,6 +1343,77 @@ export function createPensionLastsPanel(
     return section;
   }
 
+  /** A bar from the retirement age to the lifespan, one coloured stretch for each plan that has paid out the most so far. */
+  function leaderStrip(lasts: Lasts, table: YearlyTable, runs: readonly { payout: number; from: number; to: number }[], l: Lang): HTMLElement {
+    const box = h("div", "pm-strip-box");
+    box.dataset.role = "pm-leader-strip";
+    box.append(h("div", "pa-ribbon-label", say(l, "Vilken uttagsplan har betalat ut mest vid varje ålder?", "Which payout plan has paid out the most at each age?")));
+    const strip = h("div", "pm-strip");
+    for (const run of runs) {
+      const years = run.to - run.from + 1;
+      const slot = slotOfPayout(run.payout);
+      const seg = h("div", `pm-strip-seg pm-lead-${slot}`);
+      seg.style.flex = `${years} 1 0`;
+      seg.dataset.payout = String(run.payout);
+      const range = run.from === run.to ? `${run.from}` : `${run.from}–${run.to}`;
+      seg.title = say(l, `${payoutName(run.payout, l)} har betalat ut mest vid ${range} år`, `${payoutName(run.payout, l)} has paid out the most at age ${range}`);
+      seg.append(h("strong", undefined, payoutName(run.payout, l)), h("span", undefined, say(l, `${range} år`, `age ${range}`)));
+      strip.append(seg);
+    }
+    box.append(strip);
+    box.append(
+      h(
+        "p",
+        "pa-note",
+        say(
+          l,
+          `Färgen visar planen med mest pengar utbetalt sedan pensionsstart vid ${lasts.from} år, vid varje ålder till ${lasts.to - 1}. Dör du vid en viss ålder är det planen vid just den åldern som gett mest pengar.`,
+          `The colour is the plan that has paid out the most money since the start at ${lasts.from}, at each age up to ${lasts.to - 1}. If you die at a given age, the plan at that age is the one that paid out the most.`,
+        ),
+      ),
+    );
+    return box;
+  }
+
+  /** The total paid so far for each plan, against the lifelong plan: above zero a plan is ahead of it. */
+  function behindFigure(lasts: Lasts, table: YearlyTable, l: Lang): HTMLElement {
+    const life = table.plans.find((p) => p.payout === LIFELONG)!;
+    const series: ChartSeries[] = table.plans.map((plan) => ({
+      payout: plan.payout,
+      name: plan.payout === LIFELONG ? say(l, "Livsvarig utbetalning", "Lifelong payout") : say(l, `${plan.payout} års utbetalning`, `${plan.payout}-year payout`),
+      end: payoutName(plan.payout, l),
+      colour: `--fig-pu-${slotOfPayout(plan.payout)}`,
+      emphasis: plan.payout === LIFELONG,
+      essential: true,
+      dashed: plan.payout === LIFELONG,
+      points: table.ages.map((age, i) => [age, plan.cumulative[i]! - life.cumulative[i]!] as const),
+      format: (value: number) => `${signed(kronor(Math.round(Math.abs(value)), l), value)} kr`,
+    }));
+    const values = series.flatMap((s) => s.points.map((p) => p[1]));
+    const ticks = niceTicks(Math.min(0, ...values), Math.max(0, ...values), 5);
+    return renderLineChart({
+      role: "pm-fig-ahead",
+      lang: l,
+      title: say(l, "Före eller efter livsvarigt uttag", "Ahead of or behind a lifelong payout"),
+      subtitle: say(
+        l,
+        `Totalt utbetalt sedan pensionsstart, ${taxText(lasts.input.afterTax, l)}, ${priceText(lasts, l)}, jämfört med livsvarigt uttag (nollinjen). Över noll har planen betalat ut mer än livsvarigt hittills; där en linje går under noll har livsvarigt gått om.`,
+        `Total paid out since the start, ${taxText(lasts.input.afterTax, l)}, ${priceText(lasts, l)}, against a lifelong payout (the zero line). Above zero the plan has paid out more than a lifelong one so far; where a line goes below zero the lifelong payout has overtaken it.`,
+      ),
+      xMin: lasts.from,
+      xMax: Math.max(lasts.to - 1, lasts.from + 1),
+      xTitle: say(l, "Ålder", "Age"),
+      yTicks: ticks.ticks,
+      autoTicks: 5,
+      yTick: (v) => (v === 0 ? "0" : `${v < 0 ? "−" : "+"}${decimals(Math.abs(v) / 1e6, 1, l)}`),
+      yUnit: say(l, "Mkr mot livsvarigt", "MSEK vs lifelong"),
+      heading: (x) => `${say(l, "Ålder", "Age")} ${x}`,
+      series,
+      endRoom: 74,
+      annotations: { top: say(l, "▲ före livsvarigt", "▲ ahead of lifelong"), ...(ticks.lo < 0 ? { bottom: say(l, "▼ efter livsvarigt", "▼ behind lifelong") } : {}) },
+    });
+  }
+
   /** Year by year: each payout plan's pension a month and the total paid so far, and which plan pays the most up to the lifespan. */
   function amountYearsPanel(lasts: Lasts, l: Lang): HTMLElement {
     const table = yearlyTable(lasts);
@@ -1387,22 +1459,31 @@ export function createPensionLastsPanel(
     verdictBox.dataset.role = "pm-years-verdict";
     body.append(verdictBox);
 
+    const { leaders, runs: leaderRuns } = leaderByAge(table);
     const head1 = [headCell(say(l, "Ålder", "Age"))];
     for (const plan of table.plans) head1.push(headCell(`${payoutName(plan.payout, l)}, ${perMonth(l)}`));
     for (const plan of table.plans) head1.push(headCell(`${payoutName(plan.payout, l)}, ${say(l, "totalt hittills, kr", "total so far, SEK")}`));
+    head1.push(headCell(say(l, "Mest hittills", "Most so far")));
     const rows: HTMLTableRowElement[] = [];
     table.ages.forEach((age, i) => {
       const cells = [
         cell(String(age), "num"),
         ...table.plans.map((plan) => cell(kronor(Math.round(plan.monthly[i]!), l), "num")),
-        ...table.plans.map((plan) => cell(kronor(Math.round(plan.cumulative[i]!), l), plan.payout === best.payout ? "num pm-best" : "num")),
+        ...table.plans.map((plan) => {
+          const lead = plan.payout === leaders[i];
+          const td = cell(kronor(Math.round(plan.cumulative[i]!), l), lead ? `num pm-lead pm-lead-${slotOfPayout(plan.payout)}` : "num");
+          if (lead) td.title = say(l, "Mest utbetalt hittills", "Most paid so far");
+          return td;
+        }),
+        payoutCell(leaders[i]!, payoutName(leaders[i]!, l)),
       ];
-      rows.push(row(cells, { age: String(age) }));
+      rows.push(row(cells, { age: String(age), leader: String(leaders[i]) }));
     });
     const totals = [
       cell(say(l, `Totalt till ${lasts.to} år`, `In all to ${lasts.to}`), "pl-floor-name"),
       ...table.plans.map(() => cell("", "num")),
       ...table.plans.map((plan) => cell(kronor(Math.round(plan.total), l), plan.payout === best.payout ? "num pm-best" : "num")),
+      payoutCell(best.payout, payoutName(best.payout, l)),
     ];
     rows.push(row(totals, { total: "1" }));
     const rankRow = [
@@ -1412,8 +1493,10 @@ export function createPensionLastsPanel(
         const r = verdict.ranking.find((x) => x.payout === plan.payout)!;
         return cell(String(r.rank), plan.payout === best.payout ? "num pm-best" : "num");
       }),
+      cell(""),
     ];
     rows.push(row(rankRow, { rank: "1" }));
+    body.append(leaderStrip(lasts, table, leaderRuns, l), behindFigure(lasts, table, l));
     body.append(tableOf("pm-years", "pl-options", head1, rows));
     return section;
   }

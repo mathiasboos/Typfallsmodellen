@@ -27,6 +27,7 @@ import {
   amountsToCsv,
   amountsToXlsxRows,
   bestPlans,
+  leaderByAge,
   yearlyTable,
   yearlyToCsv,
   totalPaid,
@@ -1040,5 +1041,17 @@ describe("year by year (Hur mycket får jag?)", () => {
 
   it("exports one row per age under a header", () => {
     expect(yearlyToCsv(lasts, "sv").split("\r\n").length).toBe(table.ages.length + 1);
+  });
+
+  it("names the plan that has paid the most at each age, in runs that cover every age", () => {
+    const { leaders, runs } = leaderByAge(table);
+    expect(leaders.length).toBe(table.ages.length);
+    expect(runs[0]!.from).toBe(table.ages[0]);
+    expect(runs[runs.length - 1]!.to).toBe(table.ages[table.ages.length - 1]);
+    for (let i = 0; i < table.ages.length; i += 1) {
+      const top = Math.max(...table.plans.map((p) => p.cumulative[i]!));
+      expect(table.plans.find((p) => p.payout === leaders[i])!.cumulative[i]!).toBeGreaterThanOrEqual(top - 1);
+    }
+    expect(leaders[0]).toBe(5);
   });
 });
