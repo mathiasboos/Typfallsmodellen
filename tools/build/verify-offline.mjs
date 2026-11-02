@@ -4154,17 +4154,50 @@ if (!stEarly.checklist.includes("taxFree") || !(stEarlyTax[0]?.text ?? "").inclu
 await st.locator('[data-action="st-reset"]').click();
 await tab.waitForTimeout(150);
 
+// "Din plan"'s own payout period drives the scenario table's phases: shorter with a shorter "Uttag på kortare tid".
+const stPhasesDefault = await st.locator('[data-role="st-scenario-table"] thead th').allTextContents();
+await stType("stFrontYears", 5);
+const stPhasesFive = await st.locator('[data-role="st-scenario-table"] thead th').allTextContents();
+console.log(`strategy phases : 10 år -> "${stPhasesDefault[1]}", 5 år -> "${stPhasesFive[1]}"`);
+if (!stPhasesDefault[1]?.includes("67–76") || !stPhasesFive[1]?.includes("67–71")) {
+  problems.push(`the phase columns read "${stPhasesDefault[1]}" at 10 years and "${stPhasesFive[1]}" at 5, expected 67–76 and 67–71`);
+}
+await st.locator('[data-action="st-reset"]').click();
+await tab.waitForTimeout(150);
+
+// The timeline's own view toggle: "Totalt snitt" (one bar, one label) against "Per tidsperiod" (split at the
+// table's own periods, each its own average).
+const stBarsOf = (kind) => st.locator(`[data-role="st-fig-timeline"] .st-tl-bar[data-kind="${kind}"]`).count();
+const stAverageBars = await stBarsOf("income");
+await st.locator('[data-role="st-fig-timeline"] button[data-view="period"]').click();
+await tab.waitForTimeout(150);
+const stPeriodBars = await stBarsOf("income");
+const stPeriodActive = await st.locator('[data-role="st-fig-timeline"] button[data-view="period"]').evaluate((b) => b.classList.contains("active"));
+await st.locator('[data-role="st-fig-timeline"] button[data-view="average"]').click();
+await tab.waitForTimeout(150);
+const stBackToAverage = await stBarsOf("income");
+console.log(`strategy timeline view: average ${stAverageBars} bar(s) -> period ${stPeriodBars} -> average ${stBackToAverage}`);
+if (!(stPeriodBars > stAverageBars) || !stPeriodActive || stBackToAverage !== stAverageBars) {
+  problems.push(`the timeline's view toggle gives ${stAverageBars} -> ${stPeriodBars} (active ${stPeriodActive}) -> ${stBackToAverage} bars for income pension`);
+}
+
 // The downloads, the English labels and a phone.
 const stCsv = await download(st.locator('.export-btn[data-file="uttagsstrategi.csv"]'));
 const stXlsx = await download(st.locator('.export-btn[data-file="uttagsstrategi.xlsx"]'));
 const stSeries = await download(st.locator('.export-btn[data-file="att-leva-pa-per-ar.csv"]'));
+const stPayoutCsv = await download(st.locator('.export-btn[data-file="tjanstepensionens-uttagstid.csv"]'));
+const stPayoutXlsx = await download(st.locator('.export-btn[data-file="tjanstepensionens-uttagstid.xlsx"]'));
 const stCsvLines = stCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
 const stSeriesLines = stSeries.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
-console.log(`strategy        : ${stCsv.filename} ${stCsvLines.length} lines, ${stSeries.filename} ${stSeriesLines.length} lines, ${stXlsx.filename}`);
-if (stCsvLines.length !== 4 || !stCsvLines[0].startsWith("Scenario;") || !/^Din plan \(.*\);\d+;/.test(stCsvLines[2]) || !looksLikeXlsx(stXlsx.buffer)) {
+const stPayoutLines = stPayoutCsv.buffer.toString("utf8").replace(/^﻿/, "").split("\r\n");
+console.log(`strategy        : ${stCsv.filename} ${stCsvLines.length} lines, ${stSeries.filename} ${stSeriesLines.length} lines, ${stXlsx.filename}, ${stPayoutCsv.filename} ${stPayoutLines.length} lines, ${stPayoutXlsx.filename}`);
+if (stCsvLines.length !== 4 || !stCsvLines[0].startsWith("Scenario;") || !stCsvLines[0].includes("Snitt per månad") || !/^Din plan \(.*\);\d+;/.test(stCsvLines[2]) || !looksLikeXlsx(stXlsx.buffer)) {
   problems.push(`the scenario downloads read "${stCsvLines[0]}" with ${stCsvLines.length} lines, xlsx ${looksLikeXlsx(stXlsx.buffer)}`);
 }
 if (stSeriesLines.length !== 95 - 67 + 2 || stSeriesLines[0] !== "Ålder;Balanserad;Din plan;Optimalt") problems.push(`the per-age download starts "${stSeriesLines[0]}" with ${stSeriesLines.length} lines`);
+if (stPayoutLines.length !== 6 || !stPayoutLines[0]?.startsWith("Uttagstid;") || !looksLikeXlsx(stPayoutXlsx.buffer)) {
+  problems.push(`the payout-period download reads "${stPayoutLines[0]}" with ${stPayoutLines.length} lines, xlsx ${looksLikeXlsx(stPayoutXlsx.buffer)}`);
+}
 
 await tab.locator(".langs button", { hasText: "EN" }).click();
 await tab.waitForTimeout(150);

@@ -1694,11 +1694,12 @@ It is always the one suggested, and its description and the suggestion name the 
 supplement and the savings -- grossed up to the income the model's tax leaves as much of (`ComboRun.beforeTax`,
 `grossFor`), and the floor with them (`floorAt`), as "Hur länge räcker pensionen?" does; the scenarios and the
 suggestion are chosen after tax either way. The candidates
-are run once and kept (`StrategyRuns.candidates`), so a new floor or lifespan only reads them again. Each scenario
-has its average a month in three stretches (the first ten years, the next ten, then to 95), its total to 80, the
-expected lifespan, 90 and 95 (the table shows 80, the expected one and 95), its lowest month up to 95, and the
-lifespan from which Balanserad has paid more in all (`overtakenAt`: the lifespan from which the lead does not come
-back). The expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is
+are run once and kept (`StrategyRuns.candidates`), so a new floor or lifespan only reads them again. Each scenario's
+table row has its average a month in up to three stretches (`periodBounds`: `frontYears` long apiece, the last to 95 --
+so the first matches "Din plan"'s own front-loaded period; a shorter or longer "Uttag på kortare tid" moves all three),
+a whole-retirement average over the lot (par to 95), its total to 80, the expected lifespan, 90 and 95 (the table shows
+80, the expected one and 95), its lowest month up to 95, and the lifespan from which Balanserad has paid more in all
+(`overtakenAt`: the lifespan from which the lead does not come back). The expected lifespan is the person's, or the model's own (`lifeIncome.throughAge`). The public pension is
 always for life; only the occupational and private pension and the savings change payout period between the
 scenarios, and the descriptions say so. With nothing to draw any other way the three are the same. A second table
 draws the occupational pension over 5, 10, 15 and 20 years and for life, the rest for life: the totals at the same
@@ -1752,10 +1753,18 @@ run's price factor for that year.
 
 **The page** (`strategyPanel.ts`): the inputs, the insight cards (a number, a title, the arithmetic, what to do), the
 suggestion in words, the scenario table (the suggested row marked "★ Förslag", a lowest month below the floor marked in
-its cell), the line chart (each scenario a month by age, the suggested one heavy, and the floor dashed, drawn by
-`renderLineChart` with its legend switches; the colours are the comparison tab's `--fig-scenario-*` steps), the payout
-table, a payout timeline (a Gantt chart, `payoutPhases`: one row per part -- income, premium and guarantee pension, occupational and private pension, the savings, the housing supplement -- a bar per stretch of years from the retirement age, its span and average a month under it, the expected lifespan dashed, the colours the Portföljvärde tab's account tokens, and a switch between the scenarios, the suggested one first), the tax rules (the same cards, two to a row, without a number and ending in a link), the checklist, the notes,
-and four downloads (the scenarios and what there is to live on by age, CSV and Excel, whole kronor).
+its cell; its own CSV/Excel downloads, the table's own rows, whole kronor), the line
+chart (each scenario a month by age, the suggested one heavy, and the floor dashed, drawn by `renderLineChart` with its
+legend switches and its own CSV/Excel downloads in the figure's own actions, `LineChartSpec.actions`; what there is to
+live on by age, whole kronor; the colours are the comparison tab's `--fig-scenario-*` steps), a payout timeline (a Gantt chart, `payoutPhases`: one row per part --
+income, premium and guarantee pension, occupational and private pension, the savings, the housing supplement -- a bar
+per stretch of years from the retirement age, its span and average a month under it, the expected lifespan dashed, the
+colours the Portföljvärde tab's account tokens, and a switch between the scenarios, the suggested one first; a second
+switch, "Totalt snitt" against "Per tidsperiod", splits each bar at the scenario table's own period boundaries
+(`PayoutPhase.periods`, the same `periodBounds` the table's phases use) into its own small bars, each its own average,
+a 1px gap between pieces and the piece's label dropped where it would run into the next one's), the occupational
+pension's payout-period table (its own CSV/Excel downloads), the tax rules (the same cards, two to a row, without a
+number and ending in a link), the checklist, and the notes.
 
 **Left out on purpose:** a couple (the housing supplement is a single person's), other orders of the pots than the three
 scenarios, taking the public pension later or in part ("När ta ut pensionen?" and Avancerat do that), and discounting.

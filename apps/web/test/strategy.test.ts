@@ -31,9 +31,12 @@ import {
   runStrategy,
   evaluateStrategy,
   floorAt,
+  periodBounds,
   scenarioDescription,
   payoutKindName,
   payoutPhases,
+  payoutTableToCsv,
+  payoutTableToXlsxRows,
   pooledPension,
   savingsByKind,
   savingsLabel,
@@ -331,7 +334,7 @@ describe("the downloads", () => {
     expect(csv[3]!.startsWith("Optimalt (Tjänstepension 6 år, sparande 6 år:")).toBe(true);
     // Whole kronor without a thousands separator, as in the other tabs' downloads, and the lifespan from
     // which the balanced way has paid more in all: at 100 for the own plan, and not before 100 for the optimal one.
-    expect(csv[1]).toMatch(/^Balanserad \(.*\);\d+;\d+;\d+;\d+;\d+;\d+;\d+;\d+;$/);
+    expect(csv[1]).toMatch(/^Balanserad \(.*\);\d+;\d+;\d+;\d+;\d+;\d+;\d+;\d+;\d+;$/);
     expect(csv[2]!.endsWith(";100")).toBe(true);
     expect(csv[3]!.endsWith(";inte före 100")).toBe(true);
     const series = seriesToCsv(plain, "en").split("\r\n");
@@ -625,5 +628,75 @@ describe("the payout timeline before tax and after", () => {
     let sum = 0;
     for (let a = savings.from; a <= savings.to; a += 1) sum += run.savings[a]!;
     expect(savings.monthly).toBeCloseTo(sum / (savings.to - savings.from + 1) / 12, 6);
+  });
+
+  it("splits each phase at the table's own period boundaries, each piece its own average", () => {
+    const run = plain.scenarios[0]!.run;
+    const front = payoutPhases(run, true, 5).find((p) => p.kind === "income")!;
+    // Income pension runs from retirement to LONG_LIFE: three five-year pieces plus the rest.
+    expect(front.periods.map((p) => [p.from, p.to])).toEqual(periodBounds(run.par, 5).map((b) => [b.from, b.to]));
+    for (const piece of front.periods) {
+      let sum = 0;
+      for (let a = piece.from; a <= piece.to; a += 1) {
+        const share = run.gross[a]! > 0 ? run.net[a]! / run.gross[a]! : 1;
+        sum += run.incomePension[a]! * share;
+      }
+      expect(piece.monthly).toBeCloseTo(sum / (piece.to - piece.from + 1) / 12, 6);
+    }
+    // The default period length (no `frontYears` given) is still `EARLY_YEARS`, as before.
+    expect(payoutPhases(run, true).find((p) => p.kind === "income")!.periods).toEqual(payoutPhases(run, true, 10).find((p) => p.kind === "income")!.periods);
+  });
+});
+
+describe("the table's periods", () => {
+  it("follow 'Din plan's own payout period, clamped to LONG_LIFE", () => {
+    expect(periodBounds(67, 10)).toEqual([
+      { from: 67, to: 76 },
+      { from: 77, to: 86 },
+      { from: 87, to: 95 },
+    ]);
+    expect(periodBounds(67, 5)).toEqual([
+      { from: 67, to: 71 },
+      { from: 72, to: 76 },
+      { from: 77, to: 95 },
+    ]);
+    expect(periodBounds(67, 15)).toEqual([
+      { from: 67, to: 81 },
+      { from: 82, to: 95 },
+    ]);
+  });
+
+  it("drive 'Strategiska scenarier's phases: shorter with a shorter 'Uttag på kortare tid'", () => {
+    const five = strategy({ frontYears: 5 });
+    const fifteen = strategy({ frontYears: 15 });
+    expect(five.scenarios[0]!.phases.map((p) => [p.from, p.to])).toEqual([
+      [67, 71],
+      [72, 76],
+      [77, 95],
+    ]);
+    expect(fifteen.scenarios[0]!.phases.map((p) => [p.from, p.to])).toEqual([
+      [67, 81],
+      [82, 95],
+    ]);
+  });
+
+  it("add an average-a-month column, over the whole retirement", () => {
+    const balanced = plain.scenarios[0]!.run;
+    let sum = 0;
+    for (let age = balanced.par; age <= 95; age += 1) sum += balanced.disposable[age]!;
+    expect(plain.scenarios[0]!.average).toBeCloseTo(sum / (95 - balanced.par + 1) / 12, 6);
+    expect(scenariosToCsv(plain, "sv").split("\r\n")[0]).toContain("Snitt per månad");
+  });
+});
+
+describe("the payout table's download", () => {
+  it("gives the same rows as the table, whole kronor", () => {
+    const csv = payoutTableToCsv(plain, "sv").split("\r\n");
+    expect(csv[0]).toMatch(/^Uttagstid;Totalt till \d+ år/);
+    expect(csv.length).toBe(plain.payouts.length + 1);
+    expect(csv[1]).toMatch(/^5 år;\d+;/);
+    const sheet = payoutTableToXlsxRows(plain, "en");
+    expect(sheet[0]![0]).toBe("Payout period");
+    expect(sheet.length).toBe(plain.payouts.length + 1);
   });
 });

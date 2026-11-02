@@ -42,6 +42,8 @@ import {
   comboText,
   payoutKindName,
   payoutPhases,
+  payoutTableToCsv,
+  payoutTableToXlsxRows,
   defaultStrategyInput,
   evaluateStrategy,
   insightText,
@@ -312,6 +314,8 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
   let modelLifespan = 0;
   /** The scenario the payout timeline shows; the suggested one until another is picked. */
   let timelineScenario: ScenarioId | undefined;
+  /** Whether the payout timeline shows one average for the whole bar, or one per period, as the scenario table splits it. */
+  let timelineView: "average" | "period" = "average";
   const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
   lifespanField.element.dataset.setting = "stLifespan";
   const relabelLifespan = field(lifespanField.element, (l) => ({
@@ -704,6 +708,11 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       ...first.phases.map((p) =>
         unitCell(say(l, `${p.from}–${p.to} år`, `Ages ${p.from}–${p.to}`), unit, say(l, `Att leva på per månad, i snitt, ${basisWord}`, `To live on a month, on average, ${basisWord}`)),
       ),
+      unitCell(
+        say(l, "Snitt", "Average"),
+        unit,
+        say(l, `Att leva på per månad, i snitt hela tiden fram till ${LONG_LIFE} år, ${basisWord}`, `To live on a month, on average the whole time up to ${LONG_LIFE}, ${basisWord}`),
+      ),
       ...shownTotals.map((t) =>
         unitCell(
           say(l, `Till ${t.lifespan} år`, `To ${t.lifespan}`),
@@ -740,6 +749,7 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         [
           name,
           ...s.phases.map((p) => cell(money(p.monthly, l), "num")),
+          cell(money(s.average, l), "num"),
           ...s.totals.filter((t) => shownTotals.some((shown) => shown.lifespan === t.lifespan)).map((t) => cell(mkr(t.total, l), "num")),
           lowest,
           cell(s.id === "balanced" ? "–" : s.breakEven === undefined ? say(l, "inte före 100", "not before 100") : say(l, `${s.breakEven} år`, `${s.breakEven}`), "num"),
@@ -748,12 +758,6 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       );
     });
     body.append(tableOf("st-scenario-table", "st-table", head, rows), scenarioFigure(strategy, l), timeline(strategy, l), payoutTable(strategy, l));
-    const downloads = h("div", "panel-actions st-downloads");
-    downloads.append(
-      csvExportButton(l, say(l, "att-leva-pa-per-ar.csv", "to-live-on-per-age.csv"), () => seriesToCsv(strategy, l)),
-      xlsxExportButton(l, say(l, "att-leva-pa-per-ar.xlsx", "to-live-on-per-age.xlsx"), () => seriesToXlsxRows(strategy, l)),
-    );
-    body.append(downloads);
     return section;
   }
 
@@ -770,6 +774,21 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     head.append(h("h3", "st-subhead", say(l, "Utbetalningarnas tidslinje", "When each payout is paid")));
     const toggle = h("div", "panel-toggle pa-toggle");
     toggle.setAttribute("role", "group");
+    const viewToggle = h("div", "panel-toggle pa-toggle");
+    viewToggle.setAttribute("role", "group");
+    const viewButtons: { readonly view: "average" | "period"; readonly button: HTMLButtonElement }[] = [
+      { view: "average", button: h("button", "panel-btn", say(l, "Totalt snitt", "Overall average")) },
+      { view: "period", button: h("button", "panel-btn", say(l, "Per tidsperiod", "Per time period")) },
+    ];
+    for (const { view, button } of viewButtons) {
+      button.type = "button";
+      button.dataset.view = view;
+      button.addEventListener("click", () => {
+        timelineView = view;
+        render();
+      });
+      viewToggle.append(button);
+    }
     const draw = h("div", "scroll");
     const note = h("p", "pa-lead");
     const render = (): void => {
@@ -779,11 +798,19 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         button.classList.toggle("active", on);
         button.setAttribute("aria-pressed", String(on));
       }
-      draw.replaceChildren(timelineSvg(strategy, s.id, l));
+      for (const { view, button } of viewButtons) {
+        button.classList.toggle("active", view === timelineView);
+        button.setAttribute("aria-pressed", String(view === timelineView));
+      }
+      draw.replaceChildren(timelineSvg(strategy, s.id, l, timelineView));
+      const per =
+        timelineView === "period"
+          ? say(l, ` Varje stapel delas i tidsperioder, ${strategy.input.frontYears} år i taget som "Din plan", med en egen snittsiffra för varje del.`, ` Each bar is split into time periods, ${strategy.input.frontYears} years at a time as "Your plan", with its own average for each piece.`)
+          : "";
       note.textContent = say(
         l,
-        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad ${strategy.input.afterTax ? "efter" : "före"} skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.`,
-        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month ${strategy.input.afterTax ? "after" : "before"} tax. Where bars lie above one another, the parts are paid at the same time.`,
+        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} Staplarna visar från vilken ålder till vilken varje del betalas ut, i snitt per månad ${strategy.input.afterTax ? "efter" : "före"} skatt. Där staplarna ligger över varandra betalas delarna ut samtidigt.${per}`,
+        `${scenarioName(s.id, l)}: ${scenarioSummary(s, strategy.input.frontYears, l)} The bars show from which age to which each part is paid, on average a month ${strategy.input.afterTax ? "after" : "before"} tax. Where bars lie above one another, the parts are paid at the same time.${per}`,
       );
     };
     for (const id of ids) {
@@ -796,13 +823,15 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       });
       toggle.append(button);
     }
-    head.append(toggle);
+    const toggles = h("div", "st-timeline-toggles");
+    toggles.append(toggle, viewToggle);
+    head.append(toggles);
     figure.append(head, note, draw);
     render();
     return figure;
   }
 
-  function timelineSvg(strategy: Strategy, id: ScenarioId, l: Lang): SVGSVGElement {
+  function timelineSvg(strategy: Strategy, id: ScenarioId, l: Lang, view: "average" | "period" = "average"): SVGSVGElement {
     const NS = "http://www.w3.org/2000/svg";
     const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, text?: string) => {
       const node = document.createElementNS(NS, tag);
@@ -811,8 +840,17 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       return node;
     };
     const s = strategy.scenarios.find((x) => x.id === id)!;
-    const phases = payoutPhases(s.run, strategy.input.afterTax);
+    const phases = payoutPhases(s.run, strategy.input.afterTax, strategy.input.frontYears);
     const kinds = PAYOUT_KINDS.filter((k) => phases.some((p) => p.kind === k));
+    /** One bar per phase ("Totalt snitt"), or one per the table's own periods ("Per tidsperiod"), each its own average. */
+    const barsOf = (kind: PayoutKind): readonly { readonly from: number; readonly to: number; readonly lifelong: boolean; readonly monthly: number }[] =>
+      phases
+        .filter((p) => p.kind === kind)
+        .flatMap((p) =>
+          view === "average"
+            ? [{ from: p.from, to: p.to, lifelong: p.lifelong, monthly: p.monthly }]
+            : p.periods.map((piece, i) => ({ from: piece.from, to: piece.to, lifelong: p.lifelong && i === p.periods.length - 1, monthly: piece.monthly })),
+        );
     const par = strategy.par;
     const end = LONG_LIFE + 1;
     const W = 760;
@@ -848,12 +886,15 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         el("text", { x: lx, y: 10, class: "st-tl-tick", "text-anchor": lx > W - 140 ? "end" : "middle" }, say(l, `Förväntad livslängd ${decimals(life, 1, l)} år`, `Expected lifespan ${decimals(life, 1, l)}`)),
       );
     }
+    // In "Per tidsperiod", adjacent pieces of the same bar get a 2px surface gap, so the split reads as two bars.
+    const gap = view === "period" ? 1 : 0;
     kinds.forEach((kind, row) => {
       const y = top + row * rowH;
       svg.append(el("text", { x: 0, y: y + 13, class: "st-tl-label" }, payoutKindName(kind, l, savingsLabel(strategy.input))));
-      for (const p of phases.filter((q) => q.kind === kind)) {
-        const x0 = x(p.from);
-        const x1 = x(p.to + 1);
+      const bars = barsOf(kind);
+      bars.forEach((p, i) => {
+        const x0 = x(p.from) + gap;
+        const x1 = x(p.to + 1) - gap;
         const bar = el("rect", { x: x0, y: y + 1, width: Math.max(x1 - x0, 3), height: 16, rx: 4, fill: `var(${KIND_COLOUR[kind]})`, class: "st-tl-bar" });
         bar.dataset.kind = kind;
         const span = p.lifelong
@@ -863,9 +904,13 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
         bar.append(el("title", {}, `${payoutKindName(kind, l, savingsLabel(strategy.input))}: ${text}`));
         svg.append(bar);
         if (p.lifelong) svg.append(el("path", { d: `M${x1 - 1} ${y + 1} l7 8 l-7 8 z`, fill: `var(${KIND_COLOUR[kind]})` }));
+        // A split bar's own pieces show only their amount, under their own slice; the first piece keeps the full label.
+        const label = view === "period" && bars.length > 1 && i > 0 ? `${say(l, "ca", "about")} ${kronor(Math.round(p.monthly / 10) * 10, l)} ${say(l, "kr/mån", "SEK/month")}` : text;
+        // A piece too narrow for its own label beside the next one skips it (the tooltip still has it).
+        const nextX = i + 1 < bars.length ? x(bars[i + 1]!.from) - 4 : W - right;
         const tx = Math.min(x0, W - right - 230);
-        svg.append(el("text", { x: tx, y: y + 32, class: "st-tl-text" }, text));
-      }
+        if (tx + label.length * 6.3 <= nextX) svg.append(el("text", { x: tx, y: y + 32, class: "st-tl-text" }, label));
+      });
     });
     return svg;
   }
@@ -894,10 +939,16 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
       format,
     });
     const top = Math.max(1, ...series.flatMap((s) => s.points.map((p) => p[1])));
+    const actions = h("div", "panel-actions");
+    actions.append(
+      csvExportButton(l, say(l, "att-leva-pa-per-ar.csv", "to-live-on-per-age.csv"), () => seriesToCsv(strategy, l)),
+      xlsxExportButton(l, say(l, "att-leva-pa-per-ar.xlsx", "to-live-on-per-age.xlsx"), () => seriesToXlsxRows(strategy, l)),
+    );
     return renderLineChart({
       role: "st-fig-scenarios",
       lang: l,
       title: say(l, "Att leva på per månad", "To live on per month"),
+      actions,
       subtitle: say(
         l,
         `${strategy.input.afterTax ? "Pension efter skatt, bostadstillägg och sparpengar" : "Före skatt: pensionen, med bostadstillägg och sparpengar räknade som den inkomst före skatt som ger lika mycket"}, i fasta priser. Den streckade linjen är din lägsta nivå${strategy.input.afterTax ? "" : ", omräknad till före skatt"}. ${strategy.input.lifespan > 0 ? `Du räknar med att leva till ${strategy.input.lifespan} år (modellen: ${decimals(strategy.modelExpectedDeath, 1, l)} år).` : `Modellens förväntade livslängd för dig är ${decimals(strategy.modelExpectedDeath, 1, l)} år.`}`,
@@ -925,8 +976,15 @@ export function createStrategyPanel(lang: Lang, getForecastInput: () => TypfallI
     const expected = Math.round(strategy.expectedDeath);
     const afterTax = strategy.input.afterTax;
     const best = strategy.payouts.reduce((a, b) => (totalTo(b, expected, afterTax) > totalTo(a, expected, afterTax) + 0.5 ? b : a));
+    const headRow = h("div", "st-subhead-row");
+    const actions = h("div", "panel-actions");
+    actions.append(
+      csvExportButton(l, say(l, "tjanstepensionens-uttagstid.csv", "occupational-payout-period.csv"), () => payoutTableToCsv(strategy, l)),
+      xlsxExportButton(l, say(l, "tjanstepensionens-uttagstid.xlsx", "occupational-payout-period.xlsx"), () => payoutTableToXlsxRows(strategy, l)),
+    );
+    headRow.append(h("h3", "st-subhead", say(l, "Tjänstepensionens uttagstid", "The occupational pension's payout period")), actions);
     box.append(
-      h("h3", "st-subhead", say(l, "Tjänstepensionens uttagstid", "The occupational pension's payout period")),
+      headRow,
       h(
         "p",
         "pa-lead",

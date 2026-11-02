@@ -17,9 +17,11 @@
  *   shorter period they give) and the optimal one (`optimalCombo`: of every way of setting each pot's
  *   payout period, the one that leaves at least the floor in the most years up to the expected lifespan
  *   and, of those, the most to live on in all -- "Hur länge räcker pensionen?"'s rule for its best payout),
- *   each with what it leaves to live on a month after tax, housing supplement included, in three
- *   stretches of life; the total at four lifespans; the lowest month up to the expected lifespan; and the lifespan from which the balanced way has paid more. The optimal one is the
- *   one suggested.
+ *   each with what it leaves to live on a month after tax, housing supplement included, in up to three
+ *   stretches of life (`periodBounds`: the person's own front-loaded period long apiece, so the table reads
+ *   against "Din plan"'s own choice) and the average over all of them; the total at four lifespans; the
+ *   lowest month up to the expected lifespan; and the lifespan from which the balanced way has paid more.
+ *   The optimal one is the one suggested.
  * - **Tax and tax reductions** (`taxPicture`): the rules on what of the pension is kept -- always draw at least the
  *   tax-free annual income, ROT and RUT and the other tax reductions only take off tax actually paid, interest is set
  *   against an ISK's schablonintäkt first -- with Skatteverket's amounts for the year (`TAX_YEARS`, typed in yearly)
@@ -475,17 +477,34 @@ export type ScenarioId = "balanced" | "front" | "optimal";
 export interface Scenario {
   readonly id: ScenarioId;
   readonly run: ComboRun;
-  /** What there is to live on a month, on average, in each stretch of life. */
+  /** What there is to live on a month, on average, in each stretch of life -- `frontYears` long apiece, the last to `LONG_LIFE`. */
   readonly phases: readonly { readonly from: number; readonly to: number; readonly monthly: number }[];
   /** In all, from retirement up to each lifespan (the age the person is gone at). */
   readonly totals: readonly { readonly lifespan: number; readonly total: number }[];
   /** The least a month up to the expected lifespan, and the age it falls at. */
   readonly lowest: { readonly age: number; readonly monthly: number };
+  /** A month on average over the whole retirement, par to `LONG_LIFE`. */
+  readonly average: number;
   /** A month on average over the first `EARLY_YEARS`. */
   readonly early: number;
   /** The lifespan from which the balanced scenario has paid more in all, where this one is ahead before it. */
   readonly breakEven: number | undefined;
   readonly meetsFloor: boolean;
+}
+
+/**
+ * The up to three stretches "Strategiska scenarier" and the payout timeline split the retirement into: `frontYears`
+ * years, another `frontYears`, then the rest to `LONG_LIFE` -- so the first stretch matches "Din plan"'s own
+ * front-loaded period. Clamped to `LONG_LIFE`, and dropped where it would start past it.
+ */
+export function periodBounds(par: number, frontYears: number): readonly { readonly from: number; readonly to: number }[] {
+  return [
+    { from: par, to: par + frontYears - 1 },
+    { from: par + frontYears, to: par + 2 * frontYears - 1 },
+    { from: par + 2 * frontYears, to: LONG_LIFE },
+  ]
+    .filter((phase) => phase.from <= Math.min(phase.to, LONG_LIFE))
+    .map((phase) => ({ from: phase.from, to: Math.min(phase.to, LONG_LIFE) }));
 }
 
 /** In all, from retirement up to the age the person is gone at (`lifespan` itself not counted). */
@@ -543,16 +562,18 @@ export function planAges(run: ComboRun, expectedDeath: number): readonly number[
   return [...new Set([80, expected, 90, LONG_LIFE])].filter((age) => age > run.par).sort((a, b) => a - b);
 }
 
-function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined, floor: number, expectedDeath: number, afterTax = true): Scenario {
+function scenario(
+  id: ScenarioId,
+  run: ComboRun,
+  balanced: ComboRun | undefined,
+  floor: number,
+  expectedDeath: number,
+  afterTax = true,
+  frontYears = EARLY_YEARS,
+): Scenario {
   const par = run.par;
   const values = incomeOf(run, afterTax);
-  const phases = [
-    { from: par, to: par + EARLY_YEARS - 1 },
-    { from: par + EARLY_YEARS, to: par + 2 * EARLY_YEARS - 1 },
-    { from: par + 2 * EARLY_YEARS, to: LONG_LIFE },
-  ]
-    .filter((phase) => phase.from <= Math.min(phase.to, LONG_LIFE))
-    .map((phase) => ({ ...phase, to: Math.min(phase.to, LONG_LIFE), monthly: average(values, phase.from, phase.to) / 12 }));
+  const phases = periodBounds(par, frontYears).map((phase) => ({ ...phase, monthly: average(values, phase.from, phase.to) / 12 }));
   // The lowest month up to the expected lifespan: what the floor is held against, as the optimal one is chosen.
   const until = Math.max(Math.round(expectedDeath), par + 1);
   let lowest = { age: par, monthly: Number.POSITIVE_INFINITY };
@@ -566,6 +587,7 @@ function scenario(id: ScenarioId, run: ComboRun, balanced: ComboRun | undefined,
     phases,
     totals: planAges(run, expectedDeath).map((lifespan) => ({ lifespan, total: totalTo(run, lifespan, afterTax) })),
     lowest,
+    average: average(values, par, LONG_LIFE) / 12,
     early: average(values, par, par + EARLY_YEARS - 1) / 12,
     breakEven: balanced === undefined || id === "balanced" ? undefined : overtakenAt(run, balanced),
     meetsFloor: yearsAtFloor(run, floor, until) === Math.min(until, LAST_AGE + 1) - par,
@@ -933,9 +955,9 @@ export function evaluateStrategy(runs: StrategyRuns, input: StrategyInput, share
   const expectedDeath = input.lifespan > 0 ? input.lifespan : balanced.expectedDeath;
   const lifespan = Math.round(expectedDeath);
   const scenarios = [
-    scenario("balanced", balanced, undefined, input.floor, expectedDeath, input.afterTax),
-    scenario("front", runs.front, balanced, input.floor, expectedDeath, input.afterTax),
-    scenario("optimal", optimalCombo(runs.candidates, input.floor, lifespan), balanced, input.floor, expectedDeath, input.afterTax),
+    scenario("balanced", balanced, undefined, input.floor, expectedDeath, input.afterTax, input.frontYears),
+    scenario("front", runs.front, balanced, input.floor, expectedDeath, input.afterTax, input.frontYears),
+    scenario("optimal", optimalCombo(runs.candidates, input.floor, lifespan), balanced, input.floor, expectedDeath, input.afterTax, input.frontYears),
   ];
   const recommended: ScenarioId = "optimal";
   const insights = findInsights(runs, input, lifespan);
@@ -1630,6 +1652,13 @@ export function taxRuleText(
 export type PayoutKind = "income" | "premium" | "guarantee" | "occupational" | "individual" | "savings" | "benefits";
 export const PAYOUT_KINDS: readonly PayoutKind[] = ["income", "premium", "guarantee", "occupational", "individual", "savings", "benefits"];
 
+/** A phase cut at the table's own period boundaries (`periodBounds`): one stretch, and what it pays a month on average. */
+export interface PayoutPeriod {
+  readonly from: number;
+  readonly to: number;
+  readonly monthly: number;
+}
+
 /** One stretch of years a kind of money is paid, ages `from` to `to` inclusive, and what it pays a month on average. */
 export interface PayoutPhase {
   readonly kind: PayoutKind;
@@ -1638,13 +1667,16 @@ export interface PayoutPhase {
   /** Still paid at `LONG_LIFE`: for life, as far as the tab reads. */
   readonly lifelong: boolean;
   readonly monthly: number;
+  /** The same stretch split at `frontYears`' own period boundaries, as "Strategiska scenarier" splits the retirement. */
+  readonly periods: readonly PayoutPeriod[];
 }
 
 /**
  * When each kind of money is paid in a run, from the retirement age to `LONG_LIFE`: the stretches of years it is more
  * than a krona a month, and what it pays a month on average -- after tax or before, as the tab shows its amounts.
+ * `frontYears` is only read for `periods`, the timeline's per-period view.
  */
-export function payoutPhases(run: ComboRun, afterTax = false): PayoutPhase[] {
+export function payoutPhases(run: ComboRun, afterTax = false, frontYears = EARLY_YEARS): PayoutPhase[] {
   // After tax, each taxed part keeps the share the model's tax leaves of the whole (`net / gross` at that age);
   // before tax, the tax-free parts are grossed up as `beforeTax` grosses them, each in proportion to what it pays.
   const taxed = (values: readonly number[]) =>
@@ -1666,6 +1698,7 @@ export function payoutPhases(run: ComboRun, afterTax = false): PayoutPhase[] {
     benefits: free(run.benefits),
   };
   const last = Math.min(LONG_LIFE, LAST_AGE);
+  const bounds = periodBounds(run.par, frontYears);
   const phases: PayoutPhase[] = [];
   for (const kind of PAYOUT_KINDS) {
     const values = series[kind];
@@ -1675,7 +1708,11 @@ export function payoutPhases(run: ComboRun, afterTax = false): PayoutPhase[] {
       if (paid && from < 0) from = a;
       if (!paid && from >= 0) {
         const to = a - 1;
-        phases.push({ kind, from, to, lifelong: to === last, monthly: average(values, from, to) / 12 });
+        const periods = bounds
+          .map((b) => ({ from: Math.max(b.from, from), to: Math.min(b.to, to) }))
+          .filter((b) => b.from <= b.to)
+          .map((b) => ({ ...b, monthly: average(values, b.from, b.to) / 12 }));
+        phases.push({ kind, from, to, lifelong: to === last, monthly: average(values, from, to) / 12, periods });
         from = -1;
       }
     }
@@ -1722,6 +1759,7 @@ function scenarioHeader(strategy: Strategy, lang: Lang): string[] {
   return [
     say(lang, "Scenario", "Scenario"),
     ...first.phases.map((p) => say(lang, `Per månad ${p.from}–${p.to} år${b}`, `Per month ages ${p.from}–${p.to}${b}`)),
+    say(lang, `Snitt per månad${b}`, `Average a month${b}`),
     ...first.totals.map((t) => say(lang, `Totalt till ${t.lifespan} år${b}`, `Total to ${t.lifespan}${b}`)),
     say(lang, `Lägsta månad${b}`, `Lowest month${b}`),
     say(lang, "Balanserad går om vid", "Balanced catches up at"),
@@ -1732,6 +1770,7 @@ function scenarioCells(s: Scenario, lang: Lang, years: number): (string | number
   return [
     `${scenarioName(s.id, lang)} (${scenarioSummary(s, years, lang)})`,
     ...s.phases.map((p) => Math.round(p.monthly)),
+    Math.round(s.average),
     ...s.totals.map((t) => Math.round(t.total)),
     Math.round(s.lowest.monthly),
     s.id === "balanced" ? "" : (s.breakEven ?? say(lang, "inte före 100", "not before 100")),
@@ -1775,4 +1814,47 @@ export function seriesToXlsxRows(strategy: Strategy, lang: Lang): SheetData {
     rows.push([a, ...strategy.scenarios.map((s) => kronorCell(Math.round(incomeOf(s.run, strategy.input.afterTax)[a]! / 12)))]);
   }
   return rows;
+}
+
+/** "Tjänstepensionens uttagstid": every payout period's totals, the same rows as the table. */
+function payoutTableRows(strategy: Strategy, lang: Lang): (string | number)[][] {
+  const afterTax = strategy.input.afterTax;
+  const life = strategy.payouts[strategy.payouts.length - 1];
+  if (life === undefined) return [];
+  const lifespans = planAges(life, strategy.expectedDeath);
+  return strategy.payouts.map((r) => {
+    const caught =
+      r.combo.occupational === LIFELONG
+        ? ""
+        : (() => {
+            const at = overtakenAt(r, life);
+            return at === undefined ? say(lang, "inte före 100 år", "not before 100") : say(lang, `${at} år`, `${at}`);
+          })();
+    return [payoutText(r.combo.occupational, lang), ...lifespans.map((a) => Math.round(totalTo(r, a, afterTax))), caught];
+  });
+}
+
+function payoutTableHeader(strategy: Strategy, lang: Lang): string[] {
+  const life = strategy.payouts[strategy.payouts.length - 1];
+  const lifespans = life === undefined ? [] : planAges(life, strategy.expectedDeath);
+  const b = basisNote(strategy, lang);
+  return [
+    say(lang, "Uttagstid", "Payout period"),
+    ...lifespans.map((a) => say(lang, `Totalt till ${a} år${b}`, `Total to ${a}${b}`)),
+    say(lang, "Livsvarigt går om vid", "For life catches up at"),
+  ];
+}
+
+export function payoutTableToCsv(strategy: Strategy, lang: Lang): string {
+  const d = delimiterFor(lang);
+  const lines = [
+    csvLine(payoutTableHeader(strategy, lang), d),
+    ...payoutTableRows(strategy, lang).map((row) => csvLine(row.map((c) => (typeof c === "number" ? whole(c) : c)), d)),
+  ];
+  return lines.join("\r\n");
+}
+
+export function payoutTableToXlsxRows(strategy: Strategy, lang: Lang): SheetData {
+  const head = payoutTableHeader(strategy, lang);
+  return [head, ...payoutTableRows(strategy, lang).map((row) => row.map((c, i) => (typeof c === "number" && i < head.length - 1 ? kronorCell(c) : c)))];
 }

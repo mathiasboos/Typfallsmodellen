@@ -1755,11 +1755,14 @@ td.pl-floor-name { font-style: italic; }
 .st-table td.st-below { color: var(--danger-ink); background: var(--danger-tint); font-weight: 700; }
 .st-table td.st-best { font-weight: 700; }
 .st-subhead { margin: 6px 0 0; font-size: 0.95rem; }
+.st-subhead-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.st-subhead-row .st-subhead { margin: 0; }
 .st-payouts { display: grid; gap: 8px; }
 .st-downloads { justify-content: flex-start; }
 /* The payout timeline (a Gantt chart): rows per kind of money, the expected lifespan dashed. */
 .st-timeline { margin: 4px 0 0; display: grid; gap: 6px; }
 .st-timeline-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.st-timeline-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .st-timeline .scroll svg { display: block; width: 100%; min-width: 620px; height: auto; }
 .st-tl-grid { stroke: var(--rule); stroke-width: 1; }
 .st-tl-life { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
