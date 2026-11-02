@@ -113,6 +113,8 @@ export interface LineChartSpec {
   readonly title: string;
   readonly subtitle?: string;
   readonly note?: string;
+  /** Below the caption and subtitle: the figure's own buttons (its CSV/Excel downloads), reusing `.panel-actions`. */
+  readonly actions?: HTMLElement;
   readonly xMin: number;
   readonly xMax: number;
   readonly xTitle: string;
@@ -366,7 +368,7 @@ export function renderLineChart(spec: LineChartSpec): HTMLElement {
     spec.series.length < 2
       ? []
       : [lang === "sv" ? "Klicka på en post i teckenförklaringen för att dölja eller visa en linje." : "Click an entry in the legend to hide or show a line."];
-  const figure = frame(spec.title, spec.subtitle, svg, switchLegend(spec, keys, off, toggle), [...(spec.note ? [spec.note] : []), ...hint]);
+  const figure = frame(spec.title, spec.subtitle, svg, switchLegend(spec, keys, off, toggle), [...(spec.note ? [spec.note] : []), ...hint], spec.actions);
   figure.dataset.role = spec.role;
 
   attachHover(svg, figure, { ...spec, series: shown }, FRAME, x, y);
