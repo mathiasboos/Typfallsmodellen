@@ -972,6 +972,141 @@ export function amountSeriesToXlsxRows(lasts: Lasts, lang: Lang): SheetData {
   return rows;
 }
 
+/** One payout plan's year-by-year figures: the pension a month, and what has been paid out so far. */
+export interface YearlyPlan {
+  readonly payout: number;
+  /** A month, at each age of `YearlyTable.ages`, in the basis shown. */
+  readonly monthly: readonly number[];
+  /** Paid out from the retirement age up to and including each age: a running total of the year's amounts, in the basis shown. */
+  readonly cumulative: readonly number[];
+  /** In all up to the lifespan: the last of `cumulative`, which is `totalPaid`. */
+  readonly total: number;
+}
+
+export interface YearlyTable {
+  /** From the retirement age up to the year before the lifespan. */
+  readonly ages: readonly number[];
+  /** In `CHART_PAYOUTS` order. */
+  readonly plans: readonly YearlyPlan[];
+}
+
+/** "Hur mycket får jag?" year by year: for every age, each payout plan's pension a month and the total paid so far. */
+export function yearlyTable(lasts: Lasts): YearlyTable {
+  const ages = seriesAges(lasts);
+  const plans = amountOptions(lasts).map((option): YearlyPlan => {
+    let running = 0;
+    const monthly: number[] = [];
+    const cumulative: number[] = [];
+    for (const age of ages) {
+      monthly.push(monthlyOf(lasts, option, age));
+      running += option.view.income[age - lasts.from] ?? 0;
+      cumulative.push(running);
+    }
+    return { payout: option.payout, monthly, cumulative, total: running };
+  });
+  return { ages, plans };
+}
+
+/** How near two totals have to be, kronor, to count as the same: a tie goes to the longer payout. */
+const TOTAL_TIE = 1;
+
+/** The payout period as a length for ordering: lifelong is the longest. */
+const lengthOf = (payout: number): number => (payout === LIFELONG ? Number.POSITIVE_INFINITY : payout);
+
+export interface LeaderRun {
+  readonly payout: number;
+  /** The first and last age (both included) at which this plan has paid out the most in all so far. */
+  readonly from: number;
+  readonly to: number;
+}
+
+/** The plan that has paid out the most in all by each age (the longer payout on a tie), as it runs through the ages. */
+export function leaderByAge(table: YearlyTable): { readonly leaders: readonly number[]; readonly runs: readonly LeaderRun[] } {
+  const leaders = table.ages.map((_, i) => {
+    let best = table.plans[0]!;
+    for (const plan of table.plans.slice(1)) {
+      const diff = plan.cumulative[i]! - best.cumulative[i]!;
+      if (diff > TOTAL_TIE || (Math.abs(diff) <= TOTAL_TIE && lengthOf(plan.payout) > lengthOf(best.payout))) best = plan;
+    }
+    return best.payout;
+  });
+  const runs: LeaderRun[] = [];
+  leaders.forEach((payout, i) => {
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.payout === payout) runs[runs.length - 1] = { ...last, to: table.ages[i]! };
+    else runs.push({ payout, from: table.ages[i]!, to: table.ages[i]! });
+  });
+  return { leaders, runs };
+}
+
+export interface PlanRank {
+  readonly payout: number;
+  readonly total: number;
+  /** 1 for the plan that pays the most in all up to the lifespan. */
+  readonly rank: number;
+  /** Against the best plan's total, kronor (0 for the best, negative for the rest). */
+  readonly behindBest: number;
+}
+
+export interface BestPlans {
+  readonly ranking: readonly PlanRank[];
+  /** The plan that pays the most in all up to the lifespan: the longer payout on a tie. */
+  readonly best: PlanRank;
+  /** The first age by which the lifelong plan has paid out more in all than every fixed-period plan; null if it never has before the lifespan. */
+  readonly lifelongAhead: number | null;
+}
+
+/** Which payout plan pays the most up to the assumed lifespan, and how the others stand against it. */
+export function bestPlans(table: YearlyTable): BestPlans {
+  const sorted = [...table.plans].sort((a, b) =>
+    Math.abs(a.total - b.total) <= TOTAL_TIE ? lengthOf(b.payout) - lengthOf(a.payout) : b.total - a.total,
+  );
+  const top = sorted[0]!;
+  const ranking = sorted.map((plan, i): PlanRank => ({ payout: plan.payout, total: plan.total, rank: i + 1, behindBest: plan.total - top.total }));
+  const life = table.plans.find((plan) => plan.payout === LIFELONG);
+  const fixed = table.plans.filter((plan) => plan.payout !== LIFELONG);
+  let lifelongAhead: number | null = null;
+  if (life !== undefined && fixed.length > 0) {
+    for (let i = 0; i < table.ages.length; i += 1) {
+      if (fixed.every((plan) => life.cumulative[i]! > plan.cumulative[i]! + TOTAL_TIE)) {
+        lifelongAhead = table.ages[i]!;
+        break;
+      }
+    }
+  }
+  return { ranking, best: ranking[0]!, lifelongAhead };
+}
+
+function yearlyHeader(lasts: Lasts, lang: Lang): string[] {
+  const tax = basisText(lasts.input, lang);
+  const plans = amountOptions(lasts).map((o) => payoutName(o.payout, lang));
+  return [
+    say(lang, "Ålder", "Age"),
+    ...plans.map((name) => `${name}: ${say(lang, "kr/mån", "SEK/month")} ${tax}`),
+    ...plans.map((name) => `${name}: ${say(lang, "totalt utbetalt hittills, kr", "total paid so far, SEK")} ${tax}`),
+  ];
+}
+
+function yearlyCells(table: YearlyTable, i: number): number[] {
+  return [...table.plans.map((p) => p.monthly[i] ?? 0), ...table.plans.map((p) => p.cumulative[i] ?? 0)];
+}
+
+/** Per age: each payout plan's pension a month and the total paid so far. */
+export function yearlyToCsv(lasts: Lasts, lang: Lang): string {
+  const delimiter = delimiterFor(lang);
+  const table = yearlyTable(lasts);
+  const lines = [csvLine(yearlyHeader(lasts, lang), delimiter)];
+  table.ages.forEach((age, i) => lines.push(csvLine([String(age), ...yearlyCells(table, i).map(whole)], delimiter)));
+  return lines.join("\r\n");
+}
+
+export function yearlyToXlsxRows(lasts: Lasts, lang: Lang): SheetData {
+  const table = yearlyTable(lasts);
+  const rows: SheetData = [yearlyHeader(lasts, lang)];
+  table.ages.forEach((age, i) => rows.push([age, ...yearlyCells(table, i).map(kronorCell)]));
+  return rows;
+}
+
 /** The ages the series exports cover: the retirement age up to the year before the lifespan. */
 function seriesAges(lasts: Lasts): number[] {
   const ages: number[] = [];
