@@ -26,6 +26,9 @@ import {
   amountSeriesToXlsxRows,
   amountsToCsv,
   amountsToXlsxRows,
+  bestPlans,
+  yearlyTable,
+  yearlyToCsv,
   totalPaid,
   LIFELONG,
   PAYOUTS,
@@ -995,5 +998,47 @@ describe("the housing supplement", () => {
     const b = computeLasts({ ...input, afterTax: false }, context, deaths);
     a.options.forEach((option, i) => expect(b.options[i]!.view.covered, `${option.payout}`).toEqual(option.view.covered));
     expect(normaliseLasts({ ...low, rent: 1e9 }).rent).toBe(50_000);
+  });
+});
+
+describe("year by year (Hur mycket får jag?)", () => {
+  const table = yearlyTable(lasts);
+
+  it("has a row for every age from the retirement age up to the year before the lifespan", () => {
+    expect(table.ages[0]).toBe(lasts.from);
+    expect(table.ages[table.ages.length - 1]).toBe(lasts.to - 1);
+    expect(table.ages.length).toBe(lasts.to - lasts.from);
+    expect(table.plans.map((p) => p.payout)).toEqual([...CHART_PAYOUTS]);
+  });
+
+  it("adds the years up to the total of the payout table", () => {
+    for (const plan of table.plans) {
+      const option = lasts.options.find((o) => o.payout === plan.payout)!;
+      expect(plan.total).toBeCloseTo(totalPaid(option.view), 6);
+      expect(plan.cumulative[plan.cumulative.length - 1]).toBeCloseTo(plan.total, 6);
+      for (let i = 1; i < plan.cumulative.length; i += 1) expect(plan.cumulative[i]!).toBeGreaterThanOrEqual(plan.cumulative[i - 1]!);
+    }
+  });
+
+  it("has a longer table for a longer assumed life", () => {
+    const longer = yearlyTable(computeLasts({ ...base, lifespan: 100 }, context, deaths));
+    expect(longer.ages.length).toBeGreaterThan(table.ages.length);
+  });
+
+  it("ranks the plan that pays the most first, the longer payout on a tie", () => {
+    const verdict = bestPlans(table);
+    expect(verdict.ranking.map((r) => r.rank)).toEqual([1, 2, 3, 4, 5]);
+    expect(verdict.best.behindBest).toBe(0);
+    const totals = verdict.ranking.map((r) => r.total);
+    expect(totals).toEqual([...totals].sort((a, b) => b - a));
+    const tied = bestPlans({ ages: [60], plans: [
+      { payout: 10, monthly: [1], cumulative: [100], total: 100 },
+      { payout: LIFELONG, monthly: [1], cumulative: [100], total: 100 },
+    ] });
+    expect(tied.best.payout).toBe(LIFELONG);
+  });
+
+  it("exports one row per age under a header", () => {
+    expect(yearlyToCsv(lasts, "sv").split("\r\n").length).toBe(table.ages.length + 1);
   });
 });

@@ -1524,6 +1524,9 @@ button.pa-agr[aria-pressed="true"]::before { content: "✓"; }
 .pl-options tr.pl-best td { background: color-mix(in srgb, var(--accent) 9%, transparent); font-weight: 600; }
 .pl-options tr.pl-best td.pl-cell-ok { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 td.pl-floor-name { font-style: italic; }
+td.pm-best { font-weight: 700; background: color-mix(in srgb, var(--accent, #2c6e49) 14%, transparent); }
+.pm-verdict { font-weight: 600; }
+[data-role="pm-years"] tr > :first-child { position: sticky; left: 0; background: var(--surface, #fff); }
 .pl-options tr[data-payout="floor"] td { border-bottom: 1px solid var(--rule); }
 
 /*

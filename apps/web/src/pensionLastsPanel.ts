@@ -57,6 +57,10 @@ import {
   amountsToCsv,
   amountsToXlsxRows,
   totalPaid,
+  bestPlans,
+  yearlyTable,
+  yearlyToCsv,
+  yearlyToXlsxRows,
   CHART_PAYOUTS,
   RENT_BOUNDS,
   LIFELONG,
@@ -1338,6 +1342,82 @@ export function createPensionLastsPanel(
     return section;
   }
 
+  /** Year by year: each payout plan's pension a month and the total paid so far, and which plan pays the most up to the lifespan. */
+  function amountYearsPanel(lasts: Lasts, l: Lang): HTMLElement {
+    const table = yearlyTable(lasts);
+    const verdict = bestPlans(table);
+    const actions = [
+      csvExportButton(l, say(l, "ar-for-ar.csv", "year-by-year.csv"), () => yearlyToCsv(lasts, l)),
+      xlsxExportButton(l, say(l, "ar-for-ar.xlsx", "year-by-year.xlsx"), () => yearlyToXlsxRows(lasts, l)),
+    ];
+    const { section, body } = panel(say(l, "År för år: pension per månad och totalt utbetalt", "Year by year: pension per month and total paid"), actions);
+    section.dataset.role = "pm-years-panel";
+    const tax = taxText(lasts.input.afterTax, l);
+    const best = verdict.best;
+    const life = verdict.ranking.find((r) => r.payout === LIFELONG)!;
+    const second = verdict.ranking[1];
+    const planName = (payout: number): string =>
+      payout === LIFELONG ? say(l, "livsvarigt uttag", "a lifelong payout") : say(l, `${payout} års uttag`, `a ${payout}-year payout`);
+    const lead = (sv: string, en: string): HTMLElement => h("p", "pa-lead", say(l, sv, en));
+    body.append(
+      lead(
+        `Per månad och totalt utbetalt hittills ${tax}, i ${priceText(lasts, l)}, från pensionsstart vid ${lasts.from} år till din antagna livsålder, ${lasts.to} år.`,
+        `Per month and total paid so far ${tax}, in ${priceText(lasts, l)}, from the start at ${lasts.from} to your assumed lifespan, ${lasts.to}.`,
+      ),
+    );
+    const verdictText =
+      best.payout === LIFELONG
+        ? say(
+            l,
+            `Mest pengar till ${lasts.to} år ger livsvarigt uttag: ${kronor(Math.round(best.total), l)} kr` +
+              (second === undefined ? "" : `, ${kronor(Math.round(best.total - second.total), l)} kr mer än ${planName(second.payout)}`) +
+              ". Det tar heller inte slut om du lever längre.",
+            `The most money to ${lasts.to} comes from a lifelong payout: SEK ${kronor(Math.round(best.total), l)}` +
+              (second === undefined ? "" : `, SEK ${kronor(Math.round(best.total - second.total), l)} more than ${planName(second.payout)}`) +
+              ". It does not run out if you live longer either.",
+          )
+        : say(
+            l,
+            `Mest pengar till ${lasts.to} år ger ${planName(best.payout)}: ${kronor(Math.round(best.total), l)} kr, ${kronor(Math.round(best.total - life.total), l)} kr mer än livsvarigt` +
+              (verdict.lifelongAhead === null ? "." : `. Livsvarigt har betalat ut mer än alla tidsbegränsade planer först från ${verdict.lifelongAhead} år.`),
+            `The most money to ${lasts.to} comes from ${planName(best.payout)}: SEK ${kronor(Math.round(best.total), l)}, SEK ${kronor(Math.round(best.total - life.total), l)} more than for life` +
+              (verdict.lifelongAhead === null ? "." : `. A lifelong payout has paid out more than every fixed-period plan only from age ${verdict.lifelongAhead}.`),
+          );
+    const verdictBox = h("p", "pa-lead pm-verdict", verdictText);
+    verdictBox.dataset.role = "pm-years-verdict";
+    body.append(verdictBox);
+
+    const head1 = [headCell(say(l, "Ålder", "Age"))];
+    for (const plan of table.plans) head1.push(headCell(`${payoutName(plan.payout, l)}, ${perMonth(l)}`));
+    for (const plan of table.plans) head1.push(headCell(`${payoutName(plan.payout, l)}, ${say(l, "totalt hittills, kr", "total so far, SEK")}`));
+    const rows: HTMLTableRowElement[] = [];
+    table.ages.forEach((age, i) => {
+      const cells = [
+        cell(String(age), "num"),
+        ...table.plans.map((plan) => cell(kronor(Math.round(plan.monthly[i]!), l), "num")),
+        ...table.plans.map((plan) => cell(kronor(Math.round(plan.cumulative[i]!), l), plan.payout === best.payout ? "num pm-best" : "num")),
+      ];
+      rows.push(row(cells, { age: String(age) }));
+    });
+    const totals = [
+      cell(say(l, `Totalt till ${lasts.to} år`, `In all to ${lasts.to}`), "pl-floor-name"),
+      ...table.plans.map(() => cell("", "num")),
+      ...table.plans.map((plan) => cell(kronor(Math.round(plan.total), l), plan.payout === best.payout ? "num pm-best" : "num")),
+    ];
+    rows.push(row(totals, { total: "1" }));
+    const rankRow = [
+      cell(say(l, "Rangordning (1 = mest pengar)", "Rank (1 = most money)"), "pl-floor-name"),
+      ...table.plans.map(() => cell("", "num")),
+      ...table.plans.map((plan) => {
+        const r = verdict.ranking.find((x) => x.payout === plan.payout)!;
+        return cell(String(r.rank), plan.payout === best.payout ? "num pm-best" : "num");
+      }),
+    ];
+    rows.push(row(rankRow, { rank: "1" }));
+    body.append(tableOf("pm-years", "pl-options", head1, rows));
+    return section;
+  }
+
   function amountNotes(lasts: Lasts, l: Lang): HTMLElement {
     const details = h("details", "field-note pa-notes");
     details.dataset.role = "pm-notes";
@@ -1386,7 +1466,7 @@ export function createPensionLastsPanel(
     const out: HTMLElement[] = [];
     if (lasts.runs.warnings.length > 0) out.push(warningsBox(lasts.runs.warnings));
     if (variant === "amount") {
-      out.push(amountAnswer(lasts, l), incomeFigure(lasts, l), timePanel(lasts, l), amountPanel(lasts, l), amountNotes(lasts, l));
+      out.push(amountAnswer(lasts, l), incomeFigure(lasts, l), timePanel(lasts, l), amountPanel(lasts, l), amountYearsPanel(lasts, l), amountNotes(lasts, l));
       return out;
     }
     out.push(
