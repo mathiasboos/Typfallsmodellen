@@ -3259,9 +3259,11 @@ await tab.waitForTimeout(50);
 // reaches the runs it should and that the page says what the engine said. The
 // numbers pinned are the ones `pensionLasts.test.ts` and the engine give for
 // born 1980, work from 25, 38 500 kr/month, ITP-1, an average pensioner's
-// budget (18 400 kr/month after tax) and retiring at the riktålder (68). The tab
-// opens on a lifespan of 95, which is pinned once; the rest of the block works
-// at 90, where its anchors were worked out. The page has no numbers of its own.
+// budget (18 400 kr/month after tax) and retiring at the riktålder (68). The
+// lifespan field, "Förväntad livslängd (ålder)" as "Uttagsstrategi"'s own
+// field works, opens on 0 -- the model's own, which this person's shows as 89 --
+// and is typed to 95 for the block pinned there once; the rest works at 90,
+// where its anchors were worked out. The page has no numbers of its own.
 
 /** A cell's text with the spaces thousands are grouped by taken out, and the typographic minus made plain. */
 const plNorm = (text) => (text ?? "").replace(/\s/g, "").replace(/−/g, "-");
@@ -3325,12 +3327,16 @@ const plStart = {
 console.log(`pension lasts   : inputs ${JSON.stringify(plStart)}`);
 if (
   plStart.born !== "1980" || plStart.start !== "25" || plStart.retirement !== "68" || !plStart.retirementLocked ||
-  plStart.lifespan !== "95" || plStart.salary !== "38500" || plStart.budgetChoice !== "1" || plStart.budget !== "18400" ||
+  // 0 is the model's own, shown once the first run is in: 89 for this person (pensionLasts.test.ts pins 88.58).
+  plStart.lifespan !== "89" || plStart.salary !== "38500" || plStart.budgetChoice !== "1" || plStart.budget !== "18400" ||
   plStart.scheme !== "2" || plStart.capital !== "0" || plStart.saving !== "0" || plStart.privCapital !== "0" ||
   plStart.privSaving !== "0" || plStart.savingsKind !== "0" || plStart.savingsCapital !== "0" || plStart.savingsMonthly !== "0" || !plStart.net
 ) {
   problems.push(`the Hur länge räcker pensionen? inputs start at ${JSON.stringify(plStart)}`);
 }
+// Typed to 95 for the block pinned there, once: its anchors were worked out at that lifespan, before the field
+// opened on the model's own.
+await plType("plLifespan", 95);
 
 // The short answer: five boxes, the lifelong payout the best, every fixed payout ending where it should.
 const plDefault = await plRibbon();
@@ -3341,7 +3347,7 @@ if (!sameList(plDefault.map((item) => item.payout), [5, 10, 15, 20, 0]) || !same
 if (!sameList(plDefault.map((item) => item.status), ["part", "part", "part", "part", "ok"]) || !sameList(plDefault.filter((item) => item.best).map((item) => item.payout), [0])) {
   problems.push(`the answer boxes' statuses ${plDefault.map((item) => item.status).join(",")} / best ${plDefault.filter((item) => item.best).map((item) => item.payout).join(",")}, expected part x4 then ok, best 0`);
 }
-// The lifespan it opens on, 95, pinned once: 27 pension years, and the numbers that moves. Then on to 90.
+// Typed to 95, pinned once: 27 pension years, and the numbers that moves. Then on to 90.
 const plAnswer95 = plNorm(await pl.locator('[data-role="pl-answer"]').textContent());
 const plLife95 = await plCells(0);
 const plFive95 = await plCells(5);
@@ -3684,8 +3690,10 @@ console.log(`pension lasts   : living to 80, best ${plL80Best?.payout} (${plL80B
 if (!sameList(plL80Drawn.map((item) => item.text), ["Till73år", "Till78år", "Helavägen", "Helavägen", "Helavägen"]) || plL80Five[5] !== "5/12" || plL80Best?.text !== "Helavägen") {
   problems.push(`living to 80 the boxes read ${plL80.map((item) => item.text).join(",")} and 5 years ${plL80Five[5]}, expected Till73år,Till78år then all the way x3 and 5/12`);
 }
+// Floors at the retirement age (68) plus one, not at LIFESPAN_BOUNDS.min (60) -- a pension year can't come
+// before retirement, and that floor sits above the bounds' own minimum at any real retirement age.
 await plType("plLifespan", 60);
-if ((await plSetting("plLifespan").inputValue()) !== "70") problems.push(`a lifespan of 60 shows ${await plSetting("plLifespan").inputValue()}, expected 70`);
+if ((await plSetting("plLifespan").inputValue()) !== "69") problems.push(`a lifespan of 60 shows ${await plSetting("plLifespan").inputValue()}, expected 69`);
 await plType("plLifespan", 90);
 
 // The riktålder follows the birth year while its box is ticked.
@@ -3749,7 +3757,8 @@ await tab.waitForTimeout(100);
 if (!sameList((await plRibbon()).map((item) => item.text), PL_RIBBON_DEFAULT) || (await plSetting("plBudgetChoice").inputValue()) !== "1") {
   problems.push("Återställ did not restore the default typfall and budget");
 }
-if ((await plSetting("plLifespan").inputValue()) !== "95") problems.push(`Återställ left the lifespan at ${await plSetting("plLifespan").inputValue()}, expected 95`);
+// Back to the model's own, as it opened: 89 for this person.
+if ((await plSetting("plLifespan").inputValue()) !== "89") problems.push(`Återställ left the lifespan at ${await plSetting("plLifespan").inputValue()}, expected 89`);
 if ((await plSetting("plSavingsKind").inputValue()) !== "0" || (await plSetting("plSavingsCapital").inputValue()) !== "0") problems.push("Återställ did not put the private savings back on the first kind with nothing in it");
 await pl.locator('[data-action="pl-import-forecast"]').click();
 await tab.waitForTimeout(100);
@@ -3853,6 +3862,14 @@ const amRibbon = async () =>
     items.map((li) => ({ payout: li.dataset.payout, text: li.innerText.replace(/\s+/g, " ").trim() })),
   );
 const amDuring = (items) => items.map((item) => Number(item.text.match(/(\d[\d\s]*) kr\/mån/)?.[1].replace(/\s/g, "")));
+// "Förväntad livslängd (ålder)", as "Uttagsstrategi"'s own field works, opens on the model's own (89 for this
+// person); typed to 95 here so the block below's anchors -- worked out at that lifespan, same as "Hur länge
+// räcker pensionen?"'s own -- stay as they are.
+const amLifespanField = am.locator('[data-setting="plLifespan"]');
+await amLifespanField.fill("95");
+await amLifespanField.dispatchEvent("change");
+await amLifespanField.evaluate((el) => el.blur());
+await tab.waitForTimeout(80);
 const amStart = await amRibbon();
 const amHeadSv = ((await am.locator("section.panel > h2 span").first().textContent()) ?? "").trim();
 const amBudgetFields = await am.locator('[data-setting="plBudget"], [data-setting="plBudgetChoice"]').count();

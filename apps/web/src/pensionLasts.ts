@@ -99,7 +99,7 @@ import type { DeathProbabilities, ModelContext, MvaluesRow, SchemeId, TypfallInp
 
 import type { Lang } from "./i18n.js";
 import { retirementAge } from "./kpis.js";
-import { LAST_AGE, LIFESPAN_BOUNDS, monthlySalaryForFinalSalary, referenceAge } from "./pensionAge.js";
+import { LAST_AGE, monthlySalaryForFinalSalary, referenceAge } from "./pensionAge.js";
 import { defaultSavings, savingSettings, savingYear, taxFreeSaving } from "./privateSavings.js";
 import type { SavingPart, SavingsInput } from "./privateSavings.js";
 import { csvLine, delimiterFor } from "./tables.js";
@@ -184,7 +184,10 @@ export interface LastsInput extends SavingsInput {
   readonly startWorkAge: number;
   /** The age the public and the occupational pension start at. */
   readonly retirementAge: number;
-  /** The age the person is gone at: pension is set against the budget up to the year before. */
+  /**
+   * The age the person is gone at: pension is set against the budget up to the year before. 0 stands for the
+   * model's own expected lifespan (`PayoutRuns.modelExpectedLifespan`), as "Uttagsstrategi"'s own field works.
+   */
   readonly lifespan: number;
   /** Per month, in the reference year's money -- `TypfallInput.monthlySalary`. */
   readonly monthlySalary: number;
@@ -205,11 +208,14 @@ export interface LastsInput extends SavingsInput {
 /** What a housing cost a month can be typed as, kronor: as in "Uttagsstrategi". */
 export const RENT_BOUNDS = { min: 0, max: 50_000, step: 100 } as const;
 
+/** What the assumed lifespan can be typed as, years: as in "Uttagsstrategi"'s own field. 0, outside these bounds, stands for the model's own. */
+export const LIFESPAN_BOUNDS = { min: 60, max: 100, step: 1 } as const;
+
 /**
  * A typfall born 1980 who started working at 25, earns the model's normal salary,
- * has ITP 1, retires at the riktålder, wants to last to 95 on what minPension calls
- * an average pensioner's budget, has no private pension or private saving, and takes
- * the workbook's own economic assumptions.
+ * has ITP 1, retires at the riktålder, wants to last to the model's own expected
+ * lifespan on what minPension calls an average pensioner's budget, has no private
+ * pension or private saving, and takes the workbook's own economic assumptions.
  */
 export function defaultLastsInput(): LastsInput {
   const base = defaultInput();
@@ -218,7 +224,7 @@ export function defaultLastsInput(): LastsInput {
     born,
     startWorkAge: 25,
     retirementAge: riktalderFor(born),
-    lifespan: 95,
+    lifespan: 0,
     monthlySalary: base.monthlySalary,
     scheme: Scheme.Itp1,
     budget: BUDGETS[1].amount,
@@ -232,13 +238,13 @@ export function defaultLastsInput(): LastsInput {
   };
 }
 
-/** The retirement age moved inside what the cohort may draw, and the lifespan kept after it. */
+/** The retirement age moved inside what the cohort may draw, and the lifespan kept after it, or kept 0 (the model's own). */
 export function normaliseLasts(input: LastsInput): LastsInput {
   const retirement = referenceAge(input.born, input.retirementAge);
-  const lifespan = Math.min(
-    Math.max(Math.round(input.lifespan), LIFESPAN_BOUNDS.min, retirement + 1),
-    LIFESPAN_BOUNDS.max,
-  );
+  const lifespan =
+    input.lifespan > 0
+      ? Math.max(Math.min(Math.round(input.lifespan), LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS.min, retirement + 1)
+      : 0;
   const rent = Number.isFinite(input.rent) ? Math.min(Math.max(input.rent, RENT_BOUNDS.min), RENT_BOUNDS.max) : defaultContext().hyra;
   return { ...input, retirementAge: retirement, lifespan, housingSupplement: input.housingSupplement === true, rent };
 }
@@ -319,6 +325,8 @@ export interface PayoutRuns {
   readonly savingYear: number;
   /** Table 1's "Slutlön" per month -- what a typed final salary is matched against. */
   readonly finalSalary: number;
+  /** The model's own expected lifespan (`lifeIncome.throughAge`, as "Uttagsstrategi" reads it): the same whatever the payout. */
+  readonly modelExpectedLifespan: number;
   /** The distinct warnings the runs raised, in the order met. */
   readonly warnings: readonly string[];
 }
@@ -345,6 +353,7 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
   let netAt: PayoutRuns["netAt"] = () => 0;
   let grossFor: PayoutRuns["grossFor"] = () => 0;
   let finalSalary = 0;
+  let modelExpectedLifespan = 0;
   const taxFree = taxFreeSaving(input);
   const remember = (messages: readonly { readonly message: string }[]): void => {
     for (const { message } of messages) if (!warnings.includes(message)) warnings.push(message);
@@ -403,10 +412,12 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
       benefits,
       net: net.map((n, age) => n + savings[age]! + benefits[age]!),
     });
-    // The tax section and the salary are the same whatever the payout, so the last run's are kept.
+    // The tax section, the salary and the model's own expected lifespan are the same whatever the payout, so the
+    // last run's are kept.
     netAt = probe.netAt;
     grossFor = probe.grossFor;
     finalSalary = probe.result.table1.find((r) => r.key === Table1Key.FinalSalary)?.monthly ?? 0;
+    modelExpectedLifespan = probe.result.lifeIncome.throughAge;
   }
 
   return {
@@ -414,6 +425,7 @@ export function runPayouts(input: LastsInput, shared: ModelContext, deaths: Deat
     runs,
     netAt,
     grossFor,
+    modelExpectedLifespan,
     referenceYear: shared.referenceYear,
     savingYear: savingYear(input, shared),
     finalSalary,
@@ -625,9 +637,11 @@ export interface PayoutOption {
 export interface Lasts {
   readonly input: LastsInput;
   readonly runs: PayoutRuns;
-  /** The retirement age, and the lifespan. */
+  /** The retirement age, and the lifespan -- `input.lifespan`, or `runs.modelExpectedLifespan` rounded where it is 0. */
   readonly from: number;
   readonly to: number;
+  /** The model's own expected lifespan, unrounded: `runs.modelExpectedLifespan`, read straight through for a field's hint. */
+  readonly modelExpectedLifespan: number;
   /** In `PAYOUTS` order. */
   readonly options: readonly PayoutOption[];
   /** The public pension alone, for the years from the retirement age: what is left when a payout ends. */
@@ -658,7 +672,7 @@ function hasFlexible(run: PayoutRun): boolean {
 /** Sets the runs against the input's budget, lifespan and tax view. */
 export function evaluate(runs: PayoutRuns, input: LastsInput): Lasts {
   const from = input.retirementAge;
-  const to = input.lifespan;
+  const to = input.lifespan > 0 ? input.lifespan : Math.round(runs.modelExpectedLifespan);
   const yearlyBudget = input.budget * 12;
 
   // Before tax the budget is the gross that leaves it after tax -- see the file comment.
@@ -711,6 +725,7 @@ export function evaluate(runs: PayoutRuns, input: LastsInput): Lasts {
     runs,
     from,
     to,
+    modelExpectedLifespan: runs.modelExpectedLifespan,
     options,
     publicOnly: assess(LIFELONG, publicIncome, need, from, to),
     budgetMonthly: Array.from({ length: to - from }, (_, i) => need(from + i) / 12),

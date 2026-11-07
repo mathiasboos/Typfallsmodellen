@@ -18,10 +18,11 @@ import { describe, expect, it } from "vitest";
 import { Scheme, defaultContext, lowestPensionAge, run } from "@typfallsmodellen/engine";
 
 import { loadDeathProbabilities } from "../src/deaths.js";
-import { LAST_AGE, LIFESPAN_BOUNDS } from "../src/pensionAge.js";
+import { LAST_AGE } from "../src/pensionAge.js";
 import {
   BUDGETS,
   CHART_PAYOUTS,
+  LIFESPAN_BOUNDS,
   amountSeriesToCsv,
   amountSeriesToXlsxRows,
   amountsToCsv,
@@ -125,9 +126,9 @@ describe("the input", () => {
     });
   });
 
-  it("opens on a lifespan of 95 and an ISK with nothing in it", () => {
+  it("opens on the model's own expected lifespan and an ISK with nothing in it", () => {
     const opening = defaultLastsInput();
-    expect(opening.lifespan).toBe(95);
+    expect(opening.lifespan).toBe(0);
     expect(opening.retirementAge).toBe(68);
     expect(opening).toMatchObject({
       individualCapital: 0,
@@ -139,15 +140,22 @@ describe("the input", () => {
       savingsMonthly: 0,
     });
     expect(normaliseLasts(opening)).toEqual(opening);
-    expect(computeLasts(opening, context, deaths).to).toBe(95);
+    // 0 stands for the model's own (`lifeIncome.throughAge`), as "Uttagsstrategi"'s own field works.
+    const opened = computeLasts(opening, context, deaths);
+    expect(opened.modelExpectedLifespan).toBeCloseTo(88.58, 2);
+    expect(opened.to).toBe(89);
   });
 
   it("is held inside what the cohort may draw, with the lifespan after it", () => {
     expect(normaliseLasts({ ...base, retirementAge: 40 }).retirementAge).toBe(lowestPensionAge(1980));
     expect(normaliseLasts({ ...base, retirementAge: 99 }).retirementAge).toBe(80);
     expect(normaliseLasts({ ...base, retirementAge: 80, lifespan: 75 }).lifespan).toBe(81);
-    expect(normaliseLasts({ ...base, lifespan: 40 }).lifespan).toBe(LIFESPAN_BOUNDS.min);
+    // Too low floors at the retirement age plus one -- a pension year can't come before retirement, and that
+    // floor sits above LIFESPAN_BOUNDS.min at any real retirement age, so it is the one that binds here.
+    expect(normaliseLasts({ ...base, lifespan: 40 }).lifespan).toBe(base.retirementAge + 1);
     expect(normaliseLasts({ ...base, lifespan: 140 }).lifespan).toBe(LIFESPAN_BOUNDS.max);
+    // 0 is kept as it is -- the model's own, not clamped into the bounds.
+    expect(normaliseLasts({ ...base, lifespan: 0 }).lifespan).toBe(0);
     expect(normaliseLasts(base)).toEqual(base);
   });
 
