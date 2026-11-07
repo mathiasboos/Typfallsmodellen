@@ -1609,7 +1609,13 @@ lines a caption wraps to. A line of small print sits where it helps: under the p
 is a pension insurance or an IPS; under the drop-down, how the chosen kind of saving is taxed -- and, for
 a depot, in ink, a request to enter the capital after capital gains tax. All of that is `savingsInputs.ts`,
 which "När ta ut pensionen?" is built with too. The groups run Person, Lön,
-Budget, Pension, Privat sparande, Antaganden, Visa. The tab opens on a lifespan of 95.
+Budget, Pension, Privat sparande, Antaganden, Visa. "Förväntad livslängd (ålder)" is "Uttagsstrategi"'s own
+field, read straight into `LastsInput.lifespan`: 0 stands for the model's own expected lifespan
+(`PayoutRuns.modelExpectedLifespan`, `lifeIncome.throughAge`, the same whatever the payout), filled into
+the field once the first run is in, and the tab opens on it -- 89 for the person this file's numbers are
+pinned to. A typed value overrides it, inside `LIFESPAN_BOUNDS` (60 to 100, as in "Uttagsstrategi") and
+never before the retirement age's own next year, whichever is higher. The "Riktålder" checkbox carries the
+"år · N år som pensionär" hint the lifespan field itself used to.
 
 **Colours: an ordinal ramp, and ink for lifelong.** The payout periods are ordered, so the colour is one
 hue stepped in OKLCH lightness (`--fig-pu-*`), not four hues: SEB's gold at 0.40 / 0.48 / 0.55 / 0.63 in

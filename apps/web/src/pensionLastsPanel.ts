@@ -45,7 +45,7 @@ import { csvExportButton, xlsxExportButton } from "./export.js";
 import { kronor, percent as share } from "./format.js";
 import { t } from "./i18n.js";
 import type { Lang } from "./i18n.js";
-import { LIFESPAN_BOUNDS, centreBounds } from "./pensionAge.js";
+import { centreBounds } from "./pensionAge.js";
 import { niceTicks, renderLineChart } from "./pensionAgeChart.js";
 import type { ChartSeries } from "./pensionAgeChart.js";
 import { capital, decimals, h, mkr, panel, row, say, signed, tableOf } from "./pensionAgeUi.js";
@@ -64,6 +64,7 @@ import {
   yearlyToXlsxRows,
   CHART_PAYOUTS,
   RENT_BOUNDS,
+  LIFESPAN_BOUNDS,
   LIFELONG,
   balanceText,
   budgetIdOf,
@@ -219,6 +220,8 @@ export function createPensionLastsPanel(
   let riktalderLocked = true;
   /** "Egen budget" chosen in the drop-down; otherwise the example whose amount the budget is, if any. */
   let ownBudget = false;
+  /** The model's own expected lifespan, from the last results; read while `input.lifespan` is 0, as "Uttagsstrategi"'s own field works. */
+  let modelLifespan = 0;
   let context: ModelContext | undefined;
   let deaths: DeathProbabilities | undefined;
   /** What the last run worked out, for the two field hints that quote it. */
@@ -300,17 +303,35 @@ export function createPensionLastsPanel(
     update({});
   });
   riktalderBox.dataset.setting = "plRiktalder";
-  field(riktalderBox, (l) => ({ label: t("riktalderCheckbox", l) }), "field field-check");
+  /** The lifespan as it is shown: the typed one, or the model's own once it is known. */
+  const shownLifespan = (): number => (input.lifespan > 0 ? input.lifespan : modelLifespan);
+  const relabelRiktalder = field(
+    riktalderBox,
+    (l) => ({
+      label: t("riktalderCheckbox", l),
+      ...(shownLifespan() > 0
+        ? {
+            hint: say(
+              l,
+              `år · ${Math.round(shownLifespan()) - input.retirementAge} år som pensionär`,
+              `years · ${Math.round(shownLifespan()) - input.retirementAge} years retired`,
+            ),
+          }
+        : {}),
+    }),
+    "field field-check",
+  );
 
-  const lifespanField = number(input.lifespan, LIFESPAN, (lifespan) => update({ lifespan }));
+  // "Förväntad livslängd (ålder)": as "Uttagsstrategi"'s own field -- 0 stands for the model's own, filled in
+  // once the first run is in (`redraw`), and seeded here with the bounds' top so nothing shows "0" first.
+  const lifespanField = number(Math.round(LIFESPAN_BOUNDS.max), LIFESPAN_BOUNDS, (lifespan) => update({ lifespan }));
   lifespanField.element.dataset.setting = "plLifespan";
   const relabelLifespan = field(lifespanField.element, (l) => ({
-    label: say(l, "Uppskattad livslängd", "Estimated lifespan"),
-    hint: say(
-      l,
-      `år · ${input.lifespan - input.retirementAge} år som pensionär`,
-      `years · ${input.lifespan - input.retirementAge} years retired`,
-    ),
+    label: say(l, "Förväntad livslängd (ålder)", "Expected lifespan (age)"),
+    hint:
+      modelLifespan > 0
+        ? say(l, `år · förifyllt med modellens antagande, ${decimals(modelLifespan, 1, l)} år`, `years · filled in with the model's assumption, ${decimals(modelLifespan, 1, l)}`)
+        : say(l, "år · förifyllt med modellens antagande", "years · filled in with the model's assumption"),
   }));
 
   // Salary
@@ -486,7 +507,7 @@ export function createPensionLastsPanel(
     retirementField.setValue(input.retirementAge);
     retirementField.element.disabled = riktalderLocked;
     riktalderBox.checked = riktalderLocked;
-    lifespanField.setValue(input.lifespan);
+    if (input.lifespan > 0 || modelLifespan > 0) lifespanField.setValue(input.lifespan > 0 ? input.lifespan : Math.round(modelLifespan));
     rentField.setValue(input.rent);
     housingBox.checked = input.housingSupplement;
     salaryAsSelect.element.value = salaryAs === "final" ? "1" : "0";
@@ -511,6 +532,7 @@ export function createPensionLastsPanel(
     for (const relabel of [
       relabelBorn,
       relabelRetirement,
+      relabelRiktalder,
       relabelLifespan,
       relabelSalary,
     ]) {
@@ -1598,6 +1620,10 @@ export function createPensionLastsPanel(
     const lasts = evaluate(runs, effective);
     derived = { finalSalary: runs.finalSalary, monthlySalary: effective.monthlySalary };
     relabelSalary(currentLang);
+    modelLifespan = lasts.modelExpectedLifespan;
+    if (input.lifespan === 0) lifespanField.setValue(Math.round(modelLifespan));
+    relabelLifespan(currentLang);
+    relabelRiktalder(currentLang);
     savingsUi.relabel(currentLang);
     results.replaceChildren(...buildResults(lasts, currentLang));
   }
