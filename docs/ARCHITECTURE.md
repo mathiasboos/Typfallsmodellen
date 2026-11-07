@@ -1442,9 +1442,13 @@ are the same seventeen, so what it shows is exactly what the other tab's charts 
 10, 15 and 20 years and for life (the monthly average during the payout, and beneath it what is left afterwards, when only the
 public pension remains), the line chart and the per-age table without a budget line, a table of what each payout pays
 during it, after it (split by kind of pension before tax, the private savings grossed up as in the other tab) and added up to the
-lifespan, and the same notes. `amountsToCsv`/`amountSeriesToCsv` and their Excel twins are the exports. Checked by the five
-unit tests under `"Hur mycket får jag?"` in `pensionLasts.test.ts` and a block in `verify-offline.mjs` (the boxes read the numbers the other
-tab's runs give, no budget field, a pension of one's own raising the 5-year payout most, the downloads, English, 375px).
+lifespan, and the same notes. Right under the lead paragraph, a KPI line (`pm-best-kpi`) names the payout period that pays the
+most in all to the assumed lifespan and what it comes to (`bestPlans(yearlyTable(lasts))`, the same verdict `totalsStrip` works
+out further down for its own ribbon) -- the question the summary is meant to answer, surfaced where it is read first; it is
+left out when there is nothing to choose a payout period for (`!lasts.flexible`). `amountsToCsv`/`amountSeriesToCsv` and their
+Excel twins are the exports. Checked by the five unit tests under `"Hur mycket får jag?"` in `pensionLasts.test.ts` and a block
+in `verify-offline.mjs` (the boxes read the numbers the other tab's runs give, no budget field, a pension of one's own raising
+the 5-year payout most, the downloads, English, 375px).
 
 A year-by-year table (`yearlyTable`, `amountYearsPanel`) follows: every single age from the start to the assumed lifespan, each
 plan's pension a month and what it has paid out in all so far (`YearlyTable.plans[].monthly`/`.cumulative`), the leading plan at
