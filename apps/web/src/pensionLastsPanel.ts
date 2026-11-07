@@ -1219,21 +1219,11 @@ export function createPensionLastsPanel(
     );
 
     if (lasts.flexible) {
-      // Which payout period pays the most in all against the assumed lifespan -- the same verdict `totalsStrip`
-      // works out further down, surfaced here too since it's the question the summary is meant to answer.
-      const verdict = bestPlans(yearlyTable(lasts));
-      const bestKpi = h("p", "pa-kpi");
-      bestKpi.dataset.role = "pm-best-kpi";
-      bestKpi.append(
-        say(
-          l,
-          `Mest totalt till ${to} år (den antagna livslängden): `,
-          `Most in all to ${to} (the assumed lifespan): `,
-        ),
-        h("strong", undefined, `${payoutName(verdict.best.payout, l)} – ${kronor(Math.round(verdict.best.total), l)} kr`),
-        say(l, `, mer än någon annan utbetalningstid.`, `, more than any other payout period.`),
-      );
-      body.append(bestKpi);
+      // The same box `totalsStrip` builds further down for the year-by-year table, surfaced here too (its own
+      // `data-role`, so the two don't collide) since it's the question the summary is meant to answer: which
+      // payout period pays the most in all against the assumed lifespan.
+      const table = yearlyTable(lasts);
+      body.append(totalsStrip(lasts, table, bestPlans(table), l, "pm-best-summary"));
     }
 
     const ribbonBox = h("div", "pa-ribbon-box");
@@ -1461,9 +1451,9 @@ export function createPensionLastsPanel(
    * sit in the table's own first column and stretch it wide, when every other row there holds nothing but a
    * two-digit age.
    */
-  function totalsStrip(lasts: Lasts, table: YearlyTable, verdict: BestPlans, l: Lang): HTMLElement {
+  function totalsStrip(lasts: Lasts, table: YearlyTable, verdict: BestPlans, l: Lang, role = "pm-years-totals"): HTMLElement {
     const box = h("div", "pa-ribbon-box");
-    box.dataset.role = "pm-years-totals";
+    box.dataset.role = role;
     box.append(h("div", "pa-ribbon-label", say(l, `Totalt utbetalt till ${lasts.to} år, och rangordning (1 = mest pengar)`, `Total paid out to ${lasts.to}, and rank (1 = most money)`)));
     const ribbon = h("ol", "pa-ribbon pl-ribbon");
     for (const plan of table.plans) {
