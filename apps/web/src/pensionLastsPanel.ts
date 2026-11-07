@@ -1218,6 +1218,24 @@ export function createPensionLastsPanel(
       ),
     );
 
+    if (lasts.flexible) {
+      // Which payout period pays the most in all against the assumed lifespan -- the same verdict `totalsStrip`
+      // works out further down, surfaced here too since it's the question the summary is meant to answer.
+      const verdict = bestPlans(yearlyTable(lasts));
+      const bestKpi = h("p", "pa-kpi");
+      bestKpi.dataset.role = "pm-best-kpi";
+      bestKpi.append(
+        say(
+          l,
+          `Mest totalt till ${to} år (den antagna livslängden): `,
+          `Most in all to ${to} (the assumed lifespan): `,
+        ),
+        h("strong", undefined, `${payoutName(verdict.best.payout, l)} – ${kronor(Math.round(verdict.best.total), l)} kr`),
+        say(l, `, mer än någon annan utbetalningstid.`, `, more than any other payout period.`),
+      );
+      body.append(bestKpi);
+    }
+
     const ribbonBox = h("div", "pa-ribbon-box");
     ribbonBox.append(h("div", "pa-ribbon-label", say(l, "Utbetalningstid och pension per månad", "Payout period and pension per month")));
     const ribbon = h("ol", "pa-ribbon pl-ribbon");
