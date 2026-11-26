@@ -691,6 +691,131 @@ if (benefitsCol === -1) {
   await tab.waitForTimeout(50);
 }
 
+// "Deltid": one or more part-time periods scale the computed salary path and
+// hand it over as the same own-income path a typed grid feeds, so a halved
+// stretch of years has to cost pension the way zeroing rows does -- without
+// the grid ever being opened. (Adv_settings row 84 is the workbook's own
+// part-time switch, but it only governs the partial-withdrawal window, so
+// this is an addition rather than a port of it -- see salaryPath.ts.)
+const grossFull = await table2Cell(table2Rows - 1, grossCol);
+
+const ptFrom = await setting("partTimeFrom");
+await ptFrom.fill("1990");
+await ptFrom.dispatchEvent("change");
+const ptTo = await setting("partTimeTo");
+await ptTo.fill("1999");
+await ptTo.dispatchEvent("change");
+const ptShare = await setting("partTimeShare");
+await ptShare.fill("50");
+await ptShare.dispatchEvent("change");
+await tab.locator('[data-action="salary-add-parttime"]').click();
+await tab.waitForTimeout(80);
+
+const ptRows = tab.locator(".salary-parttime-list .pgb-child-row");
+const ptCount = await ptRows.count();
+const ptText = ptCount > 0 ? ((await ptRows.first().locator("span").textContent()) ?? "") : "";
+console.log(`part-time period: ${ptCount} listed, "${ptText.trim()}"`);
+if (ptCount !== 1 || !/1990/.test(ptText) || !/1999/.test(ptText) || !/50/.test(ptText)) {
+  problems.push(`adding a part-time period listed ${ptCount} row(s): "${ptText.trim()}"`);
+}
+
+const grossPartTime = await table2Cell(table2Rows - 1, grossCol);
+console.log(`gross pension   : ${grossFull} -> ${grossPartTime} with ten years at 50%`);
+if (!(grossPartTime < grossFull)) {
+  problems.push(`ten years at 50% did not lower the pension (${grossFull} -> ${grossPartTime})`);
+}
+
+// Opening the grid has to show what the period did, and only for the years it
+// covers: 1990 and 1999 are halved, 1989 and 2000 either side of them are not.
+// The derived path rises year on year, so a halved year sitting below 60% of
+// its full-time neighbour is a check that cannot pass by accident.
+const ptToggle = await setting("ownIncome");
+await ptToggle.check();
+await tab.waitForTimeout(80);
+const ptByYear = await tab
+  .locator('details[data-group="salary-path"] .adv-grid tbody tr')
+  .evaluateAll((trs) =>
+    Object.fromEntries(
+      trs.map((tr) => [tr.children[0].textContent, Number(tr.querySelector("input").value)]),
+    ),
+  );
+console.log(
+  `part-time grid  : 1989 ${ptByYear["1989"]} / 1990 ${ptByYear["1990"]}, ` +
+    `1999 ${ptByYear["1999"]} / 2000 ${ptByYear["2000"]}`,
+);
+if (!(ptByYear["1990"] < ptByYear["1989"] * 0.6) || !(ptByYear["1999"] < ptByYear["2000"] * 0.6)) {
+  problems.push(
+    `a 50% period did not halve its own years in the grid (1989 ${ptByYear["1989"]}, ` +
+      `1990 ${ptByYear["1990"]}, 1999 ${ptByYear["1999"]}, 2000 ${ptByYear["2000"]})`,
+  );
+}
+// And switching the grid back off must not switch the period off with it:
+// the generated path is the half of this section that needs no grid.
+await ptToggle.uncheck();
+await tab.waitForTimeout(80);
+const grossNoGrid = await table2Cell(table2Rows - 1, grossCol);
+if (grossNoGrid !== grossPartTime) {
+  problems.push(
+    `the part-time period stopped applying when the grid was switched off (${grossPartTime} -> ${grossNoGrid})`,
+  );
+}
+
+// A period outside the years this typfall works says so rather than failing
+// silently, and leaves the pension where it was.
+await ptFrom.fill("2090");
+await ptFrom.dispatchEvent("change");
+await ptTo.fill("2095");
+await ptTo.dispatchEvent("change");
+await tab.locator('[data-action="salary-add-parttime"]').click();
+await tab.waitForTimeout(80);
+const ptNote =
+  (await tab.locator('details[data-group="salary-path"] .pgb-add-feedback').last().textContent()) ??
+  "";
+const grossOutside = await table2Cell(table2Rows - 1, grossCol);
+console.log(`part-time note  : "${ptNote.trim()}"`);
+if (grossOutside !== grossPartTime || ptNote.trim() === "") {
+  problems.push(
+    `a period outside the worked years moved the pension (${grossPartTime} -> ${grossOutside}) ` +
+      `or reported nothing: "${ptNote.trim()}"`,
+  );
+}
+
+// Removing every period puts the path back exactly where it started.
+const ptRemove = tab.locator('.salary-parttime-list [data-action="salary-remove-parttime"]');
+while ((await ptRemove.count()) > 0) {
+  await ptRemove.first().click();
+  await tab.waitForTimeout(60);
+}
+const grossRestored = await table2Cell(table2Rows - 1, grossCol);
+console.log(`gross pension   : ${grossPartTime} -> ${grossRestored} after removing the periods`);
+if (grossRestored !== grossFull) {
+  problems.push(
+    `removing the part-time periods left the pension at ${grossRestored}, expected ${grossFull}`,
+  );
+}
+
+// A share outside 0-100% is clamped and written back, so the field never
+// shows a number the run was not given -- and "Använd normala inställningar"
+// puts the whole add-entry form back where it opened.
+await ptShare.fill("150");
+await ptShare.dispatchEvent("change");
+await tab.waitForTimeout(50);
+const ptShareClamped = await ptShare.inputValue();
+console.log(`part-time clamp : 150 -> ${ptShareClamped}`);
+if (ptShareClamped !== "100") {
+  problems.push(`a 150% share showed as "${ptShareClamped}" after the change, expected "100"`);
+}
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(50);
+const ptFromReset = await ptFrom.inputValue();
+const ptShareReset = await ptShare.inputValue();
+if (ptFromReset !== String(new Date().getFullYear()) || ptShareReset !== "50") {
+  problems.push(
+    `the reset button left the part-time form at year "${ptFromReset}"/share "${ptShareReset}", ` +
+      `expected "${new Date().getFullYear()}" and "50"`,
+  );
+}
+
 // The salary grid fills from the computed path rather than empty, and zeroing
 // a year has to cost pension. An empty grid would read as a lifetime of no
 // income, which is the failure this guards.

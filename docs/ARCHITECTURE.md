@@ -457,6 +457,48 @@ final salary and keeps the rule that the form never shows a number the run did n
 typed path is in use the run's own `wagePath` echoes it back, so the `Återställ` baseline comes from
 a second run with `ownIncome` removed.
 
+**"Deltid" — one or more part-time periods, on request, and a deliberate departure from
+`Adv_settings` row 84 rather than a port of it.** A period is a range of calendar years and a share
+of full time; `applyPartTime` (exported from `salaryPath.ts`, unit-tested in
+`apps/web/test/salaryPath.test.ts`) scales both `Inkomst` and `Varav lön` of every year a period
+covers and hands the result over as the same `TypfallInput.ownIncome` path a typed grid feeds. That
+is the whole feature — nothing engine-side changed, because reduced earnings already reach PGI, and
+through it income, premium and guarantee pension, plus the occupational premium (`premiumFor`), the
+employer-contribution reduction (`arbgiv`), income tax and the housing supplement, all by way of that
+one path. The golden cases are untouched for the same reason. It is also what the user manual tells
+you to do by hand: compute the full-time path, multiply a stretch of years by 0,5, paste it back into
+the own income list and re-run.
+
+The workbook does carry a part-time switch — row 84, `rngLönPartUttag`, "Sysselsättningsgraden vid
+partiellt uttag av IP" — but it is a far narrower thing and is **not** what this is. It governs only
+the window between the first, partial public-pension withdrawal (`par`) and the final one (`defAr`),
+and its shipped value ("Arbetar deltid", a string, not a number) already ties work to the share
+drawn: `withdrawalShare` (`packages/engine/src/income/wages.ts`) returns `partialWithdrawalShare`
+unless that cell holds a number, so drawing 50 % of the income pension from 66 to 70 already models
+working 50 % those years with no setting touched at all — manual 3.7's "jobbonär" case, which the
+"Allmän pension" group covers. Row 84 exists only to *decouple* work from withdrawal inside that
+window, so it cannot express a period anywhere else in a working life, and multiple periods are out
+of reach entirely. Its own sheet comment — "obs om egen lönevektor antas de gälla" — says an own wage
+vector wins over it, which is exactly how these periods are built.
+`ModelContext.workDuringPartialWithdrawal` stays wired through the engine and unexposed.
+
+Periods apply whether or not the grid below is switched on, which is the one place this diverges from
+how the grid alone behaved. With the grid off, `setBaseline` pushes a freshly generated path on every
+render, so the part-time years follow the salary and the birth year as they are typed — something a
+hand-typed grid deliberately does not do. `push()` is what makes that safe: it compares a
+`JSON.stringify` digest against the path last handed up and calls `onChange` only when the numbers
+really moved, so the `onChange` → `render` → `setBaseline` → `push` cycle settles on the second pass
+(the baseline is a run with `ownIncome` removed, so pushing a path never moves it). Switching the
+grid on freezes the generated numbers into editable rows, and from then on the rows are the authority
+until a period is added or removed, or `Återställ` is pressed — both of which refill from the
+baseline rather than scaling what is on screen, since scaling in place would compound the moment a
+period's share was changed twice. Overlapping periods resolve last-wins, so a narrow period added
+after a wide one carves out of it. The UI is `pgb.ts`'s add-entry shape reused down to its CSS
+(`.pgb-form`/`.pgb-add`/`.pgb-child-row`/`.pgb-remove`), editing included: no in-place edit, only
+remove-and-add-again. The empty-list message needed a class of its own (`.salary-parttime-empty`)
+rather than pgb's `.pgb-summary-empty`, since both panels are on screen at once and the offline check
+addresses that one unscoped.
+
 **Renamed "Salary", from "Own salary path" ("Egen löneutveckling"), and now also home to manual 3.6's
 "Slutlön" pair, both on request.** `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY` — plain
 number settings defined in `advanced.ts` (see above) — render here, above the wage-path toggle, with
