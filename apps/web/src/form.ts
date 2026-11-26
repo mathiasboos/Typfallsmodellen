@@ -50,10 +50,32 @@ interface GlossaryEntry {
 // paragraphs -- see `tools/extract/extract_content.py`'s own `_glossary`.
 const GLOSSARY = content.glossary as readonly GlossaryEntry[];
 
+/** The salary field's own bounds, named so `setValues` can clamp to them. */
+const SALARY = { min: 0, max: 1_000_000 };
+
 export interface FormHandle {
   readonly element: HTMLElement;
   /** Re-labels the fields after a language change, keeping their values. */
   relabel(lang: Lang): void;
+  /**
+   * Whether the riktålder checkbox has taken over the retirement age.
+   *
+   * Not a `TypfallInput` field -- it is a lock on one, `rng_Riktålder` on the
+   * Start sheet -- so a saved typfall (`savedCases.ts`) has to carry it
+   * separately or come back with the age right and the box empty.
+   */
+  riktalder(): boolean;
+  /**
+   * Shows a saved typfall, and returns what it actually ended up showing.
+   *
+   * Every value is clamped to the range its own field allows, exactly as a
+   * typed one is -- a saved file is editable by hand and an imported one can
+   * say anything -- and the clamped input is handed back for `main.ts` to run
+   * with, so the form still cannot show a number the run did not use. With the
+   * riktålder lock on, that cohort's riktålder wins over the saved age, which
+   * is what the lock means.
+   */
+  setValues(next: TypfallInput, riktalder: boolean): TypfallInput;
 }
 
 /**
@@ -142,14 +164,12 @@ export function createForm(
     onChange({ retirementAge: value });
   };
 
-  field(
-    number(initial.born, { ...BORN, step: 1 }, (value) => {
-      born = value;
-      onChange({ born: value });
-      if (riktalderLocked) applyRiktalder();
-    }).element,
-    (l) => ({ label: t("birthYear", l), hint: rangeHint(BORN) }),
-  );
+  const bornField = number(initial.born, { ...BORN, step: 1 }, (value) => {
+    born = value;
+    onChange({ born: value });
+    if (riktalderLocked) applyRiktalder();
+  });
+  field(bornField.element, (l) => ({ label: t("birthYear", l), hint: rangeHint(BORN) }));
 
   const relabelRetirement = field(retirement.element, (l) => ({
     label: t("retirementAge", l),
@@ -172,21 +192,23 @@ export function createForm(
   });
   field(riktalderBox, (l) => ({ label: t("riktalderCheckbox", l) }), "field field-check");
 
-  field(
-    number(initial.startWorkAge, { ...START_WORK, step: 1 }, (startWorkAge) =>
-      onChange({ startWorkAge }),
-    ).element,
-    (l) => ({ label: t("startWorkAge", l), hint: rangeHint(START_WORK) }),
+  const startWorkField = number(initial.startWorkAge, { ...START_WORK, step: 1 }, (startWorkAge) =>
+    onChange({ startWorkAge }),
   );
+  field(startWorkField.element, (l) => ({
+    label: t("startWorkAge", l),
+    hint: rangeHint(START_WORK),
+  }));
 
-  field(
-    number(
-      Math.round(initial.monthlySalary),
-      { min: 0, max: 1_000_000, step: 100 },
-      (monthlySalary) => onChange({ monthlySalary }),
-    ).element,
-    (l) => ({ label: t("monthlySalary", l), hint: `${t("kronor", l)} / ${t("perMonth", l).toLowerCase()}` }),
+  const salaryField = number(
+    Math.round(initial.monthlySalary),
+    { ...SALARY, step: 100 },
+    (monthlySalary) => onChange({ monthlySalary }),
   );
+  field(salaryField.element, (l) => ({
+    label: t("monthlySalary", l),
+    hint: `${t("kronor", l)} / ${t("perMonth", l).toLowerCase()}`,
+  }));
 
   const schemeSelect = document.createElement("select");
   for (const choice of SCHEMES) {
@@ -271,11 +293,50 @@ export function createForm(
   relabels.push(applyGlossaryLabel);
   element.append(glossaryInfo);
 
+  const clamp = (v: number, { min, max }: { min: number; max: number }) =>
+    Math.min(Math.max(v, min), max);
+
   return {
     element,
     relabel(l) {
       currentLang = l;
       for (const r of relabels) r(l);
+    },
+    riktalder: () => riktalderLocked,
+    setValues(next, riktalderOn) {
+      const bornValue = clamp(next.born, BORN);
+      born = bornValue;
+      bornField.setValue(bornValue);
+
+      riktalderLocked = riktalderOn;
+      riktalderBox.checked = riktalderOn;
+      retirement.element.disabled = riktalderOn;
+      const retirementAge = riktalderOn
+        ? riktalderFor(bornValue)
+        : clamp(next.retirementAge, RETIREMENT);
+      retirement.setValue(retirementAge);
+      // The hint switches between the allowed range and naming the lock, the
+      // same as when the checkbox itself is clicked.
+      relabelRetirement(currentLang);
+
+      const startWorkAge = clamp(next.startWorkAge, START_WORK);
+      startWorkField.setValue(startWorkAge);
+      const monthlySalary = clamp(Math.round(next.monthlySalary), SALARY);
+      salaryField.setValue(monthlySalary);
+
+      // An agreement this dropdown does not offer would leave it showing
+      // nothing at all, so it falls back to the first one the sheet lists.
+      const scheme = (
+        SCHEMES.some((c) => c.value === next.scheme) ? next.scheme : SCHEMES[0]!.value
+      ) as SchemeId;
+      schemeSelect.value = String(scheme);
+
+      marriedBox.checked = next.married;
+      inflationCtl.setValue(next.yearlyInflation);
+      realGrowthCtl.setValue(next.realGrowth);
+      realReturnCtl.setValue(next.realReturn);
+
+      return { ...next, born: bornValue, retirementAge, startWorkAge, monthlySalary, scheme };
     },
   };
 }

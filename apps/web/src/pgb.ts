@@ -78,6 +78,20 @@ export interface PgbGridHandle {
   setBaseline(born: number, marginal: number, pgbBreakdown: readonly PgbBreakdownYear[]): void;
   /** Clears every entry, the conscription period and the children list. */
   reset(): void;
+  /**
+   * Puts a saved typfall's PGB back on screen.
+   *
+   * This panel needs nothing saved of its own: `sicknessByAge`/`studyByAge`
+   * are exactly what `emit` folds into `pgbManual`, so they are rebuilt from
+   * it here, and the conscription period and the birth years are stored
+   * verbatim in a `TypfallInput`/`ModelContext` the case already carries.
+   * Nothing is emitted back -- `main.ts` has set that state already.
+   */
+  restore(state: {
+    readonly pgbManual?: readonly PgbManualYear[] | undefined;
+    readonly pgbConscription?: PgbConscriptionPeriod | undefined;
+    readonly childBirthYears: readonly [number, number, number, number];
+  }): void;
 }
 
 const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
@@ -734,6 +748,28 @@ export function createPgbGrid(
       breakdown = pgbBreakdown;
       breakdownDigest = digest;
       updateAgeReadout();
+      drawSummary();
+    },
+    restore(state) {
+      sicknessByAge = new Map();
+      studyByAge = new Map();
+      for (const row of state.pgbManual ?? []) {
+        if (row.sa > 0) sicknessByAge.set(row.age, row.sa);
+        if (row.studySemesters > 0) studyByAge.set(row.age, row.studySemesters);
+      }
+      conscription = state.pgbConscription;
+      startInput.value = conscription?.start ?? "";
+      endInput.value = conscription?.end ?? "";
+      childBirthYears = [...state.childBirthYears] as [number, number, number, number];
+      // The summary reads the latest run's own figures; that run has not
+      // happened yet for this case, so the table is cleared and `setBaseline`
+      // fills it on the render `main.ts` is about to do.
+      breakdown = [];
+      breakdownDigest = "";
+      addFeedback.textContent = "";
+      updateConscriptionReadout();
+      refreshChildSlotOptions();
+      drawChildrenList();
       drawSummary();
     },
     reset() {

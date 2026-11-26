@@ -671,6 +671,53 @@ body {
 }
 .pgb-conscription-readout:empty { display: none; }
 
+/* savedCases.ts: name the typfall on screen and come back to it later. Its
+   own panel above the form, since what it saves is the whole left column --
+   the form and everything in Avancerat -- rather than any one field. */
+.saved-cases { display: grid; gap: 8px; }
+.saved-cases-picker,
+.saved-cases-name {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+  min-width: 0;
+}
+.saved-cases-picker { width: 100%; }
+.saved-cases-name { flex: 1 1 110px; }
+.saved-cases-picker:focus,
+.saved-cases-name:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.saved-cases-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Delete with nothing picked, and Export with nothing saved, have nothing to
+   act on -- dimmed rather than hidden, so the pair of buttons does not move
+   under the pointer as the list fills and empties. */
+.saved-cases .export-btn:disabled { opacity: 0.45; cursor: default; }
+.saved-cases .export-btn:disabled:hover { background: transparent; }
+.saved-cases-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+/* Ångra, in place of a confirmation dialog -- see savedCases.ts's own note on
+   why there is no `confirm()` in a page that lives inside someone's iframe. */
+.saved-cases-undo {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.saved-cases-undo:hover { color: var(--text-primary); }
+
 /* Not `.field-hint`: see pgb.ts's own comment on `intro` for why that
    class's hardcoded `grid-row: 2` is wrong outside a `.field`'s own grid. */
 .pgb-intro { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 8px; }
@@ -1651,6 +1698,7 @@ td.pm-best { font-weight: 700; background: color-mix(in srgb, var(--accent, #2c6
   .panel-toggle,
   .export-btn,
   .adv-actions,
+  .saved-cases,
   .tooltip { display: none !important; }
 
   .layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }

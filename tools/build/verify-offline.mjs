@@ -816,6 +816,128 @@ if (ptFromReset !== String(new Date().getFullYear()) || ptShareReset !== "50") {
   );
 }
 
+// An untouched grid is a *view* of the derived path, so it follows the Start
+// sheet; only a typed cell takes over. Reported as a bug and it was one --
+// ticking the box to look at the numbers froze them, and the salary field
+// then moved nothing, because `render` was handing the run a path captured at
+// the moment of the tick. The three checks below are that bug's shape: on,
+// unchanged; salary up, pension up; cell typed, cell kept.
+const formSalary = tab.locator("form.inputs input[type=number]").nth(3);
+const trackBefore = await table2Cell(table2Rows - 1, grossCol);
+const trackGrid = await setting("ownIncome");
+await trackGrid.check();
+await tab.waitForTimeout(100);
+const trackOnGrid = await table2Cell(table2Rows - 1, grossCol);
+if (trackOnGrid !== trackBefore) {
+  problems.push(
+    `switching the salary grid on moved the pension by itself (${trackBefore} -> ${trackOnGrid})`,
+  );
+}
+await formSalary.fill("70000");
+await formSalary.dispatchEvent("change");
+await tab.waitForTimeout(150);
+const trackRaised = await table2Cell(table2Rows - 1, grossCol);
+console.log(`untouched grid  : ${trackBefore} -> ${trackRaised} after raising the salary`);
+if (!(trackRaised > trackBefore)) {
+  problems.push(
+    `an untouched salary grid did not follow a raised salary (${trackBefore} -> ${trackRaised})`,
+  );
+}
+const trackCell = tab
+  .locator('details[data-group="salary-path"] .adv-grid tbody tr')
+  .last()
+  .locator("input")
+  .first();
+await trackCell.fill("12345");
+await trackCell.dispatchEvent("change");
+await tab.waitForTimeout(100);
+await formSalary.fill("38500");
+await formSalary.dispatchEvent("change");
+await tab.waitForTimeout(150);
+const trackTyped = await trackCell.inputValue();
+console.log(`typed cell      : ${trackTyped} after the salary moved back`);
+if (trackTyped !== "12345") {
+  problems.push(`a typed salary-grid cell was overwritten by a salary change: ${trackTyped}`);
+}
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(80);
+
+// Sparade typfall: a named snapshot of both halves of the left column. Saving
+// one, moving the form *and* a setting in Avancerat, then reopening it has to
+// bring the whole thing back -- the number in Table 2 and the controls that
+// produced it alike, which is the difference between saving a typfall and
+// saving nine form fields.
+const caseName = tab.locator('[data-action="case-name"]');
+const casePicker = tab.locator('[data-action="case-select"]');
+const caseGrossA = await table2Cell(table2Rows - 1, grossCol);
+await caseName.fill("Offline A");
+await tab.locator('[data-action="case-save"]').click();
+await tab.waitForTimeout(100);
+
+await formSalary.fill("52000");
+await formSalary.dispatchEvent("change");
+const caseHyra = await setting("hyra");
+await caseHyra.fill("15000");
+await caseHyra.dispatchEvent("change");
+await tab.waitForTimeout(150);
+const caseGrossB = await table2Cell(table2Rows - 1, grossCol);
+await caseName.fill("Offline B");
+await tab.locator('[data-action="case-save"]').click();
+await tab.waitForTimeout(100);
+if (caseGrossB === caseGrossA) {
+  problems.push(`the second saved case was set up to differ but reads the same (${caseGrossA})`);
+}
+
+await casePicker.selectOption("Offline A");
+await tab.waitForTimeout(200);
+const reopenedA = await table2Cell(table2Rows - 1, grossCol);
+const salaryA = await formSalary.inputValue();
+console.log(`saved cases     : ${caseGrossA} -> ${caseGrossB} -> ${reopenedA} reopening the first`);
+if (reopenedA !== caseGrossA || salaryA !== "38500") {
+  problems.push(
+    `reopening a saved case gave ${reopenedA} at salary "${salaryA}", expected ${caseGrossA} at "38500"`,
+  );
+}
+
+await casePicker.selectOption("Offline B");
+await tab.waitForTimeout(200);
+const reopenedB = await table2Cell(table2Rows - 1, grossCol);
+const hyraB = await (await setting("hyra")).inputValue();
+console.log(`saved cases     : reopening the second gives ${reopenedB}, hyra ${hyraB}`);
+if (reopenedB !== caseGrossB || hyraB !== "15000") {
+  problems.push(
+    `reopening the advanced case gave ${reopenedB} with hyra "${hyraB}", expected ${caseGrossB} and "15000"`,
+  );
+}
+
+// Deleting is undoable rather than confirmed -- see savedCases.ts on why a
+// page that lives in someone else's iframe does not reach for `confirm()`.
+await tab.locator('[data-action="case-delete"]').click();
+await tab.waitForTimeout(100);
+const afterDelete = await casePicker.locator("option").allTextContents();
+await tab.locator('[data-action="case-undo"]').click();
+await tab.waitForTimeout(100);
+const afterUndo = await casePicker.locator("option").allTextContents();
+console.log(`saved cases     : delete -> ${afterDelete.length - 1} left, undo -> ${afterUndo.length - 1}`);
+if (afterDelete.some((t) => t === "Offline B") || !afterUndo.some((t) => t === "Offline B")) {
+  problems.push(
+    `delete/undo left the list at [${afterDelete.join(", ")}] then [${afterUndo.join(", ")}]`,
+  );
+}
+
+// Tidy up after itself: the store outlives this block, and every check below
+// runs on the same page.
+for (const name of ["Offline A", "Offline B"]) {
+  await casePicker.selectOption(name);
+  await tab.waitForTimeout(100);
+  await tab.locator('[data-action="case-delete"]').click();
+  await tab.waitForTimeout(100);
+}
+await formSalary.fill("38500");
+await formSalary.dispatchEvent("change");
+await tab.locator('[data-action="reset-advanced"]').click();
+await tab.waitForTimeout(100);
+
 // The salary grid fills from the computed path rather than empty, and zeroing
 // a year has to cost pension. An empty grid would read as a lifetime of no
 // income, which is the failure this guards.

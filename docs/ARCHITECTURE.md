@@ -449,6 +449,26 @@ count in the sheet, just a narrower one than "when does the pension start" — b
 stop-working-before-the-pension-starts scenario is modeled today by setting "Går i pension vid ålder"
 to the later age and zeroing the gap years in the own salary-path grid instead.
 
+**The own salary path is settled before the run that reads it, not pushed back afterwards — a fix, and
+the shape of a reported bug.** `salaryPath.sync(wagePath, born)` takes the path the model derives for
+the Start sheet as it stands and *returns* the path the run should be given; `render()` assigns that
+to `advancedInput.ownIncome` and only then runs the model. It used to be `setBaseline`, which handed a
+new path up through `onChange` — and `onChange` calls `render()`. So a render could re-enter itself:
+the nested call rendered the right numbers, returned, and the outer call then overwrote them with its
+own results, computed moments earlier from the path that had just been superseded. Every figure on
+the page sat one edit behind. What surfaced it was "apply a part-time calculation, remove it, then
+change the salary and nothing updates", but the staleness was never specific to Deltid — a digest
+guard (`pushed`) had been hiding it, by making the common cases push nothing at all. Both are gone:
+`sync` never calls back, `push()` is only ever reached from a user's own click or keystroke, and the
+cost is one extra `run()` per render in advanced mode, which was already doing two whenever an own
+path was in use.
+
+The same fix is what lets an untouched grid track the Start sheet. Ticking `Använd egen
+löneutveckling` to look at the numbers used to freeze them — the rows were a snapshot taken at the
+tick, and `setBaseline` deliberately left them alone, under a rule written to protect hand-typed
+values. It protected values nobody had typed. `handEdited` draws that line where it belongs: the rows
+follow the baseline until a cell is actually edited, and only then become the authority.
+
 `apps/web/src/salaryPath.ts` is the Indata_lista sheet as an editable grid, one row per age from 15
 up. It fills from `result.wagePath` rather than opening empty, because `setup.ts` reads an age the
 array does not mention as 0 — an empty grid would mean a lifetime of no income, not "derive it for
@@ -482,22 +502,68 @@ of reach entirely. Its own sheet comment — "obs om egen lönevektor antas de g
 vector wins over it, which is exactly how these periods are built.
 `ModelContext.workDuringPartialWithdrawal` stays wired through the engine and unexposed.
 
-Periods apply whether or not the grid below is switched on, which is the one place this diverges from
-how the grid alone behaved. With the grid off, `setBaseline` pushes a freshly generated path on every
-render, so the part-time years follow the salary and the birth year as they are typed — something a
-hand-typed grid deliberately does not do. `push()` is what makes that safe: it compares a
-`JSON.stringify` digest against the path last handed up and calls `onChange` only when the numbers
-really moved, so the `onChange` → `render` → `setBaseline` → `push` cycle settles on the second pass
-(the baseline is a run with `ownIncome` removed, so pushing a path never moves it). Switching the
-grid on freezes the generated numbers into editable rows, and from then on the rows are the authority
-until a period is added or removed, or `Återställ` is pressed — both of which refill from the
-baseline rather than scaling what is on screen, since scaling in place would compound the moment a
-period's share was changed twice. Overlapping periods resolve last-wins, so a narrow period added
-after a wide one carves out of it. The UI is `pgb.ts`'s add-entry shape reused down to its CSS
+Periods apply whether or not the grid below is switched on, and either way the numbers follow the
+salary and the birth year as they are typed. Only a row somebody has actually typed into stops
+following: `handEdited` is the whole of that rule, set by a cell's own change handler and by
+`Nollställ alla värden`, and cleared by anything that refills the grid (switching it on, `Återställ`,
+adding or removing a period). Those refills come from the baseline rather than scaling what is on
+screen, since scaling in place would compound the moment a period's share was changed twice.
+Overlapping periods resolve last-wins, so a narrow period added after a wide one carves out of it.
+The UI is `pgb.ts`'s add-entry shape reused down to its CSS
 (`.pgb-form`/`.pgb-add`/`.pgb-child-row`/`.pgb-remove`), editing included: no in-place edit, only
 remove-and-add-again. The empty-list message needed a class of its own (`.salary-parttime-empty`)
 rather than pgb's `.pgb-summary-empty`, since both panels are on screen at once and the offline check
 addresses that one unscoped.
+
+### Sparade typfall
+
+`apps/web/src/savedCases.ts` is a named snapshot of the whole left column, kept in the browser and
+exportable to a file. There is no equivalent in the workbook, for the good reason that a workbook *is*
+the saved file; the web port has the opposite problem, one page and one typfall, and everything typed
+gone on reload.
+
+**A case holds all of it**, which is the point: the Start-sheet form (`TypfallInput`), every
+Adv_settings override (`Partial<ModelContext>`), the Start-sheet half of Avancerat
+(`ownIncome`/`pgbManual`/`pgbConscription`), `salaryPath.ts`'s Deltid periods and grid state, whether
+the riktålder checkbox had taken over the retirement age, and which mode was on. Opening a case
+therefore reproduces the run exactly rather than approximately. That is what obliged every panel to
+grow a setter — `FormHandle.setValues`, `AdvancedHandle.apply`, `SalaryPathHandle.restore`,
+`PgbGridHandle.restore` — where before each only had a `reset()` back to the shipped defaults. A case
+that carried only the nine form fields would quietly drop the work that takes longest to redo.
+
+Two of those setters are worth a note. `AdvancedHandle.apply` writes *every* control from
+`{...defaultContext(), ...patch}` rather than only the keys the case carries, so a setting the case
+does not mention goes back to the workbook's own value instead of keeping the previous case's; it
+fires no `onChange`, since `main.ts` has already replaced its own `advanced` and sixty callbacks would
+be sixty renders. And `pgb.ts` needs no state saved of its own: its internal `sicknessByAge`/
+`studyByAge` maps are exactly what `emit` folds into `pgbManual`, so `restore` rebuilds them from the
+`TypfallInput` half the case already carries. `salaryPath.ts` does need its own, since a Deltid period
+list cannot be read back out of the income path it generated.
+
+**Storage is `localStorage` under one key holding one JSON document** — not a key per case, because the
+whole set is read, rewritten and exported together, and one key keeps that atomic and keeps `Ångra` to
+a single assignment. It is the only durable store a page with no outbound requests has, and it is not
+always there: private windows, blocked site data and Safari on a `file://` page either throw or
+silently forget, so every read and write is wrapped and the panel says so on the way in rather than
+appearing to save and losing the lot. The file export is the escape hatch for exactly those cases, and
+for the two that are structural rather than accidental — cases do not travel between devices, and
+pensionslyft.se's iframe and a downloaded copy of the page are separate origins and so separate
+stores.
+
+**Nothing is confirmed with a dialog.** `confirm()` is not reliably available to a page inside someone
+else's iframe, and a modal is a poor fit for an undo that costs one assignment. Deleting, overwriting
+and importing each stash the previous list and offer `Ångra` in the status line, which is both
+modal-free and strictly more forgiving than a confirmation.
+
+**Anything read back is treated as foreign.** `localStorage` is editable by hand and an imported file
+can be anything, so `sanitiseCase` rebuilds each case field by field and drops what does not fit,
+rather than casting a parse result and handing it to `run()`. The Adv_settings half checks each key
+against `defaultContext()` — matching name, matching type, finite — which means it cannot drift out of
+step with `ModelContext`: a field added there is saved and read back with no change to this file. (The
+one union-typed field, `workDuringPartialWithdrawal`, would lose a saved number; nothing can produce
+one, since no control exposes Adv_settings row 84.) Ranges are deliberately *not* checked here but in
+the panels' own setters, which clamp to the bounds their controls already carry — the same clamp a
+typed value goes through, keeping the rule that the form never shows a number the run did not use.
 
 **Renamed "Salary", from "Own salary path" ("Egen löneutveckling"), and now also home to manual 3.6's
 "Slutlön" pair, both on request.** `FINAL_SALARY_YEARS`/`PENSION_SAME_YEAR_AS_FINAL_SALARY` — plain

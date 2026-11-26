@@ -38,6 +38,8 @@ import { createPortfolioPanel } from "./portfolioPanel.js";
 import { createPgbGrid } from "./pgb.js";
 import { commitOnPress } from "./pressCommit.js";
 import { createSalaryPath } from "./salaryPath.js";
+import { createSavedCases } from "./savedCases.js";
+import type { SavedCase } from "./savedCases.js";
 import { createStrategyPanel } from "./strategyPanel.js";
 import {
   renderTable1,
@@ -157,6 +159,50 @@ const pgbGrid = createPgbGrid(view.lang, (patch) => {
   advanced = { ...advanced, childBirthYears: patch.childBirthYears };
   render();
 });
+
+/**
+ * Sparade typfall: a named snapshot of everything on the left, kept in this
+ * browser and exportable to a file. See `savedCases.ts` on what a case holds
+ * and why each panel grew a setter for it.
+ *
+ * Opening one replaces the whole state in one go and renders once, rather than
+ * letting each panel's own `onChange` fire -- sixty settings would be sixty
+ * renders, and the intermediate states are not ones the model should ever be
+ * asked about.
+ */
+const savedCases = createSavedCases(
+  view.lang,
+  () => ({
+    mode,
+    input,
+    advanced,
+    advancedInput,
+    salary: salaryPath.state(),
+    riktalder: form.riktalder(),
+  }),
+  (one: SavedCase) => openCase(one),
+);
+
+function openCase(one: SavedCase): void {
+  mode = one.mode;
+  advanced = { ...one.advanced };
+  advancedInput = { ...one.advancedInput };
+  // The form clamps to its own ranges and hands back what it actually shows,
+  // which is what the run is then given -- a stored file is editable by hand.
+  input = form.setValues(one.input, one.riktalder);
+  advancedPanel.apply(advanced);
+  // The full context the restored overrides amount to: `salaryPath` needs it
+  // for the three Adv_settings it renders itself, `pgbGrid` for the birth
+  // years, which live in `ModelContext` rather than in `TypfallInput`.
+  const context = contextFromSettings(new Map(), advanced);
+  salaryPath.restore(one.salary, advancedInput.ownIncome, context);
+  pgbGrid.restore({
+    pgbManual: advancedInput.pgbManual,
+    pgbConscription: advancedInput.pgbConscription,
+    childBirthYears: context.childBirthYears,
+  });
+  render();
+}
 
 const comparePanel = createComparePanel(view.lang, input, () => render());
 const mikrosimPanel = createMikrosimPanel(
@@ -330,6 +376,7 @@ function renderHeading(): void {
       form.relabel(lang);
       advancedPanel.relabel(lang);
       salaryPath.relabel(lang);
+      savedCases.relabel(lang);
       pgbGrid.relabel(lang);
       comparePanel.relabel(lang);
       mikrosimPanel.relabel(lang);
@@ -456,19 +503,37 @@ function render(): void {
     lang === "sv" ? "Använd normala inställningar" : "Use the normal settings";
 
   const context = viewContext(view);
+
+  // The own salary path is settled *before* the run that reads it, not after.
+  //
+  // `salaryPath` needs the wage path the model derives for the Start sheet as
+  // it currently stands -- the grid fills from it, `Återställ` goes back to
+  // it, an untouched grid follows it, and the Deltid periods scale it. Once an
+  // own path is in use the run's own `wagePath` only echoes it back, so that
+  // baseline has to come from a run without it. A run is a few milliseconds
+  // and this one only happens in advanced mode.
+  //
+  // It answers with the path the run should be given, and that is assigned
+  // here rather than arriving through `onChange`. The callback version re-
+  // entered `render` from inside this function, and the outer call then
+  // overwrote the nested one's results with its own -- computed moments
+  // earlier, from the path that had just been superseded. Every figure sat one
+  // edit behind: change the salary and nothing moved.
+  if (mode === "advanced") {
+    const { ownIncome, ...withoutOwnIncome } = runInput();
+    const baseline = run(withoutOwnIncome, context, { deaths });
+    const path = salaryPath.sync(baseline.wagePath, input.born);
+    const next = { ...advancedInput };
+    if (path === undefined) delete next.ownIncome;
+    else next.ownIncome = path;
+    advancedInput = next;
+  }
+
   const typfall = runInput();
   const result = run(typfall, context, { deaths });
   const par = retirementAge(typfall, result);
 
-  // The salary grid fills from, and resets to, the path the model derives for
-  // the Start sheet as it currently stands. Once an own path is in use the
-  // run's own `wagePath` just echoes it back, so the baseline has to come from
-  // a run without it. A run takes a few milliseconds, and this second one
-  // only happens in advanced mode.
   if (mode === "advanced") {
-    const { ownIncome, ...withoutOwnIncome } = typfall;
-    const baseline = ownIncome === undefined ? result : run(withoutOwnIncome, context, { deaths });
-    salaryPath.setBaseline(baseline.wagePath, input.born);
     pgbGrid.setBaseline(input.born, context.marginal, result.pgbBreakdown);
   }
 
@@ -617,7 +682,7 @@ function wrapScroll(table: HTMLElement): HTMLElement {
 
 const inputs = document.createElement("div");
 inputs.className = "input-column";
-inputs.append(modeBox, form.element, advancedBox);
+inputs.append(modeBox, savedCases.element, form.element, advancedBox);
 
 /**
  * Print every disclosure open, and put them back afterwards.
