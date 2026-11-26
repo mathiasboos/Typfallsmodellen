@@ -48,13 +48,11 @@
  * lönevektor antas de gälla" -- says an own wage vector wins over it, which
  * is exactly how these periods are built.
  *
- * Periods apply whether or not the grid below is switched on. With it off the
- * generated path follows the salary and the birth year as they are typed,
- * which a hand-typed grid deliberately does not; switching the grid on freezes
- * those numbers into editable rows, and from then on the rows are the
- * authority until a period is added or removed, or `Återställ` is pressed.
- * Overlapping periods resolve last-wins, so a narrow period added after a wide
- * one carves out of it.
+ * Periods apply whether or not the grid below is switched on, and either way
+ * the numbers follow the salary and the birth year as they are typed. Only a
+ * row somebody has actually typed into stops following -- see `handEdited`
+ * below, which is the whole of the rule. Overlapping periods resolve
+ * last-wins, so a narrow period added after a wide one carves out of it.
  *
  * The grid is filled from the path the model just computed rather than left
  * empty, which is what the workbook does too -- `setup.ts:424` reads an age the
@@ -80,6 +78,27 @@ import type { Lang } from "./i18n.js";
 
 /** The first age an own path is ever read at -- `setup.ts:139`. */
 const FIRST_AGE = 15;
+
+/**
+ * What `savedCases.ts` has to keep for this section, beyond the income path.
+ *
+ * The path itself rides in `TypfallInput.ownIncome` and is saved with the rest
+ * of Avancerat; these two are not recoverable from it. A Deltid period list
+ * cannot be read back out of the numbers it produced, and whether the grid was
+ * open decides whether those numbers are authoritative or get regenerated.
+ */
+export interface SalaryPathState {
+  /** Whether `Använd egen löneutveckling` was on. */
+  readonly grid: boolean;
+  /**
+   * Whether a grid cell had been typed into. Saved rather than recomputed:
+   * it is what decides whether a restored case's rows are its own numbers or
+   * a view that the next salary change may refill, and the rows alone cannot
+   * say which they were.
+   */
+  readonly edited: boolean;
+  readonly periods: readonly PartTimePeriod[];
+}
 
 /** One stretch of part-time work: the calendar years, and the share worked. */
 export interface PartTimePeriod {
@@ -127,14 +146,41 @@ export interface SalaryPathHandle {
   readonly element: HTMLElement;
   relabel(lang: Lang): void;
   /**
-   * The path the model derives for the Start sheet as it currently stands,
-   * ignoring anything typed here. Kept fresh so the grid fills from the right
-   * numbers whenever it is switched on, and so `Återställ` has somewhere to go
-   * back to after the birth year or the salary has moved.
+   * Takes the wage path the model derives for the Start sheet as it currently
+   * stands -- ignoring anything typed here -- and answers with the path the
+   * run should actually be given.
+   *
+   * It both feeds and answers because the answer is an *input* to that run, so
+   * `main.ts` settles it before running rather than being called back
+   * afterwards. It used to be called back: `setBaseline` pushed a new path
+   * through `onChange`, which re-entered `render`, which finished and returned
+   * into the outer `render` -- which then overwrote the corrected results with
+   * its own, computed moments earlier from the path that had just been
+   * replaced. Every figure on the page sat one edit behind, which is what
+   * "change the salary and nothing updates" turned out to be.
+   *
+   * Keeping the baseline fresh is the other half of its job: the grid fills
+   * from it, `Återställ` goes back to it, and an untouched grid follows it.
    */
-  setBaseline(path: readonly OwnIncomeYear[], born: number): void;
+  sync(path: readonly OwnIncomeYear[], born: number): readonly OwnIncomeYear[] | undefined;
   /** Switches the grid off and drops the typed path. */
   reset(): void;
+  /** The part of this section a saved typfall has to carry itself. */
+  state(): SalaryPathState;
+  /**
+   * Puts a saved typfall back on screen.
+   *
+   * `path` is that case's own `ownIncome`, which fills the grid when the case
+   * had it open. Nothing is handed up: `main.ts` has set its own state
+   * already, and the `render` it does next asks `sync` for the path anyway --
+   * which is where a case saved with the grid untouched, or with periods and
+   * no grid, gets its numbers rebuilt against the restored salary.
+   */
+  restore(
+    state: SalaryPathState,
+    path: readonly OwnIncomeYear[] | undefined,
+    context: ModelContext,
+  ): void;
 }
 
 const say = (l: Lang, sv: string, en: string) => (l === "sv" ? sv : en);
@@ -149,10 +195,27 @@ export function createSalaryPath(
   let born = 0;
   let rows: OwnIncomeYear[] = [];
   let periods: PartTimePeriod[] = [];
-  /** `JSON.stringify` of the path last handed up -- see `push` below. */
-  let pushed = "";
+  /**
+   * Whether a grid cell has been typed into (or zeroed in one click) since the
+   * grid was last filled.
+   *
+   * This is what decides whether the rows are a *view* of the derived path or
+   * a replacement for it, and switching the grid on is deliberately not enough
+   * to make them the latter. Reported as a bug, and it was one: tick the box
+   * to look at the numbers, change the salary, and Table 2 silently kept
+   * answering for the old one, because the rows it was still being handed had
+   * been frozen at the moment of the tick. An untouched grid now refills from
+   * the baseline like everything else here, and only a typed cell takes over --
+   * which is the case the "only Återställ overwrites them" rule existed to
+   * protect in the first place.
+   */
+  let handEdited = false;
   const relabels: ((l: Lang) => void)[] = [];
   const restores: (() => void)[] = [];
+  // The three Adv_settings this file renders rather than `advanced.ts`'s own
+  // loop, so `AdvancedHandle.apply` cannot reach them -- a restored typfall
+  // sets them from here instead. See `restore` below.
+  const settingSetters: ((c: ModelContext) => void)[] = [];
   const normal = defaultContext();
 
   const element = document.createElement("details");
@@ -174,6 +237,7 @@ export function createSalaryPath(
     const { min, max, step } = setting.control;
     const control = number(initial, { min, max, step }, (v) => onSettingChange(setting.set(v)));
     control.element.dataset.setting = setting.key;
+    settingSetters.push((c) => control.setValue(Math.min(Math.max(setting.get(c), min), max)));
     field(control.element, (l) => ({
       label: setting.label(l),
       ...(setting.hint ? { hint: setting.hint(l) } : {}),
@@ -185,8 +249,13 @@ export function createSalaryPath(
   // above rather than widening that loop's own single-kind guard.
   if (WAGE_PROFILE.control.kind === "select") {
     const initial = WAGE_PROFILE.get(normal);
-    const control = select(WAGE_PROFILE.control.choices, initial, (v) => onSettingChange(WAGE_PROFILE.set(v)));
+    const choices = WAGE_PROFILE.control.choices;
+    const control = select(choices, initial, (v) => onSettingChange(WAGE_PROFILE.set(v)));
     control.element.dataset.setting = WAGE_PROFILE.key;
+    settingSetters.push((c) => {
+      const value = WAGE_PROFILE.get(c);
+      control.element.value = String(choices.some((choice) => choice.value === value) ? value : initial);
+    });
     relabels.push(control.relabel);
     field(
       control.element,
@@ -359,6 +428,10 @@ export function createSalaryPath(
           const value = Math.max(Math.round(typed), 0);
           put(value);
           input.value = String(value);
+          // Before `push`, which re-enters `render` and so `setBaseline`:
+          // the flag has to be true by the time that runs, or it would
+          // refill the grid out from under the cell being edited.
+          handEdited = true;
           push();
         });
         td.append(input);
@@ -391,21 +464,24 @@ export function createSalaryPath(
   }
 
   /**
-   * Hand the current path up, but only when it actually moved.
+   * The path the run should be given as things stand.
    *
-   * `setBaseline` calls this on every render, so that a generated path (one or
-   * more periods, grid off) keeps up with the salary and the birth year as
-   * they are typed -- and `onChange` re-enters `render`. The digest is what
-   * makes that terminate: the second pass derives the same path from the same
-   * baseline and stops here. The baseline itself is a run with `ownIncome`
-   * removed, so pushing a path never moves it.
+   * A typed grid is the authority; failing that, the periods generate one; and
+   * with neither, nothing -- which is how the model is told to derive the wage
+   * path itself, rather than to read a lifetime of zeroes.
+   */
+  function current(): readonly OwnIncomeYear[] | undefined {
+    return toggle.checked ? rows : periods.length > 0 ? fill() : undefined;
+  }
+
+  /**
+   * A click or a keystroke in this section changed the path: hand it up.
+   *
+   * Only ever called from a user's own event, never from `sync` -- which is
+   * what keeps `onChange`, and so `render`, out of its own call stack.
    */
   function push(): void {
-    const path = toggle.checked ? rows : periods.length > 0 ? fill() : undefined;
-    const digest = path === undefined ? "" : JSON.stringify(path);
-    if (digest === pushed) return;
-    pushed = digest;
-    onChange(path);
+    onChange(current());
   }
 
   /** What the typed years come to in ages, for the typfall on screen. */
@@ -470,6 +546,7 @@ export function createSalaryPath(
   function regenerate(): void {
     if (toggle.checked) {
       rows = fill();
+      handEdited = false;
       drawGrid();
     }
     push();
@@ -502,6 +579,7 @@ export function createSalaryPath(
   toggle.addEventListener("change", () => {
     if (toggle.checked) {
       rows = fill();
+      handEdited = false;
       drawGrid();
     }
     scroll.hidden = !toggle.checked;
@@ -513,6 +591,7 @@ export function createSalaryPath(
 
   refill.addEventListener("click", () => {
     rows = fill();
+    handEdited = false;
     drawGrid();
     push();
   });
@@ -523,6 +602,7 @@ export function createSalaryPath(
   // zeroes a whole setting but scoped to just this grid.
   zeroAll.addEventListener("click", () => {
     rows = rows.map((row) => ({ ...row, income: 0, wage: 0 }));
+    handEdited = true;
     drawGrid();
     push();
   });
@@ -566,44 +646,69 @@ export function createSalaryPath(
       applyText(currentLang);
       for (const r of relabels) r(l);
     },
-    setBaseline(path, bornYear) {
+    sync(path, bornYear) {
       baseline = path;
-      // While the grid is off it tracks the Start sheet; once it is on, the
-      // typed rows are the authority and only Återställ overwrites them.
-      //
-      // The year column still has to follow a changed birth year, but it is
-      // the only thing that does -- and redrawing on every call would tear the
-      // cell being edited out of the DOM inside its own change event, which
-      // the offline check caught as a run of `replaceChildren` NotFoundErrors.
-      // So the years are relabelled in place, and the rows are left alone.
       if (bornYear !== born) {
         born = bornYear;
         drawPartTimeAges();
-        if (toggle.checked) {
-          for (const [index, tr] of [...tbody.children].entries()) {
-            const row = rows[index];
-            if (row === undefined) continue;
-            tr.firstElementChild!.textContent = born > 0 ? String(Math.trunc(born) + row.age) : "";
-          }
+      }
+
+      // Everything here follows the Start sheet -- the path generated from the
+      // periods while the grid is off, and the grid's own rows while nobody
+      // has typed into them -- so that changing the salary or the birth year
+      // moves the numbers, which is what anyone would expect of a figure the
+      // page recomputes on every keystroke. A typed cell is the one exception,
+      // and then only until `Återställ`.
+      //
+      // Redrawing unconditionally is what must not happen: it would tear the
+      // cell being edited out of the DOM inside its own change event, which an
+      // earlier offline check caught as a run of `replaceChildren`
+      // NotFoundErrors. `handEdited` is set before that cell's own `push`, so
+      // the branch below is already closed by the time this runs for it; the
+      // year column is relabelled in place for a typed grid instead.
+      if (toggle.checked && !handEdited) {
+        const next = fill();
+        if (JSON.stringify(next) !== JSON.stringify(rows)) {
+          rows = next;
+          drawGrid();
+        }
+      } else if (toggle.checked) {
+        for (const [index, tr] of [...tbody.children].entries()) {
+          const row = rows[index];
+          if (row === undefined) continue;
+          tr.firstElementChild!.textContent = born > 0 ? String(Math.trunc(born) + row.age) : "";
         }
       }
-      // With the grid off, a path generated from the periods has to follow the
-      // baseline it was scaled from, or typing a new salary would leave the
-      // part-time years at the old one's. `push` calls back only when the
-      // numbers really moved, which is what keeps this out of a render loop;
-      // with the grid on, `rows` has not moved and this is a no-op.
-      push();
+
+      return current();
+    },
+    state() {
+      return {
+        grid: toggle.checked,
+        edited: handEdited,
+        periods: periods.map((p) => ({ ...p })),
+      };
+    },
+    restore(state, path, context) {
+      for (const set of settingSetters) set(context);
+      periods = state.periods.map((p) => ({ ...p }));
+      toggle.checked = state.grid;
+      scroll.hidden = !state.grid;
+      actions.hidden = !state.grid;
+      rows = state.grid ? (path ?? []).map((r) => ({ ...r })) : [];
+      handEdited = state.grid && state.edited;
+      if (state.grid) drawGrid();
+      partTimeNote.textContent = "";
+      drawPeriods();
+      drawPartTimeAges();
     },
     reset() {
       toggle.checked = false;
       scroll.hidden = true;
       actions.hidden = true;
       rows = [];
+      handEdited = false;
       periods = [];
-      // `main.ts` drops its own `ownIncome` in the same click and re-renders,
-      // so nothing is handed up here -- but the digest has to agree with that,
-      // or the next `push` would think the empty path was already sent.
-      pushed = "";
       partTimeNote.textContent = "";
       drawPeriods();
       for (const r of restores) r();

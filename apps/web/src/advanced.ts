@@ -925,6 +925,20 @@ export interface AdvancedHandle {
    */
   readonly groups: ReadonlyMap<string, HTMLElement>;
   relabel(lang: Lang): void;
+  /**
+   * Shows the settings of a saved typfall (`savedCases.ts`).
+   *
+   * Takes the whole override map rather than a diff and writes *every*
+   * control, so a field the saved case does not carry goes back to the
+   * workbook's own value instead of keeping the previous case's. Nothing is
+   * emitted back: `main.ts` has already replaced its own `advanced` with this
+   * map, and firing `onChange` per control would re-render sixty times.
+   *
+   * Only the settings this panel renders. The three that `salaryPath.ts`
+   * renders instead are its own `restore`'s business, and `childBirthYears`
+   * is `pgb.ts`'s.
+   */
+  apply(patch: Partial<ModelContext>): void;
   /** `Använd normala inställningar`: every control back to the workbook's own. */
   reset(): void;
 }
@@ -943,6 +957,17 @@ export function createAdvancedPanel(
 
   const relabels: Relabel[] = [];
   const restores: (() => void)[] = [];
+  // One per rendered setting, keyed by `Setting.key`: writes a value into the
+  // control without firing `onChange`. `restores` cannot be reused for this --
+  // each of those closes over its own setting's *initial* value.
+  const setters = new Map<string, (v: number) => void>();
+  // The municipality and church pickers claim a specific place or membership;
+  // a restored rate came from neither, so they are blanked rather than left
+  // naming a choice that may not match the number beside them.
+  const blankPickers: (() => void)[] = [];
+  // Whether the restored case carried its own burial rate, so a later
+  // municipality pick does not silently overwrite it.
+  const markChurch: ((explicit: boolean) => void)[] = [];
   const normal = defaultContext();
 
   for (const group of GROUPS) {
@@ -983,12 +1008,17 @@ export function createAdvancedPanel(
         relabels.push(widget.relabel);
         field(widget.element, label, "field field-wide");
         restores.push(() => widget.setValue(initial));
+        setters.set(setting.key, (v) => widget.setValue(v));
       } else if (setting.control.kind === "number") {
         const { min, max, step } = setting.control;
         const control = number(initial, { min, max, step }, (v) => onChange(setting.set(v)));
         control.element.dataset.setting = setting.key;
         field(control.element, label);
         restores.push(() => control.setValue(initial));
+        // Clamped to the control's own bounds, the same clamp a typed value
+        // goes through -- a saved file is editable by hand, and the form must
+        // not show a number the run was not given.
+        setters.set(setting.key, (v) => control.setValue(Math.min(Math.max(v, min), max)));
       } else if (setting.control.kind === "percent") {
         // These two get three decimal places, not the usual one: both can be
         // filled from a picked, cited rate (a municipality's own published
@@ -1027,6 +1057,9 @@ export function createAdvancedPanel(
           restores.push(() => {
             municipality.select.value = "";
           });
+          blankPickers.push(() => {
+            municipality.select.value = "";
+          });
         }
         if (setting.key === "begravningsavgift") {
           const church = churchBurialSelect(lang, (fraction, choice) => {
@@ -1037,6 +1070,12 @@ export function createAdvancedPanel(
           });
           relabels.push(church.relabel);
           body.append(church.element);
+          blankPickers.push(() => {
+            church.select.value = "";
+          });
+          markChurch.push((explicit) => {
+            churchExplicit = explicit;
+          });
           applyChurchAutoDefault = () => {
             churchExplicit = true;
             church.select.value = "rest";
@@ -1051,6 +1090,7 @@ export function createAdvancedPanel(
 
         field(control.element, label);
         restores.push(() => control.setValue(initial));
+        setters.set(setting.key, (v) => control.setValue(v));
       } else if (setting.control.kind === "check") {
         const control = check(initial === 1, (on) => onChange(setting.set(on ? 1 : 0)));
         control.dataset.setting = setting.key;
@@ -1058,13 +1098,22 @@ export function createAdvancedPanel(
         restores.push(() => {
           control.checked = initial === 1;
         });
+        setters.set(setting.key, (v) => {
+          control.checked = v === 1;
+        });
       } else {
-        const control = select(setting.control.choices, initial, (v) => onChange(setting.set(v)));
+        const choices = setting.control.choices;
+        const control = select(choices, initial, (v) => onChange(setting.set(v)));
         control.element.dataset.setting = setting.key;
         relabels.push(control.relabel);
         field(control.element, label, "field field-wide");
         restores.push(() => {
           control.element.value = String(initial);
+        });
+        // A value this dropdown does not offer would leave the <select> with
+        // no selection at all, showing a blank where the run uses a number.
+        setters.set(setting.key, (v) => {
+          control.element.value = String(choices.some((c) => c.value === v) ? v : initial);
         });
       }
     }
@@ -1077,6 +1126,14 @@ export function createAdvancedPanel(
     groups,
     relabel(l) {
       for (const r of relabels) r(l);
+    },
+    apply(patch) {
+      const context = { ...normal, ...patch };
+      for (const group of GROUPS) {
+        for (const setting of group.settings) setters.get(setting.key)?.(setting.get(context));
+      }
+      for (const blank of blankPickers) blank();
+      for (const mark of markChurch) mark(Object.hasOwn(patch, "begravningsavgift"));
     },
     reset() {
       for (const r of restores) r();
