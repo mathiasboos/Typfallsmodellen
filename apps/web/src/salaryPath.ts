@@ -32,6 +32,30 @@
  * earns public pension rights but no occupational scheme's own premium
  * (some taxable benefits) is.
  *
+ * "Deltid" is that halving made a control rather than a chore. A part-time
+ * period is a range of calendar years and a share of full time, any number of
+ * them can be listed, and `applyPartTime` scales both `Inkomst` and `Varav
+ * lön` of every year a period covers. Nothing downstream had to change for
+ * it: reduced earnings reach PGI, the occupational premium, the employer-
+ * contribution reduction, income tax and the housing supplement through the
+ * very same own-income path a typed grid uses, so the engine is untouched and
+ * the golden cases with it. Adv_settings row 84 (`rngLönPartUttag`) is the
+ * workbook's own part-time switch, but a far narrower one: it governs only
+ * the window between the first, partial public-pension withdrawal and the
+ * final one, and its shipped value already ties work to the share drawn
+ * (`withdrawalShare`, packages/engine/src/income/wages.ts), so it cannot
+ * express a period of its own at all. Its own sheet comment -- "obs om egen
+ * lönevektor antas de gälla" -- says an own wage vector wins over it, which
+ * is exactly how these periods are built.
+ *
+ * Periods apply whether or not the grid below is switched on. With it off the
+ * generated path follows the salary and the birth year as they are typed,
+ * which a hand-typed grid deliberately does not; switching the grid on freezes
+ * those numbers into editable rows, and from then on the rows are the
+ * authority until a period is added or removed, or `Återställ` is pressed.
+ * Overlapping periods resolve last-wins, so a narrow period added after a wide
+ * one carves out of it.
+ *
  * The grid is filled from the path the model just computed rather than left
  * empty, which is what the workbook does too -- `setup.ts:424` reads an age the
  * array does not mention as 0, so an empty grid would mean a lifetime of no
@@ -51,10 +75,53 @@ import type { ModelContext, OwnIncomeYear } from "@typfallsmodellen/engine";
 
 import { FINAL_SALARY_YEARS, PENSION_SAME_YEAR_AS_FINAL_SALARY, WAGE_PROFILE } from "./advanced.js";
 import { fieldSet } from "./controls.js";
+import { locale } from "./format.js";
 import type { Lang } from "./i18n.js";
 
 /** The first age an own path is ever read at -- `setup.ts:139`. */
 const FIRST_AGE = 15;
+
+/** One stretch of part-time work: the calendar years, and the share worked. */
+export interface PartTimePeriod {
+  /** First calendar year worked part-time, inclusive. */
+  readonly fromYear: number;
+  /** Last calendar year worked part-time, inclusive. */
+  readonly toYear: number;
+  /** Share of full time, as a fraction -- 0.5 is half time. */
+  readonly share: number;
+}
+
+/**
+ * `baseline`, trimmed to the ages an own path is read at, with every year a
+ * period covers scaled to that period's share, and rounded.
+ *
+ * A row's calendar year is `trunc(born) + age`, the same arithmetic the grid's
+ * own Year column shows, so the years the period list names and the years the
+ * grid shows are the same ones. Periods apply in list order and the last one
+ * covering a year wins, which is what lets a narrow period be added on top of
+ * a wide one. The rounding happens once, after scaling, so half of a rounded
+ * figure is never rounded a second time.
+ */
+export function applyPartTime(
+  baseline: readonly OwnIncomeYear[],
+  born: number,
+  periods: readonly PartTimePeriod[],
+): OwnIncomeYear[] {
+  return baseline
+    .filter((r) => r.age >= FIRST_AGE)
+    .map((r) => {
+      const year = Math.trunc(born) + r.age;
+      let share = 1;
+      for (const period of periods) {
+        if (year >= period.fromYear && year <= period.toYear) share = period.share;
+      }
+      return {
+        age: r.age,
+        income: Math.round(r.income * share),
+        wage: Math.round(r.wage * share),
+      };
+    });
+}
 
 export interface SalaryPathHandle {
   readonly element: HTMLElement;
@@ -81,6 +148,9 @@ export function createSalaryPath(
   let baseline: readonly OwnIncomeYear[] = [];
   let born = 0;
   let rows: OwnIncomeYear[] = [];
+  let periods: PartTimePeriod[] = [];
+  /** `JSON.stringify` of the path last handed up -- see `push` below. */
+  let pushed = "";
   const relabels: ((l: Lang) => void)[] = [];
   const restores: (() => void)[] = [];
   const normal = defaultContext();
@@ -131,6 +201,89 @@ export function createSalaryPath(
     });
   }
 
+  // ------------------------------------------------------------- Deltid --
+  // Its own box and its own `fieldSet`, bound to that box rather than to
+  // `body`: the three fields are one add-entry form -- the shape pgb.ts
+  // settled on, down to editing being "remove it and add it again" -- not
+  // three more settings in this group's own single column.
+  const partTimeBox = document.createElement("div");
+  partTimeBox.className = "salary-parttime";
+  const partTimeHeading = document.createElement("h4");
+  const partTimeIntro = document.createElement("p");
+  partTimeIntro.className = "pgb-intro";
+  const partTimeForm = document.createElement("div");
+  partTimeForm.className = "pgb-form";
+  partTimeBox.append(partTimeHeading, partTimeIntro, partTimeForm);
+
+  const thisYear = new Date().getFullYear();
+  let fromYear = thisYear;
+  let toYear = thisYear;
+  let share = 0.5;
+
+  const partTime = fieldSet(partTimeForm, relabels, lang);
+  const fromField = partTime.number(fromYear, { min: 1900, max: 2100, step: 1 }, (v) => {
+    fromYear = v;
+    drawPartTimeAges();
+  });
+  fromField.element.dataset.setting = "partTimeFrom";
+  partTime.field(fromField.element, (l) => ({ label: say(l, "Från år", "From year") }));
+
+  const toField = partTime.number(toYear, { min: 1900, max: 2100, step: 1 }, (v) => {
+    toYear = v;
+    drawPartTimeAges();
+  });
+  toField.element.dataset.setting = "partTimeTo";
+  partTime.field(toField.element, (l) => ({ label: say(l, "Till år", "To year") }));
+
+  // A percent field, not a number one: it reads and writes the fraction the
+  // period actually stores, and renders it with the page's own decimal mark
+  // rather than the browser's -- see controls.ts's own note on why.
+  const shareField = partTime.percent(share, (v) => {
+    // Clamped and written back rather than only clamped on the way in: the
+    // form never shows a number the run did not use (form.ts's own rule,
+    // which `fieldSet`'s `number` already keeps for a bounded number field --
+    // `percent` has no bounds of its own to keep it with).
+    share = Math.min(Math.max(v, 0), 1);
+    if (share !== v) shareField.setValue(share);
+  });
+  shareField.element.dataset.setting = "partTimeShare";
+  relabels.push(shareField.relabel);
+  partTime.field(shareField.element, (l) => ({
+    label: say(l, "Sysselsättningsgrad", "Share of full time"),
+    hint: say(l, "t.ex. 50 % för halvtid", "e.g. 50% for half time"),
+  }));
+
+  // Which ages the typed years come to for this typfall, so a period can be
+  // aimed without counting from the birth year by hand.
+  const partTimeAges = document.createElement("p");
+  partTimeAges.className = "salary-parttime-ages";
+  const addPeriod = document.createElement("button");
+  addPeriod.type = "button";
+  addPeriod.className = "export-btn pgb-add";
+  addPeriod.dataset.action = "salary-add-parttime";
+  // Reports back a period that changed nothing -- read from the path the grid
+  // would now be filled with, not from re-derived working-age rules, so it
+  // can never disagree with what the model was handed.
+  const partTimeNote = document.createElement("p");
+  partTimeNote.className = "pgb-add-feedback";
+  partTimeForm.append(partTimeAges, addPeriod, partTimeNote);
+
+  const partTimeList = document.createElement("div");
+  partTimeList.className = "pgb-children-list salary-parttime-list";
+  partTimeBox.append(partTimeList);
+
+  // "Använd normala inställningar" puts the add-entry form back where it
+  // opened too, the same as every other advanced-mode field.
+  restores.push(() => {
+    fromYear = thisYear;
+    toYear = thisYear;
+    share = 0.5;
+    fromField.setValue(fromYear);
+    toField.setValue(toYear);
+    shareField.setValue(share);
+    drawPartTimeAges();
+  });
+
   const toggleWrap = document.createElement("label");
   toggleWrap.className = "field field-check";
   const toggle = document.createElement("input");
@@ -172,7 +325,7 @@ export function createSalaryPath(
   table.append(head, tbody);
   scroll.append(table);
 
-  body.append(toggleWrap, actions, scroll);
+  body.append(partTimeBox, toggleWrap, actions, scroll);
   element.append(summary, body);
 
   /** Rebuilt whenever the path is refilled; edits mutate `rows` in place. */
@@ -206,7 +359,7 @@ export function createSalaryPath(
           const value = Math.max(Math.round(typed), 0);
           put(value);
           input.value = String(value);
-          onChange(rows);
+          push();
         });
         td.append(input);
         return td;
@@ -232,31 +385,136 @@ export function createSalaryPath(
     }
   }
 
-  /** The baseline, trimmed to the ages an own path is read at and rounded. */
+  /** The baseline, trimmed, scaled by the part-time periods and rounded. */
   function fill(): OwnIncomeYear[] {
-    return baseline
-      .filter((r) => r.age >= FIRST_AGE)
-      .map((r) => ({ age: r.age, income: Math.round(r.income), wage: Math.round(r.wage) }));
+    return applyPartTime(baseline, born, periods);
   }
+
+  /**
+   * Hand the current path up, but only when it actually moved.
+   *
+   * `setBaseline` calls this on every render, so that a generated path (one or
+   * more periods, grid off) keeps up with the salary and the birth year as
+   * they are typed -- and `onChange` re-enters `render`. The digest is what
+   * makes that terminate: the second pass derives the same path from the same
+   * baseline and stops here. The baseline itself is a run with `ownIncome`
+   * removed, so pushing a path never moves it.
+   */
+  function push(): void {
+    const path = toggle.checked ? rows : periods.length > 0 ? fill() : undefined;
+    const digest = path === undefined ? "" : JSON.stringify(path);
+    if (digest === pushed) return;
+    pushed = digest;
+    onChange(path);
+  }
+
+  /** What the typed years come to in ages, for the typfall on screen. */
+  function drawPartTimeAges(): void {
+    if (born <= 0) {
+      partTimeAges.textContent = "";
+      return;
+    }
+    const first = fromYear - Math.trunc(born);
+    const last = toYear - Math.trunc(born);
+    partTimeAges.textContent = say(currentLang, `ålder ${first}–${last}`, `age ${first}–${last}`);
+  }
+
+  function drawPeriods(): void {
+    partTimeList.replaceChildren();
+    const l = currentLang;
+    if (periods.length === 0) {
+      const empty = document.createElement("p");
+      // Its own class, not pgb.ts's `.pgb-summary-empty`: both panels are on
+      // screen at once, and the offline check addresses that one unscoped.
+      empty.className = "salary-parttime-empty";
+      empty.textContent = say(l, "Inga deltidsperioder", "No part-time periods");
+      partTimeList.append(empty);
+      return;
+    }
+    for (const [index, period] of periods.entries()) {
+      const row = document.createElement("div");
+      row.className = "pgb-child-row";
+      const label = document.createElement("span");
+      const percent = new Intl.NumberFormat(locale(l), { maximumFractionDigits: 1 }).format(
+        Math.round(period.share * 1000) / 10,
+      );
+      label.textContent = say(
+        l,
+        `${period.fromYear}–${period.toYear}: ${percent} % av heltid`,
+        `${period.fromYear}–${period.toYear}: ${percent}% of full time`,
+      );
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "pgb-remove";
+      remove.dataset.action = "salary-remove-parttime";
+      remove.textContent = "×";
+      remove.title = say(l, "Ta bort", "Remove");
+      remove.addEventListener("click", () => {
+        periods.splice(index, 1);
+        partTimeNote.textContent = "";
+        drawPeriods();
+        regenerate();
+      });
+      row.append(label, remove);
+      partTimeList.append(row);
+    }
+  }
+
+  /**
+   * A period was added or removed: the grid, when it is on, is refilled from
+   * the baseline rather than scaled in place -- scaling what is already there
+   * would compound the moment a period's share was changed twice. It is the
+   * same refill `Återställ` does, and it does cost hand edits, which the
+   * toggle's own hint says.
+   */
+  function regenerate(): void {
+    if (toggle.checked) {
+      rows = fill();
+      drawGrid();
+    }
+    push();
+  }
+
+  addPeriod.addEventListener("click", () => {
+    const l = currentLang;
+    if (toYear < fromYear) {
+      partTimeNote.textContent = say(
+        l,
+        "Till år kan inte vara före från år.",
+        "The to year cannot be before the from year.",
+      );
+      return;
+    }
+    const before = JSON.stringify(fill());
+    periods.push({ fromYear, toYear, share });
+    drawPeriods();
+    regenerate();
+    partTimeNote.textContent =
+      JSON.stringify(fill()) === before
+        ? say(
+            l,
+            "Perioden ändrar ingenting: den ligger utanför de år typfallet arbetar, eller är på heltid.",
+            "The period changes nothing: it falls outside the years this typfall works, or it is full time.",
+          )
+        : "";
+  });
 
   toggle.addEventListener("change", () => {
     if (toggle.checked) {
       rows = fill();
       drawGrid();
-      scroll.hidden = false;
-      actions.hidden = false;
-      onChange(rows);
-    } else {
-      scroll.hidden = true;
-      actions.hidden = true;
-      onChange(undefined);
     }
+    scroll.hidden = !toggle.checked;
+    actions.hidden = !toggle.checked;
+    // Switching it off does not drop the periods: they keep scaling the
+    // derived path, which is the half of this section that needs no grid.
+    push();
   });
 
   refill.addEventListener("click", () => {
     rows = fill();
     drawGrid();
-    onChange(rows);
+    push();
   });
 
   // A full year of unpaid leave typed one row at a time is tedious at this
@@ -266,7 +524,7 @@ export function createSalaryPath(
   zeroAll.addEventListener("click", () => {
     rows = rows.map((row) => ({ ...row, income: 0, wage: 0 }));
     drawGrid();
-    onChange(rows);
+    push();
   });
 
   scroll.hidden = true;
@@ -277,9 +535,16 @@ export function createSalaryPath(
     toggleLabel.textContent = say(l, "Använd egen löneutveckling", "Use an own salary path");
     toggleHint.textContent = say(
       l,
-      "Fylls i från den beräknade lönebanan, som du sedan kan ändra",
-      "Filled in from the computed path, which you can then edit",
+      "Fylls i från den beräknade lönebanan, deltidsperioderna inräknade, och kan sedan ändras fritt",
+      "Filled in from the computed path, part-time periods included, which you can then edit",
     );
+    partTimeHeading.textContent = say(l, "Deltid", "Part-time work");
+    partTimeIntro.textContent = say(
+      l,
+      "Lägg till en eller flera perioder på deltid, med eller utan egen lönebana nedan. Inkomsten och lönen sänks till den angivna sysselsättningsgraden, vilket sänker pensionsrätterna och tjänstepensionens premier med dem. Överlappar två perioder gäller den som står sist.",
+      "Add one or more periods of part-time work, with or without the own salary path below. Income and salary drop to the share of full time you give, and the pension rights and occupational premiums drop with them. Where two periods overlap, the lower one wins.",
+    );
+    addPeriod.textContent = say(l, "Lägg till period", "Add period");
     refill.textContent = say(l, "Återställ till beräknad lönebana", "Reset to the computed path");
     zeroAll.textContent = say(l, "Nollställ alla värden", "Set all values to 0");
     const heads = [
@@ -289,6 +554,8 @@ export function createSalaryPath(
       say(l, "Varav lön", "Of which salary"),
     ];
     for (const [i, cell] of headCells.entries()) cell.textContent = heads[i]!;
+    drawPartTimeAges();
+    drawPeriods();
   };
   applyText(lang);
 
@@ -309,20 +576,36 @@ export function createSalaryPath(
       // cell being edited out of the DOM inside its own change event, which
       // the offline check caught as a run of `replaceChildren` NotFoundErrors.
       // So the years are relabelled in place, and the rows are left alone.
-      if (bornYear === born) return;
-      born = bornYear;
-      if (!toggle.checked) return;
-      for (const [index, tr] of [...tbody.children].entries()) {
-        const row = rows[index];
-        if (row === undefined) continue;
-        tr.firstElementChild!.textContent = born > 0 ? String(Math.trunc(born) + row.age) : "";
+      if (bornYear !== born) {
+        born = bornYear;
+        drawPartTimeAges();
+        if (toggle.checked) {
+          for (const [index, tr] of [...tbody.children].entries()) {
+            const row = rows[index];
+            if (row === undefined) continue;
+            tr.firstElementChild!.textContent = born > 0 ? String(Math.trunc(born) + row.age) : "";
+          }
+        }
       }
+      // With the grid off, a path generated from the periods has to follow the
+      // baseline it was scaled from, or typing a new salary would leave the
+      // part-time years at the old one's. `push` calls back only when the
+      // numbers really moved, which is what keeps this out of a render loop;
+      // with the grid on, `rows` has not moved and this is a no-op.
+      push();
     },
     reset() {
       toggle.checked = false;
       scroll.hidden = true;
       actions.hidden = true;
       rows = [];
+      periods = [];
+      // `main.ts` drops its own `ownIncome` in the same click and re-renders,
+      // so nothing is handed up here -- but the digest has to agree with that,
+      // or the next `push` would think the empty path was already sent.
+      pushed = "";
+      partTimeNote.textContent = "";
+      drawPeriods();
       for (const r of restores) r();
     },
   };

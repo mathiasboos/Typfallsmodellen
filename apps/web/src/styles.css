@@ -675,6 +675,41 @@ body {
    class's hardcoded `grid-row: 2` is wrong outside a `.field`'s own grid. */
 .pgb-intro { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 8px; }
 
+/* salaryPath.ts's "Deltid": the same add-entry form plus list of what was
+   added that pgb.ts settled on, reusing its `.pgb-form`/`.pgb-add`/
+   `.pgb-child-row`/`.pgb-remove` rules rather than restating them -- only the
+   box around it is this section's own. Scaling a stretch of the computed path
+   is what the manual tells you to do by hand (multiply those years by 0,5 and
+   paste them back into the own income list); this is that, as a control. */
+.salary-parttime {
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.salary-parttime h4 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+/* What the typed years come to in ages. A hint about the two fields above
+   it, so it wears hint colour -- `.pgb-add-feedback`'s own `--text-secondary`
+   is the same green the field captions beside it use, which read it as a
+   third caption. */
+.salary-parttime-ages { margin: -2px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.salary-parttime-ages:empty { display: none; }
+/* A rule between the add-entry form and what has been added, shown empty list
+   and all, so the two halves of the box never run together. */
+.salary-parttime-list {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.salary-parttime-empty { font-size: 0.78rem; color: var(--text-muted); margin: 0; }
+
 /* The children mini-list: one always-editable birth-year field per filled
    slot, starting empty -- see pgb.ts's own comment on why editing/removing
    a child lives here rather than in the summary table. */
